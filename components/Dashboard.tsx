@@ -16,6 +16,7 @@ const EMPTY_SUMMARY: DashboardSummary = {
 }
 
 type SyncStatus = 'idle' | 'syncing' | 'success' | 'error'
+type SetupStatus = 'idle' | 'running' | 'success' | 'error'
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -36,6 +37,8 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>('idle')
+  const [setupMsg, setSetupMsg] = useState('')
 
   const loadData = useCallback(() => {
     setLoadingSummary(true)
@@ -56,6 +59,26 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  async function handleSetup() {
+    setSetupStatus('running')
+    setSetupMsg('')
+    try {
+      const res = await fetch('/api/setup', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        setSetupStatus('error')
+        setSetupMsg(data.error)
+      } else {
+        setSetupStatus('success')
+        setSetupMsg(`${data.total} פקודות בוצעו · ${data.failed} שגיאות`)
+      }
+    } catch {
+      setSetupStatus('error')
+      setSetupMsg('שגיאת חיבור')
+    }
+    setTimeout(() => setSetupStatus('idle'), 10000)
+  }
 
   async function handleSync() {
     setSyncStatus('syncing')
@@ -84,8 +107,35 @@ export default function Dashboard() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
-          {/* Sync button + status */}
-          <div className="flex items-center gap-3">
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Setup DB button */}
+            <button
+              onClick={handleSetup}
+              disabled={setupStatus === 'running'}
+              title="מריץ את lib/schema.sql מול Supabase ויוצר את הטבלאות"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                setupStatus === 'running'
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : setupStatus === 'success'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : setupStatus === 'error'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span>{setupStatus === 'running' ? '⟳' : setupStatus === 'success' ? '✓' : setupStatus === 'error' ? '✕' : '🗄'}</span>
+              {setupStatus === 'running' ? 'מקים...' : setupStatus === 'success' ? 'הוקם!' : setupStatus === 'error' ? 'שגיאה' : 'הקמת טבלאות'}
+            </button>
+            {setupMsg && (
+              <span className={`text-xs hidden sm:inline ${setupStatus === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                {setupMsg}
+              </span>
+            )}
+
+            <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block" />
+
+            {/* Sync button */}
             <button
               onClick={handleSync}
               disabled={syncStatus === 'syncing'}
