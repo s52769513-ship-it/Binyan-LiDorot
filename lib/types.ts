@@ -1,0 +1,85 @@
+export interface ParentSummary {
+  id: string
+  name: string
+  firstName: string
+  lastName: string
+  fatherPhone: string
+  motherPhone: string
+  email: string
+  city: string
+  status: string[]
+  childrenCount: number
+  tuitionTotal: number
+  tuitionBalance: number
+}
+
+export interface StudentDetail {
+  id: string
+  name: string
+  gender: string
+  age: string | number
+  className: string
+  status: string
+  transportation: string[]
+  transportationCost: number
+}
+
+export interface TransactionItem {
+  id: string
+  amount: number
+  type: string
+  date: string
+  notes: string
+}
+
+export interface DebtItem {
+  id: string
+  amount: number
+  createdTime: string
+}
+
+export interface PlannedPaymentItem {
+  id: string
+  name: string
+  amount: number
+  date: string
+  monthYear: string
+  balance: number
+}
+
+export interface ParentDetail extends ParentSummary {
+  motherName: string
+  address: string
+  building: string
+  notes: string
+  students: StudentDetail[]
+  debts: DebtItem[]
+  plannedPayments: PlannedPaymentItem[]
+  transactions: TransactionItem[]
+}
+
+export interface MonthlyStat {
+  month: string
+  amount: number
+}
+
+export interface DashboardSummary {
+  totalDebts: number
+  totalPlannedPayments: number
+  currentMonthTransactions: number
+  monthlyData: MonthlyStat[]
+  lastSync?: string | null
+}
+
+export interface SyncResult {
+  success: boolean
+  syncedAt: string
+  counts: {
+    parents: number
+    students: number
+    transactions: number
+    debts: number
+    plannedPayments: number
+  }
+  error?: string
+}
