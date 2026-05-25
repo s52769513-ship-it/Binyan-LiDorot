@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, S, T, D, PP } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
-const PRUNE_BATCH = 200
-
 async function upsertAndPrune<R extends { id: string }>(
   table: string,
   records: R[]
@@ -15,19 +13,29 @@ async function upsertAndPrune<R extends { id: string }>(
     if (upsertErr) throw new Error(`upsert ${table}: ${upsertErr.message}`)
   }
 
-  // Fetch all IDs currently in Supabase, then delete the stale ones in batches
+  // Fetch all IDs currently in Supabase, then delete stale ones individually
   const { data: existing, error: fetchErr } = await supabaseAdmin
     .from(table)
     .select('id')
-  if (fetchErr) throw new Error(`fetch ${table}: ${fetchErr.message}`)
+  if (fetchErr) {
+    const detail = `${fetchErr.message} | code:${fetchErr.code} | hint:${fetchErr.hint}`
+    throw new Error(`fetch ${table}: ${detail}`)
+  }
 
   const keepIds = new Set(records.map(r => r.id))
-  const toDelete = (existing ?? []).map((r: { id: string }) => r.id).filter(id => !keepIds.has(id))
+  const toDelete = (existing ?? [])
+    .map((r: { id: string }) => r.id)
+    .filter(id => !keepIds.has(id))
 
-  for (let i = 0; i < toDelete.length; i += PRUNE_BATCH) {
-    const chunk = toDelete.slice(i, i + PRUNE_BATCH)
-    const { error: delErr } = await supabaseAdmin.from(table).delete().in('id', chunk)
-    if (delErr) throw new Error(`prune ${table}: ${delErr.message}`)
+  for (const staleId of toDelete) {
+    const { error: delErr } = await supabaseAdmin
+      .from(table)
+      .delete()
+      .eq('id', staleId)
+    if (delErr) {
+      const detail = `${delErr.message} | code:${delErr.code} | hint:${delErr.hint}`
+      throw new Error(`prune ${table} id=${staleId}: ${detail}`)
+    }
   }
 
   return records.length
