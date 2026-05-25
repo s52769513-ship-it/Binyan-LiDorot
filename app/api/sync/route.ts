@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, S, T, D, PP } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
-async function upsertAndPrune<R extends { id: string }>(
+async function upsertAndPrune<R extends { id: string; synced_at: string }>(
   table: string,
-  records: R[]
+  records: R[],
+  syncedAt: string
 ): Promise<number> {
   if (records.length > 0) {
     const { error: upsertErr } = await supabaseAdmin
@@ -13,29 +14,14 @@ async function upsertAndPrune<R extends { id: string }>(
     if (upsertErr) throw new Error(`upsert ${table}: ${upsertErr.message}`)
   }
 
-  // Fetch all IDs currently in Supabase, then delete stale ones individually
-  const { data: existing, error: fetchErr } = await supabaseAdmin
+  // Delete every row whose synced_at is older than this sync cycle
+  const { error: pruneErr } = await supabaseAdmin
     .from(table)
-    .select('id')
-  if (fetchErr) {
-    const detail = `${fetchErr.message} | code:${fetchErr.code} | hint:${fetchErr.hint}`
-    throw new Error(`fetch ${table}: ${detail}`)
-  }
-
-  const keepIds = new Set(records.map(r => r.id))
-  const toDelete = (existing ?? [])
-    .map((r: { id: string }) => r.id)
-    .filter(id => !keepIds.has(id))
-
-  for (const staleId of toDelete) {
-    const { error: delErr } = await supabaseAdmin
-      .from(table)
-      .delete()
-      .eq('id', staleId)
-    if (delErr) {
-      const detail = `${delErr.message} | code:${delErr.code} | hint:${delErr.hint}`
-      throw new Error(`prune ${table} id=${staleId}: ${detail}`)
-    }
+    .delete()
+    .lt('synced_at', syncedAt)
+  if (pruneErr) {
+    const detail = `${pruneErr.message} | code:${pruneErr.code} | hint:${pruneErr.hint}`
+    throw new Error(`prune ${table}: ${detail}`)
   }
 
   return records.length
@@ -144,11 +130,11 @@ export async function POST() {
     }))
 
     // Upsert all tables (sequentially – parents first because others may reference them)
-    const parentsCount       = await upsertAndPrune('parents', parents)
-    const studentsCount      = await upsertAndPrune('students', students)
-    const transactionsCount  = await upsertAndPrune('transactions', transactions)
-    const debtsCount         = await upsertAndPrune('debts', debts)
-    const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments)
+    const parentsCount       = await upsertAndPrune('parents', parents, syncedAt)
+    const studentsCount      = await upsertAndPrune('students', students, syncedAt)
+    const transactionsCount  = await upsertAndPrune('transactions', transactions, syncedAt)
+    const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
+    const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
 
     // Record sync log
     await supabaseAdmin.from('sync_log').insert({
