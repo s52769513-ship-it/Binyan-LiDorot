@@ -104,3 +104,18 @@ ALTER TABLE transactions     DISABLE ROW LEVEL SECURITY;
 ALTER TABLE debts            DISABLE ROW LEVEL SECURITY;
 ALTER TABLE planned_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_log         DISABLE ROW LEVEL SECURITY;
+
+-- =====================================================
+-- Helper: delete stale rows after sync
+-- Run this in Supabase SQL Editor if prune fails.
+-- =====================================================
+CREATE OR REPLACE FUNCTION prune_stale_rows(p_table text, p_synced_at text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  EXECUTE format('DELETE FROM %I WHERE synced_at < $1::timestamptz', p_table)
+  USING p_synced_at;
+END;
+$$;

@@ -14,11 +14,11 @@ async function upsertAndPrune<R extends { id: string; synced_at: string }>(
     if (upsertErr) throw new Error(`upsert ${table}: ${upsertErr.message}`)
   }
 
-  // Delete every row whose synced_at is older than this sync cycle
-  const { error: pruneErr } = await supabaseAdmin
-    .from(table)
-    .delete()
-    .lt('synced_at', syncedAt)
+  // Call a SQL function to delete stale rows — bypasses PostgREST URL filtering
+  const { error: pruneErr } = await supabaseAdmin.rpc('prune_stale_rows', {
+    p_table: table,
+    p_synced_at: syncedAt,
+  })
   if (pruneErr) {
     const detail = `${pruneErr.message} | code:${pruneErr.code} | hint:${pruneErr.hint}`
     throw new Error(`prune ${table}: ${detail}`)
