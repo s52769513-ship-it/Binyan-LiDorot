@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, S, T, D, PP } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
-async function upsertAndPrune<R extends { id: string; synced_at: string }>(
+const PRUNE_BATCH = 200
+
+async function upsertAndPrune<R extends { id: string }>(
   table: string,
-  records: R[],
-  syncedAt: string
+  records: R[]
 ): Promise<number> {
   if (records.length > 0) {
     const { error: upsertErr } = await supabaseAdmin
@@ -14,12 +15,20 @@ async function upsertAndPrune<R extends { id: string; synced_at: string }>(
     if (upsertErr) throw new Error(`upsert ${table}: ${upsertErr.message}`)
   }
 
-  // Delete any row not touched in this sync cycle
-  const { error: deleteErr } = await supabaseAdmin
+  // Fetch all IDs currently in Supabase, then delete the stale ones in batches
+  const { data: existing, error: fetchErr } = await supabaseAdmin
     .from(table)
-    .delete()
-    .neq('synced_at', syncedAt)
-  if (deleteErr) throw new Error(`prune ${table}: ${deleteErr.message}`)
+    .select('id')
+  if (fetchErr) throw new Error(`fetch ${table}: ${fetchErr.message}`)
+
+  const keepIds = new Set(records.map(r => r.id))
+  const toDelete = (existing ?? []).map((r: { id: string }) => r.id).filter(id => !keepIds.has(id))
+
+  for (let i = 0; i < toDelete.length; i += PRUNE_BATCH) {
+    const chunk = toDelete.slice(i, i + PRUNE_BATCH)
+    const { error: delErr } = await supabaseAdmin.from(table).delete().in('id', chunk)
+    if (delErr) throw new Error(`prune ${table}: ${delErr.message}`)
+  }
 
   return records.length
 }
@@ -127,11 +136,11 @@ export async function POST() {
     }))
 
     // Upsert all tables (sequentially – parents first because others may reference them)
-    const parentsCount       = await upsertAndPrune('parents', parents, syncedAt)
-    const studentsCount      = await upsertAndPrune('students', students, syncedAt)
-    const transactionsCount  = await upsertAndPrune('transactions', transactions, syncedAt)
-    const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
-    const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
+    const parentsCount       = await upsertAndPrune('parents', parents)
+    const studentsCount      = await upsertAndPrune('students', students)
+    const transactionsCount  = await upsertAndPrune('transactions', transactions)
+    const debtsCount         = await upsertAndPrune('debts', debts)
+    const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments)
 
     // Record sync log
     await supabaseAdmin.from('sync_log').insert({
