@@ -23,7 +23,7 @@ async function upsertAndPrune<R extends { id: string }>(
   const { error: deleteErr } = await supabaseAdmin
     .from(table)
     .delete()
-    .not('id', 'in', `(${ids.map(id => `"${id}"`).join(',')})`)
+    .not('id', 'in', `(${ids.join(',')})`)
   if (deleteErr) throw new Error(`prune ${table}: ${deleteErr.message}`)
 
   return records.length
