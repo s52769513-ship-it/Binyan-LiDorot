@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchAirtableRecord, fetchAirtableRecords, TABLES, P, S, T, D, PP } from '@/lib/airtable'
+import { supabase } from '@/lib/supabase'
 
 export async function GET(
   _req: Request,
@@ -8,83 +8,82 @@ export async function GET(
   try {
     const { id } = await params
 
-    const parent = await fetchAirtableRecord(TABLES.PARENTS, id)
+    const [parentRes, studentsRes, debtsRes, plannedRes, transactionsRes] =
+      await Promise.all([
+        supabase.from('parents').select('*').eq('id', id).single(),
 
-    const [students, debts, plannedPayments, transactions] = await Promise.all([
-      fetchAirtableRecords(TABLES.STUDENTS, {
-        fields: [S.NAME, S.GENDER, S.AGE, S.CLASS_NAME_TEXT, S.STATUS, S.TRANSPORTATION, S.TRANSPORTATION_COST],
-        filterByFormula: `FIND('${id}', ARRAYJOIN({${S.PARENT}}))`,
-      }),
+        supabase.from('students').select('*').contains('parent_ids', [id]),
 
-      fetchAirtableRecords(TABLES.DEBTS, {
-        fields: [D.AMOUNT],
-        filterByFormula: `FIND('${id}', ARRAYJOIN({${D.PARENT}}))`,
-      }),
+        supabase.from('debts').select('*').contains('parent_ids', [id]),
 
-      fetchAirtableRecords(TABLES.PLANNED_PAYMENTS, {
-        fields: [PP.NAME, PP.AMOUNT, PP.DATE, PP.MONTH_YEAR, PP.BALANCE],
-        filterByFormula: `FIND('${id}', ARRAYJOIN({${PP.PARENT}}))`,
-        sort: [{ field: PP.DATE, direction: 'desc' }],
-      }),
+        supabase
+          .from('planned_payments')
+          .select('*')
+          .contains('parent_ids', [id])
+          .order('date', { ascending: false }),
 
-      fetchAirtableRecords(TABLES.TRANSACTIONS, {
-        fields: [T.AMOUNT, T.TYPE, T.DATE, T.NOTES],
-        filterByFormula: `FIND('${id}', ARRAYJOIN({${T.PARENT}}))`,
-        sort: [{ field: T.DATE, direction: 'desc' }],
-        maxRecords: 30,
-      }),
-    ])
+        supabase
+          .from('transactions')
+          .select('*')
+          .contains('parent_ids', [id])
+          .order('date', { ascending: false })
+          .limit(30),
+      ])
+
+    if (parentRes.error) throw parentRes.error
+
+    const p = parentRes.data
 
     return NextResponse.json({
-      id: parent.id,
-      name: String(parent.fields[P.NAME] || ''),
-      firstName: String(parent.fields[P.FIRST_NAME] || ''),
-      lastName: String(parent.fields[P.LAST_NAME] || ''),
-      motherName: String(parent.fields[P.MOTHER_NAME] || ''),
-      fatherPhone: String(parent.fields[P.FATHER_PHONE] || ''),
-      motherPhone: String(parent.fields[P.MOTHER_PHONE] || ''),
-      email: String(parent.fields[P.EMAIL] || ''),
-      address: String(parent.fields[P.ADDRESS] || ''),
-      building: String(parent.fields[P.BUILDING] || ''),
-      city: String(parent.fields[P.CITY] || ''),
-      status: (parent.fields[P.STATUS] as string[]) || [],
-      childrenCount: Number(parent.fields[P.CHILDREN_COUNT]) || 0,
-      tuitionTotal: Number(parent.fields[P.TUITION_TOTAL]) || 0,
-      tuitionBalance: Number(parent.fields[P.TUITION_BALANCE]) || 0,
-      notes: String(parent.fields[P.NOTES] || ''),
+      id: p.id,
+      name: p.name,
+      firstName: p.first_name,
+      lastName: p.last_name,
+      motherName: p.mother_name,
+      fatherPhone: p.father_phone,
+      motherPhone: p.mother_phone,
+      email: p.email,
+      address: p.address,
+      building: p.building,
+      city: p.city,
+      status: p.status ?? [],
+      childrenCount: p.children_count,
+      tuitionTotal: p.tuition_total,
+      tuitionBalance: p.tuition_balance,
+      notes: p.notes,
 
-      students: students.map(r => ({
-        id: r.id,
-        name: String(r.fields[S.NAME] || ''),
-        gender: String(r.fields[S.GENDER] || ''),
-        age: r.fields[S.AGE],
-        className: String(r.fields[S.CLASS_NAME_TEXT] || ''),
-        status: String(r.fields[S.STATUS] || ''),
-        transportation: (r.fields[S.TRANSPORTATION] as string[]) || [],
-        transportationCost: Number(r.fields[S.TRANSPORTATION_COST]) || 0,
+      students: (studentsRes.data ?? []).map(s => ({
+        id: s.id,
+        name: s.name,
+        gender: s.gender,
+        age: s.age,
+        className: s.class_name,
+        status: s.status,
+        transportation: s.transportation ?? [],
+        transportationCost: s.transportation_cost,
       })),
 
-      debts: debts.map(r => ({
-        id: r.id,
-        amount: Number(r.fields[D.AMOUNT]) || 0,
-        createdTime: r.createdTime,
+      debts: (debtsRes.data ?? []).map(d => ({
+        id: d.id,
+        amount: d.amount,
+        createdTime: d.created_time,
       })),
 
-      plannedPayments: plannedPayments.map(r => ({
-        id: r.id,
-        name: String(r.fields[PP.NAME] || ''),
-        amount: Number(r.fields[PP.AMOUNT]) || 0,
-        date: String(r.fields[PP.DATE] || ''),
-        monthYear: String(r.fields[PP.MONTH_YEAR] || ''),
-        balance: Number(r.fields[PP.BALANCE]) || 0,
+      plannedPayments: (plannedRes.data ?? []).map(pp => ({
+        id: pp.id,
+        name: pp.name,
+        amount: pp.amount,
+        date: pp.date,
+        monthYear: pp.month_year,
+        balance: pp.balance,
       })),
 
-      transactions: transactions.map(r => ({
-        id: r.id,
-        amount: Number(r.fields[T.AMOUNT]) || 0,
-        type: String(r.fields[T.TYPE] || ''),
-        date: String(r.fields[T.DATE] || ''),
-        notes: String(r.fields[T.NOTES] || ''),
+      transactions: (transactionsRes.data ?? []).map(tx => ({
+        id: tx.id,
+        amount: tx.amount,
+        type: tx.type,
+        date: tx.date,
+        notes: tx.notes,
       })),
     })
   } catch (err) {

@@ -68,4 +68,18 @@ export interface DashboardSummary {
   totalPlannedPayments: number
   currentMonthTransactions: number
   monthlyData: MonthlyStat[]
+  lastSync?: string | null
+}
+
+export interface SyncResult {
+  success: boolean
+  syncedAt: string
+  counts: {
+    parents: number
+    students: number
+    transactions: number
+    debts: number
+    plannedPayments: number
+  }
+  error?: string
 }

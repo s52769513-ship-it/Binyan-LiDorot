@@ -1,50 +1,62 @@
 import { NextResponse } from 'next/server'
-import { fetchAirtableRecords, TABLES, T, D, PP } from '@/lib/airtable'
+import { supabase } from '@/lib/supabase'
 
 export async function GET() {
   try {
-    const [debts, plannedPayments, transactions] = await Promise.all([
-      fetchAirtableRecords(TABLES.DEBTS, { fields: [D.AMOUNT] }),
-
-      fetchAirtableRecords(TABLES.PLANNED_PAYMENTS, {
-        fields: [PP.AMOUNT, PP.BALANCE, PP.DATE, PP.MONTH_YEAR],
-      }),
-
-      fetchAirtableRecords(TABLES.TRANSACTIONS, {
-        fields: [T.AMOUNT, T.DATE, T.MONTH_YEAR, T.TYPE],
-        filterByFormula: `IS_AFTER({${T.DATE}}, DATEADD(TODAY(), -365, 'days'))`,
-      }),
-    ])
-
-    const totalDebts = debts.reduce(
-      (sum, r) => sum + (Number(r.fields[D.AMOUNT]) || 0),
-      0
-    )
-
-    const totalPlannedPayments = plannedPayments.reduce((sum, r) => {
-      const balance = Number(r.fields[PP.BALANCE]) || 0
-      return sum + (balance > 0 ? balance : 0)
-    }, 0)
-
     const now = new Date()
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+      .toISOString()
+      .split('T')[0]
+
     const currentMonthYear = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
 
-    const currentMonthTransactions = transactions
-      .filter(r => r.fields[T.MONTH_YEAR] === currentMonthYear)
-      .reduce((sum, r) => sum + (Number(r.fields[T.AMOUNT]) || 0), 0)
+    const [debtsRes, plannedRes, transactionsRes, lastSyncRes] = await Promise.all([
+      supabase.from('debts').select('amount'),
 
-    // Build last-6-month map
+      supabase.from('planned_payments').select('balance'),
+
+      supabase
+        .from('transactions')
+        .select('amount, month_year')
+        .gte('date', sixMonthsAgo),
+
+      supabase
+        .from('sync_log')
+        .select('synced_at, status')
+        .order('synced_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (debtsRes.error) throw debtsRes.error
+    if (plannedRes.error) throw plannedRes.error
+    if (transactionsRes.error) throw transactionsRes.error
+
+    const totalDebts = (debtsRes.data ?? []).reduce(
+      (s, r) => s + (Number(r.amount) || 0), 0
+    )
+
+    const totalPlannedPayments = (plannedRes.data ?? []).reduce((s, r) => {
+      const b = Number(r.balance) || 0
+      return s + (b > 0 ? b : 0)
+    }, 0)
+
+    const allTx = transactionsRes.data ?? []
+
+    const currentMonthTransactions = allTx
+      .filter(r => r.month_year === currentMonthYear)
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0)
+
+    // Build chart data for last 6 months
     const monthlyMap = new Map<string, number>()
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const key = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
       monthlyMap.set(key, 0)
     }
-
-    transactions.forEach(r => {
-      const my = r.fields[T.MONTH_YEAR] as string
-      if (my && monthlyMap.has(my)) {
-        monthlyMap.set(my, (monthlyMap.get(my) || 0) + (Number(r.fields[T.AMOUNT]) || 0))
+    allTx.forEach(r => {
+      if (r.month_year && monthlyMap.has(r.month_year)) {
+        monthlyMap.set(r.month_year, (monthlyMap.get(r.month_year) || 0) + (Number(r.amount) || 0))
       }
     })
 
@@ -58,6 +70,7 @@ export async function GET() {
       totalPlannedPayments: Math.round(totalPlannedPayments),
       currentMonthTransactions: Math.round(currentMonthTransactions),
       monthlyData,
+      lastSync: lastSyncRes.data?.synced_at ?? null,
     })
   } catch (err) {
     console.error('summary error:', err)
