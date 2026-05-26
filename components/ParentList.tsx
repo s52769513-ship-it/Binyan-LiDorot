@@ -76,20 +76,21 @@ export default function ParentList({
         </div>
 
         {/* Status filter chips */}
-        {statusOptions.length > 0 && (
-          <div className="flex flex-wrap gap-2 items-center" dir="rtl">
-            <span className="text-xs text-gray-400 ml-1">סטטוס:</span>
-            <button
-              onClick={() => onFilterStatus('')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                !filterStatus
-                  ? 'bg-[#1a3a7a] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              הכל
-            </button>
-            {statusOptions.map(s => (
+        <div className="flex flex-wrap gap-2 items-center" dir="rtl">
+          <span className="text-xs text-gray-400 ml-1">סטטוס:</span>
+          <button
+            onClick={() => onFilterStatus('')}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !filterStatus
+                ? 'bg-[#1a3a7a] text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            הכל
+          </button>
+          {statusOptions.length === 0
+            ? <span className="text-xs text-gray-300 italic">טען סינכרון לטעינת סטטוסים</span>
+            : statusOptions.map(s => (
               <button
                 key={s}
                 onClick={() => onFilterStatus(filterStatus === s ? '' : s)}
@@ -101,9 +102,9 @@ export default function ParentList({
               >
                 {s}
               </button>
-            ))}
-          </div>
-        )}
+            ))
+          }
+        </div>
       </div>
 
       {/* Table */}
@@ -172,10 +173,10 @@ export default function ParentList({
                   </td>
                   <td className="px-4 py-3 text-left tabular-nums">
                     {p.tuitionBalance !== 0 ? (
-                      <span className={`text-sm font-semibold ${p.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {p.tuitionBalance > 0
-                          ? formatCurrency(p.tuitionBalance)
-                          : `זכות ${formatCurrency(Math.abs(p.tuitionBalance))}`}
+                      <span className={`text-sm font-semibold ${p.tuitionBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {p.tuitionBalance < 0
+                          ? formatCurrency(Math.abs(p.tuitionBalance))
+                          : `זכות ${formatCurrency(p.tuitionBalance)}`}
                       </span>
                     ) : (
                       <span className="text-sm text-gray-400">—</span>
