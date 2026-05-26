@@ -10,6 +10,7 @@ export const TABLES = {
   SALARIES: 'tbl1wapC7DquFGuyy',
   PLANNED_PAYMENTS: 'tblM32gMmdJePBohJ',
   DEBTS: 'tbl9Si2hlAgEn0IFl',
+  PROJECTS: 'tblZXTI3fMyW8C7Kj',
 } as const
 
 // Parent field IDs (tblLUe8hRdvpejO9W)
@@ -55,6 +56,12 @@ export const T = {
   DATE: 'fldsYlOVDOqFZLaLr',
   MONTH_YEAR: 'fldlGKB8pxQAG6p80',
   NOTES: 'fldQI8U3awTKD2sq6',
+  PROJECT: 'fldZz08GumXFewrKa',  // קשור לפרוייקט (multipleRecordLinks → PROJECTS)
+} as const
+
+// Project field IDs (tblZXTI3fMyW8C7Kj)
+export const PROJ = {
+  NAME: 'fldzy5ydrMfDTvaGQ',
 } as const
 
 // Debt field IDs (tbl9Si2hlAgEn0IFl)

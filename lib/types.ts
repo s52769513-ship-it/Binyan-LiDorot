@@ -30,6 +30,7 @@ export interface TransactionItem {
   amount: number
   type: string
   date: string
+  monthYear: string
   notes: string
 }
 
