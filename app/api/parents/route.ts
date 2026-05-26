@@ -1,18 +1,51 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-export async function GET() {
+const PAGE_SIZE = 50
+
+export async function GET(req: NextRequest) {
   try {
-    const { data, error } = await supabaseAdmin
+    const { searchParams } = req.nextUrl
+    const page  = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
+    const search = searchParams.get('search') ?? ''
+    const status = searchParams.get('status') ?? ''
+    const debt   = searchParams.get('debt') ?? 'all'
+    const sort   = searchParams.get('sort') ?? 'last_name'
+    const dir    = searchParams.get('dir') ?? 'asc'
+
+    let query = supabaseAdmin
       .from('parents')
       .select(
-        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance'
+        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance',
+        { count: 'exact' }
       )
-      .order('last_name', { ascending: true })
 
+    if (search.trim()) {
+      const q = search.trim()
+      query = query.or(
+        `name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%`
+      )
+    }
+
+    if (status) {
+      query = query.contains('status', [status])
+    }
+
+    if (debt === 'debt') {
+      query = query.lt('tuition_balance', 0)
+    } else if (debt === 'credit') {
+      query = query.gte('tuition_balance', 0)
+    }
+
+    const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']
+    const safeSort = validSort.includes(sort) ? sort : 'last_name'
+    query = query.order(safeSort, { ascending: dir !== 'desc' })
+    query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    const { data, error, count } = await query
     if (error) throw error
 
-    return NextResponse.json(data ?? [])
+    return NextResponse.json({ data: data ?? [], total: count ?? 0 })
   } catch (err) {
     console.error('parents error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת הורים' }, { status: 500 })
