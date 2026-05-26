@@ -104,7 +104,7 @@ export default function LoginPage() {
 
             {/* Framework labels */}
             <div className="flex justify-between w-full mt-1">
-              <span className="text-xs" style={{ color: '#8a7040' }}>בית חינוך לכנות</span>
+              <span className="text-xs" style={{ color: '#8a7040' }}>בית חינוך לבנות</span>
               <span className="text-xs" style={{ color: '#8a7040' }}>תלמוד תורה</span>
             </div>
 
@@ -120,7 +120,7 @@ export default function LoginPage() {
           מערכת ניהול
         </h1>
         <p className="text-sm mb-8 text-center" style={{ color: '#8899cc' }}>
-          תלמוד תורה ובית חינוך לכנות
+          תלמוד תורה ובית חינוך לבנות
         </p>
 
         {/* Login button */}

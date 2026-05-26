@@ -35,7 +35,7 @@ export default function StudentsPage() {
   const filtered = students.filter(s => {
     if (search && !s.name.includes(search)) return false
     if (framework === 'tt' && s.framework !== 'תלמוד תורה') return false
-    if (framework === 'bs' && s.framework !== 'בית חינוך לכנות') return false
+    if (framework === 'bs' && s.framework !== 'בית חינוך לבנות') return false
     return true
   })
 
@@ -134,7 +134,7 @@ export default function StudentsPage() {
                   <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{s.className || '—'}</td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${s.framework === 'בית חינוך לכנות' ? 'bg-pink-50 text-pink-700' : 'bg-blue-50 text-blue-700'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${s.framework === 'בית חינוך לבנות' ? 'bg-pink-50 text-pink-700' : 'bg-blue-50 text-blue-700'}`}>
                       {s.framework || '—'}
                     </span>
                   </td>
