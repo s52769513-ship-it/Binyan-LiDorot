@@ -118,13 +118,13 @@ function FinancialBreakdown({
 
           {/* Actual balance from DB */}
           {parent.tuitionBalance !== 0 && (
-            <div className={`rounded-xl p-4 ${parent.tuitionBalance < 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+            <div className={`rounded-xl p-4 ${parent.tuitionBalance > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
               <div className="flex items-center justify-between">
-                <span className={`text-xl font-bold tabular-nums ${parent.tuitionBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                <span className={`text-xl font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                   {fmt(Math.abs(parent.tuitionBalance))}
                 </span>
                 <span className="text-sm font-medium text-gray-600">
-                  {parent.tuitionBalance < 0 ? 'חוב פתוח נוכחי' : 'זכות נוכחית'}
+                  {parent.tuitionBalance > 0 ? 'חוב פתוח נוכחי' : 'זכות נוכחית'}
                 </span>
               </div>
             </div>
@@ -318,10 +318,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onOpenP
         {parent && (
           <div className="flex gap-px mb-0 mt-2">
             <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
-              <p className={`text-base font-bold tabular-nums ${parent.tuitionBalance < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+              <p className={`text-base font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
                 {fmt(Math.abs(parent.tuitionBalance))}
               </p>
-              <p className="text-[10px] text-white/50">{parent.tuitionBalance < 0 ? 'חוב' : 'זכות'}</p>
+              <p className="text-[10px] text-white/50">{parent.tuitionBalance > 0 ? 'חוב' : 'זכות'}</p>
             </div>
             <div className="flex-1 bg-white/10 px-3 py-2 text-center">
               <p className="text-base font-bold text-white/80 tabular-nums">{parent.childrenCount}</p>

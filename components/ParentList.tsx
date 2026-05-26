@@ -173,10 +173,10 @@ export default function ParentList({
                   </td>
                   <td className="px-4 py-3 text-left tabular-nums">
                     {p.tuitionBalance !== 0 ? (
-                      <span className={`text-sm font-semibold ${p.tuitionBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {p.tuitionBalance < 0
-                          ? formatCurrency(Math.abs(p.tuitionBalance))
-                          : `זכות ${formatCurrency(p.tuitionBalance)}`}
+                      <span className={`text-sm font-semibold ${p.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {p.tuitionBalance > 0
+                          ? formatCurrency(p.tuitionBalance)
+                          : `זכות ${formatCurrency(Math.abs(p.tuitionBalance))}`}
                       </span>
                     ) : (
                       <span className="text-sm text-gray-400">—</span>

@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (debt === 'debt') {
-      query = query.lt('tuition_balance', 0)
-    } else if (debt === 'credit') {
       query = query.gt('tuition_balance', 0)
+    } else if (debt === 'credit') {
+      query = query.lt('tuition_balance', 0)
     }
 
     const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']
