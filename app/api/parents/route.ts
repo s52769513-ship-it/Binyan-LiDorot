@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('parents')
       .select(
         'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance'
