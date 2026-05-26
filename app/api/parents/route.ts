@@ -6,7 +6,7 @@ const PAGE_SIZE = 50
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
-    const page  = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
+    const page   = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
     const search = searchParams.get('search') ?? ''
     const status = searchParams.get('status') ?? ''
     const debt   = searchParams.get('debt') ?? 'all'
@@ -45,7 +45,22 @@ export async function GET(req: NextRequest) {
     const { data, error, count } = await query
     if (error) throw error
 
-    return NextResponse.json({ data: data ?? [], total: count ?? 0 })
+    const mapped = (data ?? []).map(p => ({
+      id: p.id,
+      name: p.name ?? '',
+      firstName: p.first_name ?? '',
+      lastName: p.last_name ?? '',
+      fatherPhone: p.father_phone ?? '',
+      motherPhone: p.mother_phone ?? '',
+      email: p.email ?? '',
+      city: p.city ?? '',
+      status: Array.isArray(p.status) ? p.status : [],
+      childrenCount: p.children_count ?? 0,
+      tuitionTotal: p.tuition_total ?? 0,
+      tuitionBalance: p.tuition_balance ?? 0,
+    }))
+
+    return NextResponse.json({ data: mapped, total: count ?? 0 })
   } catch (err) {
     console.error('parents error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת הורים' }, { status: 500 })
