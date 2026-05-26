@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import type jsPDFType from 'jspdf'
+import { useEffect, useState } from 'react'
 
 interface DebtRow {
   id: string
@@ -140,7 +139,6 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
   const [settings, setSettings]     = useState<Settings>({})
   const [loading, setLoading]       = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
-  const pdfRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     Promise.all([
@@ -181,35 +179,61 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
   }
 
   const handlePdf = async () => {
-    if (!pdfRef.current || !data) return
+    if (!data) return
     setPdfLoading(true)
     try {
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+      const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
       ])
-      // Wait a tick for any pending renders
-      await new Promise(r => setTimeout(r, 800))
-      const canvas = await html2canvas(pdfRef.current, {
+
+      // Render into a fixed off-screen container so layout is clean
+      const container = document.createElement('div')
+      container.style.cssText = [
+        'position:fixed', 'top:-99999px', 'left:0',
+        'width:794px', 'background:white',
+        'font-family:Arial,sans-serif', 'direction:rtl',
+        'padding:24px 32px', 'box-sizing:border-box',
+      ].join(';')
+      // Inline styles for content (no Tailwind needed)
+      container.innerHTML = buildPrintHtml(data, settings, txByMonth)
+        .replace(/<html[^>]*>[\s\S]*?<body[^>]*>/, '')
+        .replace(/<\/body>[\s\S]*?<\/html>/, '')
+        .replace(/<style>[\s\S]*?<\/style>/, '')
+      document.body.appendChild(container)
+
+      await new Promise(r => setTimeout(r, 600))
+
+      const canvas = await html2canvas(container, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        scrollY: -window.scrollY,
+        width: 794,
+        windowWidth: 794,
       })
-      const imgData = canvas.toDataURL('image/jpeg', 0.95)
-      const pdf = new (jsPDF as unknown as typeof jsPDFType)({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      document.body.removeChild(container)
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.93)
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
-      const ratio = canvas.width / canvas.height
-      const imgH  = pageW / ratio
+      const imgH  = (canvas.height * pageW) / canvas.width
+
+      let heightLeft = imgH
       let posY = 0
-      let remaining = imgH
-      while (remaining > 0) {
-        pdf.addImage(imgData, 'JPEG', 0, posY === 0 ? 0 : -(imgH - remaining), pageW, imgH)
-        remaining -= pageH
-        if (remaining > 0) { pdf.addPage(); posY = -(imgH - remaining) }
+      pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH)
+      heightLeft -= pageH
+      while (heightLeft > 0) {
+        posY -= pageH
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH)
+        heightLeft -= pageH
       }
+
       pdf.save(`דוח_${data.name}_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}.pdf`)
+    } catch (err) {
+      console.error('PDF error:', err)
+      alert('שגיאה ביצירת PDF — נסה שוב')
     } finally {
       setPdfLoading(false)
     }
@@ -250,7 +274,7 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
               <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
           )}
           {data && (
-            <div ref={pdfRef} className="bg-white">
+            <div className="bg-white">
               {/* Parent info */}
               <div className="mb-5 flex items-start justify-between">
                 <p className="text-xs text-gray-400">בס"ד</p>
