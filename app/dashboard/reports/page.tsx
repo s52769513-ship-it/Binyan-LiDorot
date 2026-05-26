@@ -44,94 +44,105 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 /* ─── ParentDebtReportModal ───────────────────────────── */
-function buildPrintHtml(data: ParentReportData, settings: Settings, txByMonth: Record<string, ParentTx[]>): string {
-  const logoTag = settings.logo_url
-    ? `<img src="${settings.logo_url}" alt="לוגו" style="height:70px;object-fit:contain;" />`
-    : `<div style="font-size:18px;font-weight:700;color:#1a3a7a;">${settings.institution_name ?? 'מוסד'}</div>`
+const C = {
+  hdr: 'background:#1a3a7a;color:#fff;font-size:11px;padding:9px 14px;text-align:right;',
+  cell: 'padding:9px 14px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;vertical-align:top;',
+  cellL: 'padding:9px 14px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px;font-variant-numeric:tabular-nums;vertical-align:top;',
+  subCell: 'padding:5px 14px 5px 28px;border-bottom:1px solid #f0fdf4;text-align:right;font-size:11px;color:#444;vertical-align:top;',
+  subCellL: 'padding:5px 14px;border-bottom:1px solid #f0fdf4;text-align:left;font-size:11px;color:#059669;font-weight:600;font-variant-numeric:tabular-nums;vertical-align:top;',
+}
 
+function buildPrintBody(data: ParentReportData, settings: Settings, txByMonth: Record<string, ParentTx[]>): string {
   const fmtCur = (n: number) =>
     new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('he-IL') : '—'
 
+  const logoTag = settings.logo_url
+    ? `<img src="${settings.logo_url}" alt="לוגו" style="height:64px;object-fit:contain;" />`
+    : `<span style="font-size:16px;font-weight:700;color:#1a3a7a;">${settings.institution_name ?? ''}</span>`
+
   const ppRows = data.plannedPayments.map(pp => {
     const linked = txByMonth[pp.monthYear] ?? []
-    const paidAmt = linked.reduce((s, t) => s + t.amount, 0)
-    const txRows = linked.map(tx =>
-      `<tr style="background:#f0fdf4;">
-        <td style="padding:5px 10px;font-size:11px;color:#555;">↳ שולם ${fmtDate(tx.date)}</td>
-        <td style="padding:5px 10px;font-size:11px;color:#555;">${tx.type || ''}</td>
-        <td style="padding:5px 10px;font-size:11px;color:#555;">${tx.notes || ''}</td>
-        <td style="padding:5px 10px;text-align:left;font-size:12px;color:#059669;font-weight:600;">${fmtCur(tx.amount)}</td>
-      </tr>`
-    ).join('')
     const balColor = pp.balance > 0 ? '#dc2626' : '#059669'
+    const txRowsHtml = linked.map(tx => `
+      <tr style="background:#f0fdf4;">
+        <td style="${C.subCell}">↳ שולם ${fmtDate(tx.date)}</td>
+        <td style="${C.subCell}">${tx.type || ''}${tx.notes ? ' · ' + tx.notes : ''}</td>
+        <td style="${C.subCellL}" colspan="2">${fmtCur(tx.amount)}</td>
+      </tr>`).join('')
     return `
       <tr style="background:#fff;">
-        <td style="padding:7px 10px;font-weight:600;">${pp.monthYear}</td>
-        <td style="padding:7px 10px;">${pp.name || ''}</td>
-        <td style="padding:7px 10px;text-align:left;font-variant-numeric:tabular-nums;">${fmtCur(pp.amount)}</td>
-        <td style="padding:7px 10px;text-align:left;font-variant-numeric:tabular-nums;color:${balColor};font-weight:700;">
-          ${pp.balance > 0 ? fmtCur(pp.balance) : '✓'}
-        </td>
-      </tr>
-      ${txRows}`
+        <td style="${C.cell};font-weight:700;color:#1a3a7a;">${pp.monthYear}</td>
+        <td style="${C.cell}">${pp.name || ''}</td>
+        <td style="${C.cellL}">${fmtCur(pp.amount)}</td>
+        <td style="${C.cellL};color:${balColor};font-weight:700;">${pp.balance > 0 ? fmtCur(pp.balance) : '✓ שולם'}</td>
+      </tr>${txRowsHtml}`
   }).join('')
 
   const totalPlanned = data.plannedPayments.reduce((s, p) => s + p.amount, 0)
   const totalBalance = data.plannedPayments.reduce((s, p) => s + Math.max(0, p.balance), 0)
-  const balBg = data.tuitionBalance > 0 ? '#fef2f2' : '#f0fdf4'
-  const balColor2 = data.tuitionBalance > 0 ? '#dc2626' : '#059669'
+  const balBg    = data.tuitionBalance > 0 ? '#fef2f2' : '#f0fdf4'
+  const balColor = data.tuitionBalance > 0 ? '#dc2626' : '#059669'
   const balLabel = data.tuitionBalance > 0 ? 'יתרת חוב לתשלום' : 'זכות'
+  const metaParts = [
+    data.city ? `📍 ${data.city}` : '',
+    data.fatherPhone ? data.fatherPhone : '',
+    data.motherPhone && data.motherPhone !== data.fatherPhone ? data.motherPhone : '',
+    `${data.childrenCount} ילדים`,
+    `הודפס: ${new Date().toLocaleDateString('he-IL')}`,
+  ].filter(Boolean).join(' &nbsp;|&nbsp; ')
 
-  return `<!DOCTYPE html><html dir="rtl"><head>
-    <meta charset="utf-8">
-    <title>דוח תשלומים — ${data.name}</title>
-    <style>
-      body{font-family:Arial,sans-serif;direction:rtl;margin:20px 28px;color:#111;font-size:13px;}
-      table{width:100%;border-collapse:collapse;margin-bottom:16px;}
-      th{background:#f3f4f6;font-size:11px;padding:6px 10px;text-align:right;border-bottom:2px solid #e5e7eb;}
-      td{padding:7px 10px;border-bottom:1px solid #f0f0f0;text-align:right;}
-      .section-title{font-size:12px;font-weight:700;color:#1a3a7a;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;}
-      .balance-bar{background:${balBg};border:1px solid ${balColor2}55;border-radius:8px;padding:12px 16px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;}
-      @media print{body{margin:10px 16px;}}
-    </style>
-  </head><body>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;border-bottom:2px solid #1a3a7a;padding-bottom:12px;">
-      <div style="font-size:10px;color:#888;">בס"ד</div>
-      ${logoTag}
+  return `
+    <!-- header bar -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr>
+        <td style="padding:0;vertical-align:middle;">
+          <span style="font-size:9px;color:#aaa;">בס&quot;ד</span>
+        </td>
+        <td style="padding:0;text-align:left;vertical-align:middle;">${logoTag}</td>
+      </tr>
+    </table>
+    <div style="border-bottom:2px solid #1a3a7a;margin-bottom:18px;"></div>
+
+    <!-- parent info -->
+    <div style="margin-bottom:20px;">
+      <div style="font-size:22px;font-weight:700;color:#111;margin-bottom:6px;">${data.name}</div>
+      <div style="font-size:12px;color:#666;line-height:1.8;">${metaParts}</div>
     </div>
 
-    <div style="margin-bottom:16px;">
-      <div style="font-size:19px;font-weight:700;">${data.name}</div>
-      <div style="font-size:12px;color:#666;margin-top:4px;display:flex;gap:20px;flex-wrap:wrap;">
-        ${data.city ? `<span>📍 ${data.city}</span>` : ''}
-        ${data.fatherPhone ? `<span dir="ltr">📞 ${data.fatherPhone}</span>` : ''}
-        ${data.motherPhone && data.motherPhone !== data.fatherPhone ? `<span dir="ltr">📞 ${data.motherPhone}</span>` : ''}
-        <span>👨‍👩‍👧‍👦 ${data.childrenCount} ילדים</span>
-        <span style="color:#aaa;">הודפס: ${new Date().toLocaleDateString('he-IL')}</span>
-      </div>
+    <!-- planned payments table -->
+    <div style="font-size:11px;font-weight:700;color:#1a3a7a;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">
+      תשלומים מתוכננים (${data.plannedPayments.length})
     </div>
+    ${data.plannedPayments.length === 0
+      ? '<p style="color:#999;font-size:12px;">אין תשלומים מתוכננים</p>'
+      : `<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+          <colgroup>
+            <col style="width:13%"><col style="width:45%"><col style="width:21%"><col style="width:21%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th style="${C.hdr}">חודש</th>
+              <th style="${C.hdr}">שם</th>
+              <th style="${C.hdr};text-align:left;">סכום</th>
+              <th style="${C.hdr};text-align:left;">יתרה</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ppRows}
+            <tr style="background:#f1f5f9;">
+              <td style="${C.cell};font-weight:700;" colspan="2">סה&quot;כ</td>
+              <td style="${C.cellL};font-weight:700;">${fmtCur(totalPlanned)}</td>
+              <td style="${C.cellL};font-weight:700;color:#dc2626;">${fmtCur(totalBalance)}</td>
+            </tr>
+          </tbody>
+        </table>`}
 
-    <div class="section-title">תשלומים מתוכננים (${data.plannedPayments.length})</div>
-    ${data.plannedPayments.length === 0 ? '<p style="color:#999;font-size:12px;">אין תשלומים מתוכננים</p>' : `
-    <table>
-      <thead><tr>
-        <th>חודש</th><th>שם</th><th style="text-align:left;">סכום</th><th style="text-align:left;">יתרה</th>
-      </tr></thead>
-      <tbody>${ppRows}
-        <tr style="background:#f8f9fa;border-top:2px solid #e5e7eb;">
-          <td colspan="2" style="font-weight:700;color:#374151;">סה"כ</td>
-          <td style="text-align:left;font-weight:700;">${fmtCur(totalPlanned)}</td>
-          <td style="text-align:left;font-weight:700;color:#dc2626;">${fmtCur(totalBalance)}</td>
-        </tr>
-      </tbody>
-    </table>`}
-
-    <div class="balance-bar">
-      <span style="font-size:22px;font-weight:700;color:${balColor2};">${fmtCur(Math.abs(data.tuitionBalance))}</span>
-      <span style="font-size:13px;font-weight:600;color:${balColor2};">${balLabel}</span>
-    </div>
-  </body></html>`
+    <!-- balance bar -->
+    <div style="background:${balBg};border:1.5px solid ${balColor}66;border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:11px;color:${balColor};font-weight:600;">${balLabel}</div>
+      <div style="font-size:26px;font-weight:800;color:${balColor};font-variant-numeric:tabular-nums;">${fmtCur(Math.abs(data.tuitionBalance))}</div>
+    </div>`
 }
 
 function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClose: () => void }) {
@@ -167,15 +178,22 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
     }
   }
 
+  const fullPageHtml = (body: string) => `<!DOCTYPE html><html dir="rtl"><head>
+    <meta charset="utf-8">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:Arial,Helvetica,sans-serif;direction:rtl;background:#fff;color:#111;}
+    </style>
+  </head><body style="padding:28px 36px;">${body}</body></html>`
+
   const handlePrint = () => {
     if (!data) return
-    const html = buildPrintHtml(data, settings, txByMonth)
-    const w = window.open('', '_blank', 'width=820,height=960')
+    const w = window.open('', '_blank', 'width=860,height=1000')
     if (!w) return
-    w.document.write(html)
+    w.document.write(fullPageHtml(buildPrintBody(data, settings, txByMonth)))
     w.document.close()
     w.focus()
-    setTimeout(() => w.print(), 300)
+    setTimeout(() => w.print(), 350)
   }
 
   const handlePdf = async () => {
@@ -187,33 +205,37 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
         import('html2canvas'),
       ])
 
-      // Render into a fixed off-screen container so layout is clean
-      const container = document.createElement('div')
-      container.style.cssText = [
-        'position:fixed', 'top:-99999px', 'left:0',
-        'width:794px', 'background:white',
-        'font-family:Arial,sans-serif', 'direction:rtl',
-        'padding:24px 32px', 'box-sizing:border-box',
-      ].join(';')
-      // Inline styles for content (no Tailwind needed)
-      container.innerHTML = buildPrintHtml(data, settings, txByMonth)
-        .replace(/<html[^>]*>[\s\S]*?<body[^>]*>/, '')
-        .replace(/<\/body>[\s\S]*?<\/html>/, '')
-        .replace(/<style>[\s\S]*?<\/style>/, '')
-      document.body.appendChild(container)
+      // Use a hidden iframe so styles render correctly in isolation
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;top:-99999px;left:0;width:794px;height:1px;border:none;visibility:hidden;'
+      document.body.appendChild(iframe)
 
-      await new Promise(r => setTimeout(r, 600))
+      const iDoc = iframe.contentDocument!
+      iDoc.open()
+      iDoc.write(fullPageHtml(buildPrintBody(data, settings, txByMonth)))
+      iDoc.close()
 
-      const canvas = await html2canvas(container, {
+      // Wait for images (logo) to load + layout to settle
+      await new Promise(r => setTimeout(r, 1000))
+
+      // Size iframe to full content height
+      const scrollH = iDoc.body.scrollHeight
+      iframe.style.height = scrollH + 'px'
+      iframe.style.visibility = 'visible'
+      await new Promise(r => setTimeout(r, 200))
+
+      const canvas = await html2canvas(iDoc.body, {
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         backgroundColor: '#ffffff',
         width: 794,
+        height: scrollH,
         windowWidth: 794,
       })
-      document.body.removeChild(container)
+      document.body.removeChild(iframe)
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.93)
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
@@ -230,7 +252,8 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
         heightLeft -= pageH
       }
 
-      pdf.save(`דוח_${data.name}_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}.pdf`)
+      const dateStr = new Date().toLocaleDateString('he-IL').replace(/\//g, '-')
+      pdf.save(`דוח_${data.name}_${dateStr}.pdf`)
     } catch (err) {
       console.error('PDF error:', err)
       alert('שגיאה ביצירת PDF — נסה שוב')
