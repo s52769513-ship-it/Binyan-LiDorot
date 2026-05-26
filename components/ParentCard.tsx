@@ -154,7 +154,11 @@ export default function ParentCard({ parentId, onClose }: Props) {
                 <p className="text-gray-400 text-sm text-center py-8">אין ילדים רשומים</p>
               ) : (
                 <>
-                  <TuitionCalculation count={parent.childrenCount} total={parent.tuitionTotal} />
+                  <TuitionCalculation
+                    activeCount={parent.students.filter(s => s.status === 'פעיל').length}
+                    totalCount={parent.childrenCount}
+                    total={parent.tuitionTotal}
+                  />
                   {parent.students.map(s => (
                     <div key={s.id} className="border border-gray-200 rounded-xl p-4">
                       <div className="flex items-center justify-between mb-2">
@@ -300,9 +304,9 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function TuitionCalculation({ count, total }: { count: number; total: number }) {
-  const calculated = calcTuition(count)
-  const ratePerChild = count <= 3 ? 500 : 450
+function TuitionCalculation({ activeCount, totalCount, total }: { activeCount: number; totalCount: number; total: number }) {
+  const calculated = calcTuition(activeCount)
+  const ratePerChild = activeCount <= 3 ? 500 : 450
 
   return (
     <div className="bg-indigo-50 rounded-xl p-4 mb-3">
@@ -313,9 +317,14 @@ function TuitionCalculation({ count, total }: { count: number; total: number }) 
           <span className="text-indigo-600">סה"כ לתשלום</span>
         </div>
         <div className="flex justify-between text-xs text-indigo-500">
-          <span>{count} ילדים × {ratePerChild}₪</span>
-          <span>{count <= 3 ? 'עד 3 ילדים' : 'מעל 3 ילדים'} = {ratePerChild}₪ לילד</span>
+          <span>{activeCount} ילדים פעילים × {ratePerChild}₪</span>
+          <span>{activeCount <= 3 ? 'עד 3 ילדים' : 'מעל 3 ילדים'} = {ratePerChild}₪ לילד</span>
         </div>
+        {totalCount !== activeCount && (
+          <div className="flex justify-between text-xs text-indigo-400">
+            <span>{totalCount} ילדים בסה"כ (כולל לא פעילים)</span>
+          </div>
+        )}
         {total !== calculated && (
           <div className="flex justify-between text-xs text-indigo-400">
             <span>{formatCurrency(calculated)}</span>

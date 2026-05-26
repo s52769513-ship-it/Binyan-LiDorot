@@ -21,9 +21,11 @@ function FinancialBreakdown({
   parent: ParentDetail
   onClose: () => void
 }) {
-  const tuitionPerChild = parent.childrenCount <= 3 ? 500 : 450
-  const calculatedTuition = parent.childrenCount * tuitionPerChild
-  const transportTotal = parent.students.reduce((s, st) => s + (st.transportationCost ?? 0), 0)
+  const activeStudents = parent.students.filter(s => s.status === 'פעיל')
+  const activeCount = activeStudents.length
+  const tuitionPerChild = activeCount <= 3 ? 500 : 450
+  const calculatedTuition = activeCount * tuitionPerChild
+  const transportTotal = activeStudents.reduce((s, st) => s + (st.transportationCost ?? 0), 0)
   const grandTotal = calculatedTuition + transportTotal
 
   return (
@@ -48,7 +50,7 @@ function FinancialBreakdown({
           <div className="bg-blue-50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2.5">
               <span className="text-lg">👨‍👩‍👧‍👦</span>
-              <span className="font-semibold text-gray-800">ילדים ({parent.childrenCount})</span>
+              <span className="font-semibold text-gray-800">ילדים פעילים ({activeCount}{parent.childrenCount !== activeCount ? ` מתוך ${parent.childrenCount}` : ''})</span>
             </div>
             {parent.students.length > 0 ? (
               <ul className="space-y-1 pr-2">
@@ -97,10 +99,10 @@ function FinancialBreakdown({
           <div className="bg-amber-50 rounded-xl p-4">
             <div className="font-semibold text-gray-800 mb-2">חישוב שכר לימוד</div>
             <div className="text-sm text-gray-700 font-mono bg-white/60 rounded-lg px-3 py-2 text-left" dir="ltr">
-              {parent.childrenCount} × {tuitionPerChild.toLocaleString('he-IL')} ₪ = {calculatedTuition.toLocaleString('he-IL')} ₪
+              {activeCount} × {tuitionPerChild.toLocaleString('he-IL')} ₪ = {calculatedTuition.toLocaleString('he-IL')} ₪
             </div>
             <div className="text-xs text-gray-400 mt-1.5 text-right">
-              {parent.childrenCount <= 3 ? 'עד 3 ילדים: 500 ₪ לתלמיד' : 'מעל 3 ילדים: 450 ₪ לתלמיד'}
+              {activeCount <= 3 ? 'עד 3 ילדים פעילים: 500 ₪ לתלמיד' : 'מעל 3 ילדים פעילים: 450 ₪ לתלמיד'}
             </div>
           </div>
 
