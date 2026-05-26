@@ -10,6 +10,130 @@ interface Settings {
   logo_url?: string
 }
 
+interface ClassRow {
+  class_name: string
+  framework: string
+}
+
+const FRAMEWORKS = ['תלמוד תורה', 'בית חינוך לבנות']
+
+/* ─── Classes section ─────────────────────────────────── */
+function ClassesSection() {
+  const [classes, setClasses]     = useState<ClassRow[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [newName, setNewName]     = useState('')
+  const [newFw, setNewFw]         = useState(FRAMEWORKS[0])
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+
+  const load = () => {
+    setLoading(true)
+    fetch('/api/classes')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setClasses(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const upsertClass = async (className: string, framework: string) => {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ className, framework }),
+      })
+      const d = await res.json()
+      if (d.error) { setError(d.error); return false }
+      return true
+    } catch { setError('שגיאה בשמירה'); return false }
+    finally { setSaving(false) }
+  }
+
+  const addNew = async () => {
+    if (!newName.trim()) return
+    const ok = await upsertClass(newName.trim(), newFw)
+    if (ok) { setNewName(''); load() }
+  }
+
+  const updateFramework = async (className: string, framework: string) => {
+    setClasses(prev => prev.map(c => c.class_name === className ? { ...c, framework } : c))
+    await upsertClass(className, framework)
+  }
+
+  if (loading) return <div className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ניהול כיתות ומסגרות</h3>
+      <p className="text-xs text-gray-400">קבע לכל כיתה את המסגרת שלה — זה קובע את הסיווג של כל תלמיד.</p>
+
+      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+
+      {/* Existing classes */}
+      {classes.length > 0 && (
+        <div className="border border-gray-100 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-right text-xs font-semibold text-gray-500">
+                <th className="px-4 py-2.5">שם כיתה</th>
+                <th className="px-4 py-2.5">מסגרת</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {classes.map(c => (
+                <tr key={c.class_name} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 font-medium text-gray-800">{c.class_name}</td>
+                  <td className="px-4 py-2.5">
+                    <select
+                      value={c.framework ?? ''}
+                      onChange={e => updateFramework(c.class_name, e.target.value)}
+                      disabled={saving}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                    >
+                      <option value="">— לא מוגדר —</option>
+                      {FRAMEWORKS.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add new class */}
+      <div className="flex gap-2 items-end pt-2 border-t border-gray-100">
+        <button
+          onClick={addNew}
+          disabled={saving || !newName.trim()}
+          className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+        >
+          {saving ? '...' : '+ הוסף כיתה'}
+        </button>
+        <select
+          value={newFw}
+          onChange={e => setNewFw(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+        >
+          {FRAMEWORKS.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <input
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addNew() }}
+          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white text-right"
+          placeholder="שם הכיתה (לדוגמה: א׳)"
+        />
+      </div>
+    </div>
+  )
+}
+
+/* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
@@ -77,7 +201,6 @@ export default function SettingsPage() {
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">לוגו המוסד</h3>
 
         <div className="flex items-center gap-6">
-          {/* Preview */}
           <div className="flex-shrink-0">
             {settings.logo_url ? (
               <img src={settings.logo_url} alt="לוגו" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-gray-50 p-1" />
@@ -88,7 +211,6 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* Upload */}
           <div className="flex-1 space-y-2">
             <p className="text-sm text-gray-500">העלה קובץ PNG / JPG / SVG (מומלץ רבוע, לפחות 200×200)</p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden"
@@ -139,6 +261,9 @@ export default function SettingsPage() {
       </div>
 
       {saving && <p className="text-center text-sm text-gray-400 animate-pulse">שומר...</p>}
+
+      {/* Classes management */}
+      <ClassesSection />
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
         <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>

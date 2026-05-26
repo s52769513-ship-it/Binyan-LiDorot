@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     const {
-      firstName, lastName, gender, className,
+      firstName, lastName, gender, className, status,
       birthDateHebrew, birthDateGregorian,
       address, city, transportation, parentIds, notes,
     } = body
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
       class_name: className ?? '',
+      status: status ?? 'פעיל',
       transportation: Array.isArray(transportation) ? transportation : [],
       transportation_cost: 0,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],

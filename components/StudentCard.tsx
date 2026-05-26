@@ -17,6 +17,8 @@ interface StudentData {
   parents: { id: string; name: string }[]
 }
 
+interface ClassOption { class_name: string; framework: string }
+
 interface Props {
   studentId: string
   onClose: () => void
@@ -26,6 +28,10 @@ interface Props {
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
+const STATUS_OPTIONS = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין']
+const TRANSPORT_OPTIONS = ['בוקר', 'צהריים', 'ערב']
+
+/* ─── InlineField (free text) ────────────────────────── */
 function InlineField({
   label, value, onSave, type = 'text', dir = 'rtl', multiline = false,
 }: {
@@ -74,18 +80,93 @@ function InlineField({
   )
 }
 
-const TRANSPORT_OPTIONS = ['בוקר', 'צהריים', 'ערב']
+/* ─── InlineSelect (dropdown) ────────────────────────── */
+function InlineSelect({
+  label, value, options, onSave,
+}: {
+  label: string; value: string; options: string[]; onSave: (v: string) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+
+  const handle = async (v: string) => {
+    if (v === value) return
+    setSaving(true)
+    try { await onSave(v) } finally { setSaving(false) }
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
+      {saving
+        ? <span className="text-xs text-gray-400">שומר...</span>
+        : (
+          <select
+            value={value}
+            onChange={e => handle(e.target.value)}
+            className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right"
+          >
+            <option value="">— בחר —</option>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        )}
+    </div>
+  )
+}
+
+/* ─── InlineClassSelect ───────────────────────────────── */
+function InlineClassSelect({
+  label, value, classes, onSave,
+}: {
+  label: string; value: string; classes: ClassOption[]; onSave: (v: string, framework: string) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+
+  const handle = async (className: string) => {
+    if (className === value) return
+    const fw = classes.find(c => c.class_name === className)?.framework ?? ''
+    setSaving(true)
+    try { await onSave(className, fw) } finally { setSaving(false) }
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
+      {saving
+        ? <span className="text-xs text-gray-400">שומר...</span>
+        : (
+          <select
+            value={value}
+            onChange={e => handle(e.target.value)}
+            className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right"
+          >
+            <option value="">— בחר כיתה —</option>
+            {classes.map(c => (
+              <option key={c.class_name} value={c.class_name}>
+                {c.class_name} ({c.framework || 'לא מוגדר'})
+              </option>
+            ))}
+          </select>
+        )}
+    </div>
+  )
+}
 
 export default function StudentCard({ studentId, onClose, onOpenParent }: Props) {
   const [student, setStudent] = useState<StudentData | null>(null)
+  const [classes, setClasses] = useState<ClassOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const load = useCallback(() => {
     setLoading(true); setError('')
-    fetch(`/api/students/${studentId}`)
-      .then(r => r.json())
-      .then(d => { if (d.error) setError(d.error); else setStudent(d) })
+    Promise.all([
+      fetch(`/api/students/${studentId}`).then(r => r.json()),
+      fetch('/api/classes').then(r => r.json()),
+    ])
+      .then(([d, cls]) => {
+        if (d.error) setError(d.error); else setStudent(d)
+        if (Array.isArray(cls)) setClasses(cls)
+      })
       .catch(() => setError('שגיאה'))
       .finally(() => setLoading(false))
   }, [studentId])
@@ -176,10 +257,36 @@ export default function StudentCard({ studentId, onClose, onOpenParent }: Props)
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">פרטים</div>
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                <InlineField label="שם מלא"   value={student.name}      onSave={v => patch({ name: v })} />
-                <InlineField label="גיל"      value={String(student.age || '')} onSave={v => patch({ age: v })} />
-                <InlineField label="כיתה"     value={student.className} onSave={v => patch({ className: v })} />
-                <InlineField label="סטטוס"    value={student.status}    onSave={v => patch({ status: v })} />
+                <InlineField label="שם מלא" value={student.name} onSave={v => patch({ name: v })} />
+                <InlineField label="גיל"    value={String(student.age || '')} onSave={v => patch({ age: v })} />
+                <InlineClassSelect
+                  label="כיתה"
+                  value={student.className}
+                  classes={classes}
+                  onSave={(className, framework) => {
+                    setStudent(prev => prev ? { ...prev, className, framework } : prev)
+                    return patch({ className })
+                  }}
+                />
+                <InlineSelect
+                  label="סטטוס"
+                  value={student.status}
+                  options={STATUS_OPTIONS}
+                  onSave={v => patch({ status: v })}
+                />
+                <InlineSelect
+                  label="מגדר"
+                  value={student.gender}
+                  options={['זכר', 'נקבה']}
+                  onSave={v => patch({ gender: v })}
+                />
+                {/* Framework read-only */}
+                <div>
+                  <div className="text-[10px] text-gray-400 mb-0.5 text-right">מסגרת</div>
+                  <div className="text-sm text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                    {student.framework || <span className="italic text-gray-300 text-xs">נקבע לפי הכיתה</span>}
+                  </div>
+                </div>
               </div>
             </div>
 

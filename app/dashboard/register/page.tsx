@@ -13,10 +13,13 @@ function hebrewYearHint(gregorian: string): string {
   return `שנה עברית משוערת: תש${hebrewYear.toString().slice(-3)}`
 }
 
+const STATUS_OPTIONS = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין']
+
 export default function RegisterPage() {
   const [form, setForm] = useState({
     firstName: '', lastName: '', gender: 'זכר',
-    className: '', birthHebrew: '', birthGregorian: '',
+    className: '', status: 'פעיל',
+    birthHebrew: '', birthGregorian: '',
     address: '', city: '', notes: '',
   })
   const [transportation, setTransportation] = useState<string[]>([])
@@ -79,6 +82,7 @@ export default function RegisterPage() {
           firstName: form.firstName, lastName: form.lastName,
           gender: form.gender,
           className: form.className,
+          status: form.status,
           birthDateHebrew: form.birthHebrew, birthDateGregorian: form.birthGregorian,
           address: form.address, city: form.city,
           transportation, notes: form.notes,
@@ -88,7 +92,7 @@ export default function RegisterPage() {
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       setSuccess(true)
-      setForm({ firstName: '', lastName: '', gender: 'זכר', className: '', birthHebrew: '', birthGregorian: '', address: '', city: '', notes: '' })
+      setForm({ firstName: '', lastName: '', gender: 'זכר', className: '', status: 'פעיל', birthHebrew: '', birthGregorian: '', address: '', city: '', notes: '' })
       setTransportation([]); setSelectedParent(null); setParentSearch(''); setClassFramework('')
       setTimeout(() => setSuccess(false), 4000)
     } catch { setError('שגיאה בשמירה') }
@@ -136,6 +140,12 @@ export default function RegisterPage() {
               </div>
             </Field>
           </div>
+
+          <Field label="סטטוס">
+            <select value={form.status} onChange={e => set('status', e.target.value)} className={INPUT}>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
 
           {/* Class with autocomplete */}
           <Field label="כיתה">
