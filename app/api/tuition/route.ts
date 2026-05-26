@@ -43,8 +43,10 @@ export async function GET(req: NextRequest) {
       const balance  = Number(p.balance) || 0
       const paid     = amount - balance
       const status   = balance <= 0 ? 'שולם' : paid > 0 ? 'חלקי' : 'ממתין'
+      const parentIds = Array.isArray(p.parent_ids) ? p.parent_ids : []
       return {
         id: p.id,
+        parentId: parentIds[0] ?? '',
         parentName: parentNames || p.name || '—',
         paymentName: p.name ?? '',
         amount,
