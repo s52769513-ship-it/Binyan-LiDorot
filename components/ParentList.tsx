@@ -19,12 +19,15 @@ interface Props {
   onSelectParent: (id: string) => void
 }
 
+const PAGE_SIZE = 50
+
 export default function ParentList({ parents, onSelectParent }: Props) {
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDebt, setFilterDebt] = useState<FilterDebt>('all')
+  const [page, setPage] = useState(0)
 
   // Collect unique statuses
   const allStatuses = useMemo(() => {
@@ -71,6 +74,9 @@ export default function ParentList({ parents, onSelectParent }: Props) {
     return list
   }, [parents, search, filterStatus, filterDebt, sortField, sortDir])
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
   function toggleSort(field: SortField) {
     if (sortField === field) {
       setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -94,7 +100,7 @@ export default function ParentList({ parents, onSelectParent }: Props) {
             type="text"
             placeholder="חיפוש לפי שם, עיר, טלפון..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(0) }}
             className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 placeholder:text-gray-400"
           />
         </div>
@@ -102,7 +108,7 @@ export default function ParentList({ parents, onSelectParent }: Props) {
         {allStatuses.length > 0 && (
           <select
             value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
+            onChange={e => { setFilterStatus(e.target.value); setPage(0) }}
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600"
           >
             <option value="">כל הסטטוסים</option>
@@ -114,7 +120,7 @@ export default function ParentList({ parents, onSelectParent }: Props) {
 
         <select
           value={filterDebt}
-          onChange={e => setFilterDebt(e.target.value as FilterDebt)}
+          onChange={e => { setFilterDebt(e.target.value as FilterDebt); setPage(0) }}
           className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600"
         >
           <option value="all">חוב/זכות – הכל</option>
@@ -172,7 +178,7 @@ export default function ParentList({ parents, onSelectParent }: Props) {
                 </td>
               </tr>
             ) : (
-              filtered.map(p => (
+              visible.map(p => (
                 <tr
                   key={p.id}
                   onClick={() => onSelectParent(p.id)}
@@ -222,6 +228,27 @@ export default function ParentList({ parents, onSelectParent }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-3 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ← הקודם
+          </button>
+          <span>עמוד {page + 1} מתוך {totalPages} · {filtered.length} תוצאות</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="px-3 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            הבא →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
