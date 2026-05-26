@@ -111,7 +111,9 @@ export default function TuitionPage() {
           onOpenParent={id => { setSelectedPaymentId(null); setSelectedParentId(id) }} />
       )}
       {selectedParentId && (
-        <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)} />
+        <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)}
+          onOpenPayment={id => { setSelectedParentId(null); setSelectedPaymentId(id) }}
+        />
       )}
     </div>
   )

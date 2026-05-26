@@ -88,6 +88,8 @@ function InlineField({ label, value, onSave, type = 'text', dir = 'rtl', multili
 interface Props {
   parentId: string
   onClose: () => void
+  onOpenStudent?: (studentId: string) => void
+  onOpenPayment?: (paymentId: string) => void
 }
 
 /* ─── badge ─────────────────────────────────────────── */
@@ -109,7 +111,7 @@ type TabKey = 'details' | 'children' | 'payments'
 /* ═══════════════════════════════════════════════════════
    MAIN COMPONENT — side panel (not modal)
 ═══════════════════════════════════════════════════════ */
-export default function EmployeeCard({ parentId, onClose }: Props) {
+export default function EmployeeCard({ parentId, onClose, onOpenStudent, onOpenPayment }: Props) {
   const [parent, setParent] = useState<ParentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -269,7 +271,9 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
         {parent && tab === 'children' && (
           <div className="p-4 space-y-3">
             {parent.students.map(s => (
-              <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-[#1a3a7a]/30 transition-colors">
+              <div key={s.id}
+                onClick={() => onOpenStudent?.(s.id)}
+                className={`bg-white border border-gray-200 rounded-xl p-4 transition-colors ${onOpenStudent ? 'cursor-pointer hover:border-[#1a3a7a] hover:bg-blue-50/30' : 'hover:border-[#1a3a7a]/30'}`}>
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-1.5">
                     {s.status && (
@@ -283,7 +287,10 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
                       }`}>{s.framework}</span>
                     )}
                   </div>
-                  <p className="font-bold text-gray-900">{s.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-gray-900">{s.name}</p>
+                    {onOpenStudent && <span className="text-[10px] text-[#1a3a7a]/50 group-hover:opacity-100">← פתח כרטיס</span>}
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
                   {s.className && (
@@ -354,7 +361,9 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
                       const remain = Math.max(0, pp.balance)
                       const status = remain <= 0 ? 'שולם' : paid > 0 ? 'חלקי' : 'פתוח'
                       return (
-                        <tr key={pp.id} className="hover:bg-gray-50">
+                        <tr key={pp.id}
+                          onClick={() => onOpenPayment?.(pp.id)}
+                          className={`hover:bg-gray-50 ${onOpenPayment ? 'cursor-pointer hover:bg-blue-50/40' : ''}`}>
                           <td className="px-3 py-2.5 font-medium text-right">{pp.monthYear || fmtDate(pp.date)}</td>
                           <td className="px-3 py-2.5 text-left tabular-nums text-gray-600">{fmt(pp.amount)}</td>
                           <td className="px-3 py-2.5 text-left tabular-nums text-emerald-700 font-medium">{fmt(paid)}</td>

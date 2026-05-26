@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { ParentSummary, SortField, FilterDebt } from '@/lib/types'
 import ParentList from '@/components/ParentList'
 import EmployeeCard from '@/components/EmployeeCard'
+import StudentCard from '@/components/StudentCard'
+import PaymentCard from '@/components/PaymentCard'
 
 export default function ParentsPage() {
   const [parents, setParents]           = useState<ParentSummary[]>([])
@@ -14,7 +16,9 @@ export default function ParentsPage() {
   const [filterDebt, setFilterDebt]     = useState<FilterDebt>('all')
   const [sortField, setSortField]       = useState<SortField>('last_name')
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc')
-  const [selectedId, setSelectedId]     = useState<string | null>(null)
+  const [selectedId, setSelectedId]         = useState<string | null>(null)
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState('')
 
@@ -81,7 +85,22 @@ export default function ParentsPage() {
         />
       )}
 
-      {selectedId && <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && (
+        <EmployeeCard
+          parentId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
+          onOpenPayment={id => { setSelectedId(null); setSelectedPaymentId(id) }}
+        />
+      )}
+      {selectedStudentId && (
+        <StudentCard studentId={selectedStudentId} onClose={() => setSelectedStudentId(null)}
+          onOpenParent={id => { setSelectedStudentId(null); setSelectedId(id) }} />
+      )}
+      {selectedPaymentId && (
+        <PaymentCard paymentId={selectedPaymentId} onClose={() => setSelectedPaymentId(null)}
+          onOpenParent={id => { setSelectedPaymentId(null); setSelectedId(id) }} />
+      )}
     </div>
   )
 }
