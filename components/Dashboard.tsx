@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [filterDebt, setFilterDebt]       = useState<FilterDebt>('all')
   const [sortField, setSortField]         = useState<SortField>('last_name')
   const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('asc')
+  const [statusOptions, setStatusOptions]  = useState<string[]>([])
   const [selectedId, setSelectedId]       = useState<string | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(true)
   const [loadingParents, setLoadingParents] = useState(true)
@@ -62,6 +63,7 @@ export default function Dashboard() {
         if (d.error) { setError(d.error); return }
         setParents(d.data ?? [])
         setTotal(d.total ?? 0)
+        if (d.statusOptions) setStatusOptions(d.statusOptions)
       })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoadingParents(false))
@@ -102,7 +104,7 @@ export default function Dashboard() {
         )}
 
         {!loadingSummary && summary.monthlyData.some(d => d.amount > 0) && (
-          <PaymentChart data={summary.monthlyData} />
+          <PaymentChart data={summary.monthlyData.map(d => ({ month: d.month, remaining: d.amount, total: d.amount }))} />
         )}
 
         <div>
@@ -133,6 +135,7 @@ export default function Dashboard() {
               filterDebt={filterDebt}
               sortField={sortField}
               sortDir={sortDir}
+              statusOptions={statusOptions}
               onSelectParent={setSelectedId}
               onSearch={handleSearch}
               onFilterStatus={handleStatus}
