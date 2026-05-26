@@ -41,34 +41,51 @@ export async function POST(req: NextRequest) {
     // Row 0 is header — skip it
     const dataRows = rows.slice(1)
 
-    // Fetch all students from DB, build name → id map
+    // Fetch all students from DB, build id_number → id map (fallback: name → id)
     const { data: allStudents, error: fetchErr } = await supabaseAdmin
       .from('students')
-      .select('id, name')
+      .select('id, name, id_number')
     if (fetchErr) throw fetchErr
 
-    const nameMap = new Map<string, string>()
+    const idNumMap = new Map<string, string>()
+    const nameMap  = new Map<string, string>()
     for (const s of allStudents ?? []) {
-      if (s.name) nameMap.set(s.name.trim(), s.id)
+      if (s.id_number?.trim()) idNumMap.set(s.id_number.trim(), s.id)
+      if (s.name?.trim())      nameMap.set(s.name.trim(), s.id)
     }
 
+    // ── Upsert classes from CSV (col 17: class, col 23: framework) ──────────
+    const classMap = new Map<string, string>() // class_name → framework
+    for (const row of dataRows) {
+      const cn  = row[17]?.trim()
+      const fw  = row[23]?.trim()
+      if (cn) classMap.set(cn, fw || '')
+    }
+    if (classMap.size > 0) {
+      const classRows = Array.from(classMap.entries()).map(([class_name, framework]) => ({
+        class_name, framework,
+      }))
+      await supabaseAdmin
+        .from('classes')
+        .upsert(classRows, { onConflict: 'class_name', ignoreDuplicates: false })
+    }
+
+    // ── Update students ───────────────────────────────────────────────────────
     let updated = 0
     const notFound: string[] = []
     const errors: string[]   = []
 
     for (const row of dataRows) {
-      const name = row[0]?.trim()
-      if (!name) continue
+      const name     = row[0]?.trim()
+      const idNumber = row[5]?.trim() || null
 
-      const id = nameMap.get(name)
-      if (!id) { notFound.push(name); continue }
+      // Match by ת"ז first, then fall back to name
+      const id = (idNumber && idNumMap.get(idNumber)) ?? (name ? nameMap.get(name) : undefined)
+      if (!id) { if (name) notFound.push(name); continue }
 
       // Col 4: gender — "בן"→זכר, "בת"→נקבה
       const genderRaw = row[4]?.trim()
       const gender = genderRaw === 'בן' ? 'זכר' : genderRaw === 'בת' ? 'נקבה' : undefined
-
-      // Col 5: ת"ז
-      const idNumber = row[5]?.trim() || null
 
       // Col 6: תאריך לידה לועזי (DD/MM/YYYY)
       const birthGreg = row[6]?.trim() || null
@@ -97,16 +114,16 @@ export async function POST(req: NextRequest) {
       const previousSchool = row[28]?.trim() || null
 
       const update: Record<string, unknown> = {}
-      if (gender !== undefined)           update.gender               = gender
-      if (idNumber !== undefined)         update.id_number            = idNumber
-      if (birthGreg !== undefined)        update.birth_date_gregorian = birthGreg
-      if (birthHebrew !== undefined)      update.birth_date_hebrew    = birthHebrew
-      if (className !== undefined)        update.class_name           = className
-      if (status !== undefined)           update.status               = status
-      if (transportation !== undefined)   update.transportation       = transportation
-      if (transportationCost !== undefined) update.transportation_cost = transportationCost
-      if (healthFund !== undefined)       update.health_fund          = healthFund
-      if (previousSchool !== undefined)   update.previous_school      = previousSchool
+      if (gender !== undefined)               update.gender               = gender
+      if (idNumber)                           update.id_number            = idNumber
+      if (birthGreg !== undefined)            update.birth_date_gregorian = birthGreg
+      if (birthHebrew !== undefined)          update.birth_date_hebrew    = birthHebrew
+      if (className !== undefined)            update.class_name           = className
+      if (status !== undefined)               update.status               = status
+      if (transportation !== undefined)       update.transportation       = transportation
+      if (transportationCost !== undefined)   update.transportation_cost  = transportationCost
+      if (healthFund !== undefined)           update.health_fund          = healthFund
+      if (previousSchool !== undefined)       update.previous_school      = previousSchool
 
       if (Object.keys(update).length === 0) continue
 
@@ -115,11 +132,11 @@ export async function POST(req: NextRequest) {
         .update(update)
         .eq('id', id)
 
-      if (upErr) { errors.push(`${name}: ${upErr.message}`); continue }
+      if (upErr) { errors.push(`${name ?? id}: ${upErr.message}`); continue }
       updated++
     }
 
-    return NextResponse.json({ updated, notFound, errors })
+    return NextResponse.json({ updated, classes: classMap.size, notFound, errors })
   } catch (err) {
     console.error('import error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

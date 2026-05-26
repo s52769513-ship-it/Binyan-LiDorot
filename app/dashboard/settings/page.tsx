@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 /* ─── Import section ──────────────────────────────────── */
 function ImportSection() {
   const [importing, setImporting] = useState(false)
-  const [result, setResult]       = useState<{ updated: number; notFound: string[]; errors: string[] } | null>(null)
+  const [result, setResult]       = useState<{ updated: number; classes: number; notFound: string[]; errors: string[] } | null>(null)
   const [error, setError]         = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -36,6 +36,7 @@ function ImportSection() {
         <div className="space-y-2">
           <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-medium">
             ✓ עודכנו {result.updated} תלמידים בהצלחה
+            {result.classes > 0 && ` · נוצרו/עודכנו ${result.classes} כיתות`}
           </div>
           {result.notFound.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
