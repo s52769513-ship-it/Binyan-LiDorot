@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import type jsPDFType from 'jspdf'
 
 interface DebtRow {
   id: string
@@ -135,10 +136,11 @@ function buildPrintHtml(data: ParentReportData, settings: Settings, txByMonth: R
 }
 
 function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClose: () => void }) {
-  const [data, setData]           = useState<ParentReportData | null>(null)
-  const [settings, setSettings]   = useState<Settings>({})
-  const [loading, setLoading]     = useState(true)
+  const [data, setData]             = useState<ParentReportData | null>(null)
+  const [settings, setSettings]     = useState<Settings>({})
+  const [loading, setLoading]       = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const pdfRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     Promise.all([
@@ -167,7 +169,7 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
     }
   }
 
-  const openPrintWindow = (delay: number, onDone?: () => void) => {
+  const handlePrint = () => {
     if (!data) return
     const html = buildPrintHtml(data, settings, txByMonth)
     const w = window.open('', '_blank', 'width=820,height=960')
@@ -175,13 +177,42 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
     w.document.write(html)
     w.document.close()
     w.focus()
-    setTimeout(() => { w.print(); onDone?.() }, delay)
+    setTimeout(() => w.print(), 300)
   }
 
-  const handlePrint = () => openPrintWindow(300)
-  const handlePdf   = () => {
+  const handlePdf = async () => {
+    if (!pdfRef.current || !data) return
     setPdfLoading(true)
-    openPrintWindow(1000, () => setPdfLoading(false))
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ])
+      // Wait a tick for any pending renders
+      await new Promise(r => setTimeout(r, 800))
+      const canvas = await html2canvas(pdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        scrollY: -window.scrollY,
+      })
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
+      const pdf = new (jsPDF as unknown as typeof jsPDFType)({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const ratio = canvas.width / canvas.height
+      const imgH  = pageW / ratio
+      let posY = 0
+      let remaining = imgH
+      while (remaining > 0) {
+        pdf.addImage(imgData, 'JPEG', 0, posY === 0 ? 0 : -(imgH - remaining), pageW, imgH)
+        remaining -= pageH
+        if (remaining > 0) { pdf.addPage(); posY = -(imgH - remaining) }
+      }
+      pdf.save(`דוח_${data.name}_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}.pdf`)
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   const totalPlanned = data?.plannedPayments.reduce((s, p) => s + p.amount, 0) ?? 0
@@ -219,7 +250,7 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
               <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
           )}
           {data && (
-            <div>
+            <div ref={pdfRef} className="bg-white">
               {/* Parent info */}
               <div className="mb-5 flex items-start justify-between">
                 <p className="text-xs text-gray-400">בס"ד</p>
