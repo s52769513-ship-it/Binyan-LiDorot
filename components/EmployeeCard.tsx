@@ -169,7 +169,7 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+    <div className="flex flex-col bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden" style={{ height: 'calc(100vh - 104px)' }}>
 
       {/* ── HEADER ── */}
       <div className="px-5 pt-4 pb-0 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)' }}>

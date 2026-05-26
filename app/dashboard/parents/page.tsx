@@ -59,9 +59,9 @@ export default function ParentsPage() {
   const totalPages = Math.ceil(total / 50)
 
   return (
-    <div className="flex gap-4 h-full" style={{ minHeight: 0 }}>
+    <div className="flex gap-4 items-start">
       {/* ── LIST ── */}
-      <div className={`flex flex-col gap-4 transition-all duration-300 ${selectedId ? 'w-[42%] flex-shrink-0' : 'w-full'}`}>
+      <div className={`flex flex-col gap-4 transition-all duration-300 min-w-0 ${selectedId ? 'w-[44%] flex-shrink-0' : 'w-full'}`}>
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-400">
             {loading ? 'טוען...' : `${total} אנ"ש`}
@@ -106,7 +106,7 @@ export default function ParentsPage() {
 
       {/* ── SIDE CARD ── */}
       {selectedId && (
-        <div className="flex-1 min-w-0 sticky top-0" style={{ height: 'calc(100vh - 120px)' }}>
+        <div className="flex-1 min-w-0 sticky top-[88px]" style={{ maxHeight: 'calc(100vh - 104px)' }}>
           <EmployeeCard
             parentId={selectedId}
             onClose={() => setSelectedId(null)}
