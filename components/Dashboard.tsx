@@ -84,11 +84,18 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-end">
+      <header className="sticky top-0 z-30 shadow-md" style={{ background: 'linear-gradient(90deg, #0d1f52 0%, #1a3a7a 50%, #0d1f52 100%)' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+          <button
+            onClick={() => window.location.href = '/'}
+            className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+            style={{ borderColor: '#c9a22740', color: '#c9a227' }}
+          >
+            יציאה
+          </button>
           <div className="text-right">
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">בנין לדורות</h1>
-            <p className="text-xs text-gray-500">מערכת ניהול · תלמוד תורה ובית חינוך</p>
+            <h1 className="text-xl font-bold leading-tight" style={{ color: '#d4a921' }}>בנין לדורות</h1>
+            <p className="text-xs" style={{ color: '#8899cc' }}>מערכת ניהול · תלמוד תורה ובית חינוך</p>
           </div>
         </div>
       </header>
