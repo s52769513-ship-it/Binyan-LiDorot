@@ -59,52 +59,59 @@ export default function ParentsPage() {
   const totalPages = Math.ceil(total / 50)
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-400">
-          {loading ? 'טוען...' : `${total} אנ"ש`}
-        </span>
-        <h2 className="text-2xl font-bold text-gray-800">רשימת אנ&quot;ש</h2>
+    <div className="flex gap-4 h-full" style={{ minHeight: 0 }}>
+      {/* ── LIST ── */}
+      <div className={`flex flex-col gap-4 transition-all duration-300 ${selectedId ? 'w-[42%] flex-shrink-0' : 'w-full'}`}>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-400">
+            {loading ? 'טוען...' : `${total} אנ"ש`}
+          </span>
+          <h2 className="text-2xl font-bold text-gray-800">רשימת אנ&quot;ש</h2>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
+            <button onClick={loadParents} className="text-red-600 underline text-xs">נסה שוב</button>
+            <span>{error}</span>
+          </div>
+        )}
+
+        {loading && parents.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-8">
+            <div className="space-y-3 animate-pulse">
+              {[1,2,3,4,5].map(i => <div key={i} className="h-12 bg-gray-100 rounded-lg" />)}
+            </div>
+          </div>
+        ) : (
+          <ParentList
+            parents={parents}
+            total={total}
+            page={page}
+            totalPages={totalPages}
+            loading={loading}
+            search={search}
+            filterStatus={filterStatus}
+            filterDebt={filterDebt}
+            sortField={sortField}
+            sortDir={sortDir}
+            onSelectParent={id => setSelectedId(id === selectedId ? null : id)}
+            onSearch={handleSearch}
+            onFilterStatus={handleStatus}
+            onFilterDebt={handleDebt}
+            onSort={handleSort}
+            onPageChange={setPage}
+          />
+        )}
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
-          <button onClick={loadParents} className="text-red-600 underline text-xs">נסה שוב</button>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {loading && parents.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8">
-          <div className="space-y-3 animate-pulse">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-12 bg-gray-100 rounded-lg" />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <ParentList
-          parents={parents}
-          total={total}
-          page={page}
-          totalPages={totalPages}
-          loading={loading}
-          search={search}
-          filterStatus={filterStatus}
-          filterDebt={filterDebt}
-          sortField={sortField}
-          sortDir={sortDir}
-          onSelectParent={setSelectedId}
-          onSearch={handleSearch}
-          onFilterStatus={handleStatus}
-          onFilterDebt={handleDebt}
-          onSort={handleSort}
-          onPageChange={setPage}
-        />
-      )}
-
+      {/* ── SIDE CARD ── */}
       {selectedId && (
-        <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />
+        <div className="flex-1 min-w-0 sticky top-0" style={{ height: 'calc(100vh - 120px)' }}>
+          <EmployeeCard
+            parentId={selectedId}
+            onClose={() => setSelectedId(null)}
+          />
+        </div>
       )}
     </div>
   )

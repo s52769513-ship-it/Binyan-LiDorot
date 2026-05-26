@@ -19,6 +19,7 @@ export interface StudentDetail {
   gender: string
   age: string | number
   className: string
+  framework: string
   status: string
   transportation: string[]
   transportationCost: number
