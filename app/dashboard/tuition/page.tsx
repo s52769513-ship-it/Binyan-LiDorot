@@ -1,18 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import PaymentCard from '@/components/PaymentCard'
 import EmployeeCard from '@/components/EmployeeCard'
 
 interface TuitionRow {
   id: string
   parentId: string
   parentName: string
-  paymentName: string
   amount: number
   paid: number
   balance: number
   monthYear: string
-  date: string
   status: 'שולם' | 'חלקי' | 'ממתין'
 }
 
@@ -22,9 +21,8 @@ interface TuitionData {
   months: string[]
 }
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
-}
+const fmt = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
 const STATUS_STYLE: Record<string, string> = {
   'שולם':  'bg-emerald-50 text-emerald-700',
@@ -33,11 +31,12 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 export default function TuitionPage() {
-  const [data, setData]         = useState<TuitionData | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState('')
-  const [month, setMonth]       = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [data, setData]             = useState<TuitionData | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState('')
+  const [month, setMonth]           = useState('')
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -49,15 +48,15 @@ export default function TuitionPage() {
       .finally(() => setLoading(false))
   }, [month])
 
+  const hasCard = !!(selectedPaymentId || selectedParentId)
+
   return (
     <div className="flex gap-4 items-start">
       {/* ── TABLE ── */}
-      <div className={`space-y-5 transition-all duration-300 min-w-0 ${selectedId ? 'w-[54%] flex-shrink-0' : 'w-full'}`}>
+      <div className={`space-y-5 transition-all duration-300 min-w-0 ${hasCard ? 'w-[54%] flex-shrink-0' : 'w-full'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <select
-            value={month} onChange={e => setMonth(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none bg-white"
-          >
+          <select value={month} onChange={e => setMonth(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none bg-white">
             <option value="">כל החודשים</option>
             {data?.months.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -101,13 +100,14 @@ export default function TuitionPage() {
                   {(data?.rows ?? []).length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-12 text-gray-400">אין נתונים</td></tr>
                   ) : (data?.rows ?? []).map(row => (
-                    <tr
-                      key={row.id}
-                      onClick={() => row.parentId && setSelectedId(row.parentId === selectedId ? null : row.parentId)}
+                    <tr key={row.id}
+                      onClick={() => {
+                        setSelectedParentId(null)
+                        setSelectedPaymentId(row.id === selectedPaymentId ? null : row.id)
+                      }}
                       className={`cursor-pointer transition-colors ${
-                        selectedId === row.parentId ? 'bg-blue-50 border-r-2 border-[#1a3a7a]' : 'hover:bg-gray-50'
-                      }`}
-                    >
+                        selectedPaymentId === row.id ? 'bg-blue-50 border-r-2 border-[#1a3a7a]' : 'hover:bg-gray-50'
+                      }`}>
                       <td className="px-4 py-3 font-medium text-gray-900 text-right">{row.parentName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.monthYear}</td>
                       <td className="px-4 py-3 text-left text-sm tabular-nums text-gray-700">{fmt(row.amount)}</td>
@@ -130,9 +130,18 @@ export default function TuitionPage() {
       </div>
 
       {/* ── SIDE CARD ── */}
-      {selectedId && (
+      {selectedPaymentId && !selectedParentId && (
         <div className="flex-1 min-w-0 sticky top-[88px]" style={{ maxHeight: 'calc(100vh - 104px)' }}>
-          <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />
+          <PaymentCard
+            paymentId={selectedPaymentId}
+            onClose={() => setSelectedPaymentId(null)}
+            onOpenParent={id => { setSelectedParentId(id); setSelectedPaymentId(null) }}
+          />
+        </div>
+      )}
+      {selectedParentId && (
+        <div className="flex-1 min-w-0 sticky top-[88px]" style={{ maxHeight: 'calc(100vh - 104px)' }}>
+          <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)} />
         </div>
       )}
     </div>

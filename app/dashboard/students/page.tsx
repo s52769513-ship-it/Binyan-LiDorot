@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import StudentCard from '@/components/StudentCard'
 import EmployeeCard from '@/components/EmployeeCard'
 
 interface Student {
@@ -17,13 +18,14 @@ interface Student {
 }
 
 export default function StudentsPage() {
-  const [students, setStudents]     = useState<Student[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState('')
-  const [search, setSearch]         = useState('')
-  const [framework, setFramework]   = useState<'all' | 'tt' | 'bs'>('all')
-  const [view, setView]             = useState<'class' | 'list'>('class')
-  const [selectedParentId, setSelectedParentId] = useState<string | null>(null)
+  const [students, setStudents]       = useState<Student[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState('')
+  const [search, setSearch]           = useState('')
+  const [framework, setFramework]     = useState<'all' | 'tt' | 'bs'>('all')
+  const [view, setView]               = useState<'class' | 'list'>('class')
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -50,16 +52,16 @@ export default function StudentsPage() {
   const classes = Object.entries(byClass).sort(([a], [b]) => a.localeCompare(b, 'he'))
 
   const handleStudentClick = (s: Student) => {
-    const pid = s.parentIds?.[0]
-    if (!pid) return
-    setSelectedParentId(pid === selectedParentId ? null : pid)
+    setSelectedParentId(null)
+    setSelectedStudentId(s.id === selectedStudentId ? null : s.id)
   }
+
+  const hasCard = !!(selectedStudentId || selectedParentId)
 
   return (
     <div className="flex gap-4 items-start">
       {/* ── MAIN ── */}
-      <div className={`space-y-5 transition-all duration-300 min-w-0 ${selectedParentId ? 'w-[54%] flex-shrink-0' : 'w-full'}`}>
-        {/* Title + controls */}
+      <div className={`space-y-5 transition-all duration-300 min-w-0 ${hasCard ? 'w-[50%] flex-shrink-0' : 'w-full'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">{filtered.length} תלמידים</span>
@@ -71,10 +73,8 @@ export default function StudentsPage() {
           <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-3">
-          <input
-            type="text" placeholder="חיפוש לפי שם..."
+          <input type="text" placeholder="חיפוש לפי שם..."
             value={search} onChange={e => setSearch(e.target.value)}
             className="flex-1 min-w-[180px] px-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
           />
@@ -91,36 +91,25 @@ export default function StudentsPage() {
         {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
         {loading ? (
-          <div className="space-y-3">
-            {[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}
-          </div>
+          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
         ) : view === 'class' ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {classes.map(([className, list]) => (
               <div key={className} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(90deg, #0d1f52, #1a3a7a)' }}>
                   <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#d4a921', color: '#0d1f52' }}>
-                    {list.length} תלמידים
+                    {list.length}
                   </span>
                   <span className="font-bold text-white">{className}</span>
                 </div>
                 <div className="divide-y divide-gray-50">
                   {list.map(s => (
-                    <div
-                      key={s.id}
-                      onClick={() => handleStudentClick(s)}
-                      className={`px-4 py-2.5 flex items-center justify-between transition-colors ${
-                        s.parentIds?.[0] && selectedParentId === s.parentIds[0]
-                          ? 'bg-blue-50'
-                          : s.parentIds?.[0] ? 'cursor-pointer hover:bg-gray-50' : 'opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        {s.status && (
-                          <span className={`px-1.5 py-0.5 rounded text-xs ${s.status === 'פעיל' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {s.status}
-                          </span>
-                        )}
+                    <div key={s.id} onClick={() => handleStudentClick(s)}
+                      className={`px-4 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${
+                        selectedStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      }`}>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        {s.status && <span className={`px-1.5 py-0.5 rounded ${s.status === 'פעיל' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{s.status}</span>}
                       </div>
                       <span className="text-sm font-medium text-gray-800">{s.name}</span>
                     </div>
@@ -144,15 +133,8 @@ export default function StudentsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map(s => (
-                  <tr
-                    key={s.id}
-                    onClick={() => handleStudentClick(s)}
-                    className={`transition-colors ${
-                      s.parentIds?.[0] && selectedParentId === s.parentIds[0]
-                        ? 'bg-blue-50'
-                        : s.parentIds?.[0] ? 'cursor-pointer hover:bg-gray-50' : ''
-                    }`}
-                  >
+                  <tr key={s.id} onClick={() => handleStudentClick(s)}
+                    className={`cursor-pointer transition-colors ${selectedStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{s.className || '—'}</td>
                     <td className="px-4 py-3 text-sm">
@@ -174,6 +156,15 @@ export default function StudentsPage() {
       </div>
 
       {/* ── SIDE CARD ── */}
+      {selectedStudentId && !selectedParentId && (
+        <div className="flex-1 min-w-0 sticky top-[88px]" style={{ maxHeight: 'calc(100vh - 104px)' }}>
+          <StudentCard
+            studentId={selectedStudentId}
+            onClose={() => setSelectedStudentId(null)}
+            onOpenParent={id => { setSelectedParentId(id); setSelectedStudentId(null) }}
+          />
+        </div>
+      )}
       {selectedParentId && (
         <div className="flex-1 min-w-0 sticky top-[88px]" style={{ maxHeight: 'calc(100vh - 104px)' }}>
           <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)} />
