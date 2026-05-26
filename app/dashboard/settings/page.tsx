@@ -75,6 +75,11 @@ function ClassesSection() {
       {/* Existing classes */}
       {classes.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
+          {classes.some(c => !c.framework) && (
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700 font-medium">
+              ⚠ כיתות ללא מסגרת — יש להגדיר כדי שהתלמידים יסווגו נכון
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-right text-xs font-semibold text-gray-500">
@@ -84,14 +89,19 @@ function ClassesSection() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {classes.map(c => (
-                <tr key={c.class_name} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{c.class_name}</td>
+                <tr key={c.class_name} className={`hover:bg-gray-50 ${!c.framework ? 'bg-amber-50/40' : ''}`}>
+                  <td className="px-4 py-2.5 font-medium text-gray-800">
+                    {!c.framework && <span className="text-amber-500 ml-1">⚠</span>}
+                    {c.class_name}
+                  </td>
                   <td className="px-4 py-2.5">
                     <select
                       value={c.framework ?? ''}
                       onChange={e => updateFramework(c.class_name, e.target.value)}
                       disabled={saving}
-                      className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                      className={`px-3 py-1.5 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 ${
+                        !c.framework ? 'border-amber-300 text-amber-700' : 'border-gray-200'
+                      }`}
                     >
                       <option value="">— לא מוגדר —</option>
                       {FRAMEWORKS.map(f => <option key={f} value={f}>{f}</option>)}
