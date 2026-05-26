@@ -118,6 +118,7 @@ export async function GET(
         amount: tx.amount ?? 0,
         type: tx.type ?? '',
         date: tx.date ?? '',
+        monthYear: tx.month_year ?? '',
         notes: tx.notes ?? '',
       })),
     })

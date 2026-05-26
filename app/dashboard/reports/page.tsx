@@ -13,14 +13,15 @@ interface DebtRow {
   childrenCount: number
 }
 
-interface ParentDebt { id: string; amount: number; createdTime: string }
-interface ParentTx   { id: string; amount: number; type: string; date: string; notes: string }
+interface ParentPlanned { id: string; name: string; amount: number; date: string; monthYear: string; balance: number }
+interface ParentTx      { id: string; amount: number; type: string; date: string; monthYear: string; notes: string }
 interface ParentReportData {
   name: string; city: string; fatherPhone: string; motherPhone: string
   tuitionTotal: number; tuitionBalance: number; childrenCount: number
-  debts: ParentDebt[]
+  plannedPayments: ParentPlanned[]
   transactions: ParentTx[]
 }
+interface Settings { institution_name?: string; logo_url?: string }
 
 interface TuitionRow {
   id: string
@@ -43,16 +44,110 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 /* ─── ParentDebtReportModal ───────────────────────────── */
+function buildPrintHtml(data: ParentReportData, settings: Settings, txByMonth: Record<string, ParentTx[]>): string {
+  const logoTag = settings.logo_url
+    ? `<img src="${settings.logo_url}" alt="לוגו" style="height:70px;object-fit:contain;" />`
+    : `<div style="font-size:18px;font-weight:700;color:#1a3a7a;">${settings.institution_name ?? 'מוסד'}</div>`
+
+  const fmtCur = (n: number) =>
+    new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('he-IL') : '—'
+
+  const ppRows = data.plannedPayments.map(pp => {
+    const linked = txByMonth[pp.monthYear] ?? []
+    const paidAmt = linked.reduce((s, t) => s + t.amount, 0)
+    const txRows = linked.map(tx =>
+      `<tr style="background:#f0fdf4;">
+        <td style="padding:5px 10px;font-size:11px;color:#555;">↳ שולם ${fmtDate(tx.date)}</td>
+        <td style="padding:5px 10px;font-size:11px;color:#555;">${tx.type || ''}</td>
+        <td style="padding:5px 10px;font-size:11px;color:#555;">${tx.notes || ''}</td>
+        <td style="padding:5px 10px;text-align:left;font-size:12px;color:#059669;font-weight:600;">${fmtCur(tx.amount)}</td>
+      </tr>`
+    ).join('')
+    const balColor = pp.balance > 0 ? '#dc2626' : '#059669'
+    return `
+      <tr style="background:#fff;">
+        <td style="padding:7px 10px;font-weight:600;">${pp.monthYear}</td>
+        <td style="padding:7px 10px;">${pp.name || ''}</td>
+        <td style="padding:7px 10px;text-align:left;font-variant-numeric:tabular-nums;">${fmtCur(pp.amount)}</td>
+        <td style="padding:7px 10px;text-align:left;font-variant-numeric:tabular-nums;color:${balColor};font-weight:700;">
+          ${pp.balance > 0 ? fmtCur(pp.balance) : '✓'}
+        </td>
+      </tr>
+      ${txRows}`
+  }).join('')
+
+  const totalPlanned = data.plannedPayments.reduce((s, p) => s + p.amount, 0)
+  const totalBalance = data.plannedPayments.reduce((s, p) => s + Math.max(0, p.balance), 0)
+  const balBg = data.tuitionBalance > 0 ? '#fef2f2' : '#f0fdf4'
+  const balColor2 = data.tuitionBalance > 0 ? '#dc2626' : '#059669'
+  const balLabel = data.tuitionBalance > 0 ? 'יתרת חוב לתשלום' : 'זכות'
+
+  return `<!DOCTYPE html><html dir="rtl"><head>
+    <meta charset="utf-8">
+    <title>דוח תשלומים — ${data.name}</title>
+    <style>
+      body{font-family:Arial,sans-serif;direction:rtl;margin:20px 28px;color:#111;font-size:13px;}
+      table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+      th{background:#f3f4f6;font-size:11px;padding:6px 10px;text-align:right;border-bottom:2px solid #e5e7eb;}
+      td{padding:7px 10px;border-bottom:1px solid #f0f0f0;text-align:right;}
+      .section-title{font-size:12px;font-weight:700;color:#1a3a7a;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;}
+      .balance-bar{background:${balBg};border:1px solid ${balColor2}55;border-radius:8px;padding:12px 16px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;}
+      @media print{body{margin:10px 16px;}}
+    </style>
+  </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;border-bottom:2px solid #1a3a7a;padding-bottom:12px;">
+      <div style="font-size:10px;color:#888;">בס"ד</div>
+      ${logoTag}
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div style="font-size:19px;font-weight:700;">${data.name}</div>
+      <div style="font-size:12px;color:#666;margin-top:4px;display:flex;gap:20px;flex-wrap:wrap;">
+        ${data.city ? `<span>📍 ${data.city}</span>` : ''}
+        ${data.fatherPhone ? `<span dir="ltr">📞 ${data.fatherPhone}</span>` : ''}
+        ${data.motherPhone && data.motherPhone !== data.fatherPhone ? `<span dir="ltr">📞 ${data.motherPhone}</span>` : ''}
+        <span>👨‍👩‍👧‍👦 ${data.childrenCount} ילדים</span>
+        <span style="color:#aaa;">הודפס: ${new Date().toLocaleDateString('he-IL')}</span>
+      </div>
+    </div>
+
+    <div class="section-title">תשלומים מתוכננים (${data.plannedPayments.length})</div>
+    ${data.plannedPayments.length === 0 ? '<p style="color:#999;font-size:12px;">אין תשלומים מתוכננים</p>' : `
+    <table>
+      <thead><tr>
+        <th>חודש</th><th>שם</th><th style="text-align:left;">סכום</th><th style="text-align:left;">יתרה</th>
+      </tr></thead>
+      <tbody>${ppRows}
+        <tr style="background:#f8f9fa;border-top:2px solid #e5e7eb;">
+          <td colspan="2" style="font-weight:700;color:#374151;">סה"כ</td>
+          <td style="text-align:left;font-weight:700;">${fmtCur(totalPlanned)}</td>
+          <td style="text-align:left;font-weight:700;color:#dc2626;">${fmtCur(totalBalance)}</td>
+        </tr>
+      </tbody>
+    </table>`}
+
+    <div class="balance-bar">
+      <span style="font-size:22px;font-weight:700;color:${balColor2};">${fmtCur(Math.abs(data.tuitionBalance))}</span>
+      <span style="font-size:13px;font-weight:600;color:${balColor2};">${balLabel}</span>
+    </div>
+  </body></html>`
+}
+
 function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClose: () => void }) {
-  const [data, setData] = useState<ParentReportData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const printRef = useRef<HTMLDivElement>(null)
+  const [data, setData]           = useState<ParentReportData | null>(null)
+  const [settings, setSettings]   = useState<Settings>({})
+  const [loading, setLoading]     = useState(true)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/parents/${parentId}`)
-      .then(r => r.json())
-      .then(d => { if (!d.error) setData(d) })
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetch(`/api/parents/${parentId}`).then(r => r.json()),
+      fetch('/api/settings').then(r => r.json()).catch(() => ({})),
+    ]).then(([d, s]) => {
+      if (!d.error) setData(d)
+      setSettings(s ?? {})
+    }).finally(() => setLoading(false))
   }, [parentId])
 
   useEffect(() => {
@@ -61,35 +156,36 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
-  const handlePrint = () => {
-    if (!printRef.current) return
-    const content = printRef.current.innerHTML
-    const w = window.open('', '_blank', 'width=820,height=960')
-    if (!w) return
-    w.document.write(`<!DOCTYPE html><html dir="rtl"><head>
-      <meta charset="utf-8"><title>דוח חוב — ${data?.name ?? ''}</title>
-      <style>
-        body { font-family: Arial, sans-serif; direction: rtl; margin: 24px; color: #111; }
-        h1 { font-size: 20px; margin-bottom: 4px; }
-        .meta { font-size: 13px; color: #555; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th { background: #f3f4f6; font-size: 11px; padding: 6px 10px; text-align: right; }
-        td { padding: 7px 10px; font-size: 13px; border-bottom: 1px solid #e5e7eb; text-align: right; }
-        .amount { text-align: left; font-variant-numeric: tabular-nums; }
-        .red { color: #dc2626; font-weight: 700; }
-        .green { color: #059669; font-weight: 700; }
-        .section-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #1a3a7a; }
-        .balance-bar { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 16px; display: flex; justify-content: space-between; }
-        @media print { body { margin: 12px; } }
-      </style>
-    </head><body>${content}</body></html>`)
-    w.document.close()
-    w.focus()
-    setTimeout(() => w.print(), 400)
+  // Group transactions by monthYear for linking
+  const txByMonth: Record<string, ParentTx[]> = {}
+  if (data) {
+    for (const tx of data.transactions) {
+      if (tx.monthYear) {
+        if (!txByMonth[tx.monthYear]) txByMonth[tx.monthYear] = []
+        txByMonth[tx.monthYear].push(tx)
+      }
+    }
   }
 
-  const totalDebts = data?.debts.reduce((s, d) => s + d.amount, 0) ?? 0
-  const totalPaid  = data?.transactions.reduce((s, t) => s + t.amount, 0) ?? 0
+  const openPrintWindow = (delay: number, onDone?: () => void) => {
+    if (!data) return
+    const html = buildPrintHtml(data, settings, txByMonth)
+    const w = window.open('', '_blank', 'width=820,height=960')
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print(); onDone?.() }, delay)
+  }
+
+  const handlePrint = () => openPrintWindow(300)
+  const handlePdf   = () => {
+    setPdfLoading(true)
+    openPrintWindow(1000, () => setPdfLoading(false))
+  }
+
+  const totalPlanned = data?.plannedPayments.reduce((s, p) => s + p.amount, 0) ?? 0
+  const totalRemaining = data?.plannedPayments.reduce((s, p) => s + Math.max(0, p.balance), 0) ?? 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -102,12 +198,16 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
             <button onClick={onClose}
               className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" aria-label="סגור">✕</button>
             <button onClick={handlePrint} disabled={loading || !data}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors">
+              🖨 הדפסה
+            </button>
+            <button onClick={handlePdf} disabled={loading || !data || pdfLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a3a7a] text-white text-sm font-medium hover:bg-[#0d1f52] disabled:opacity-40 transition-colors">
-              🖨 הדפסה / PDF
+              {pdfLoading ? <span className="animate-spin">⏳</span> : '⬇'} {pdfLoading ? 'מכין...' : 'הורדת PDF'}
             </button>
           </div>
           <div className="text-right">
-            <h2 className="text-lg font-bold text-gray-900">דוח חוב אישי</h2>
+            <h2 className="text-lg font-bold text-gray-900">דוח תשלומים אישי</h2>
             {data && <p className="text-sm text-gray-500">{data.name}</p>}
           </div>
         </div>
@@ -119,89 +219,71 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
               <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
           )}
           {data && (
-            <div ref={printRef}>
+            <div>
               {/* Parent info */}
-              <div className="mb-5">
-                <h1 className="text-xl font-bold text-gray-900">{data.name}</h1>
-                <div className="text-sm text-gray-500 mt-1 space-x-3 flex flex-wrap gap-x-4 gap-y-1">
-                  {data.city && <span>📍 {data.city}</span>}
-                  {data.fatherPhone && <span dir="ltr">📞 {data.fatherPhone}</span>}
-                  {data.motherPhone && data.motherPhone !== data.fatherPhone &&
-                    <span dir="ltr">📞 {data.motherPhone}</span>}
-                  <span>👨‍👩‍👧‍👦 {data.childrenCount} ילדים</span>
-                  <span className="text-gray-400">הודפס: {new Date().toLocaleDateString('he-IL')}</span>
+              <div className="mb-5 flex items-start justify-between">
+                <p className="text-xs text-gray-400">בס"ד</p>
+                <div className="text-right">
+                  <h3 className="text-lg font-bold text-gray-900">{data.name}</h3>
+                  <div className="text-sm text-gray-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    {data.city && <span>📍 {data.city}</span>}
+                    {data.fatherPhone && <span dir="ltr">📞 {data.fatherPhone}</span>}
+                    {data.motherPhone && data.motherPhone !== data.fatherPhone &&
+                      <span dir="ltr">📞 {data.motherPhone}</span>}
+                    <span>👨‍👩‍👧‍👦 {data.childrenCount} ילדים</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Debts */}
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-[#1a3a7a] uppercase tracking-wide mb-2">חובות פתוחים ({data.debts.length})</p>
-                {data.debts.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-2">אין חובות פתוחים</p>
-                ) : (
-                  <div className="bg-gray-50 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-100 text-xs text-gray-500">
-                          <th className="px-4 py-2 text-right">תאריך</th>
-                          <th className="px-4 py-2 text-left">סכום חוב</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {data.debts.map(d => (
-                          <tr key={d.id}>
-                            <td className="px-4 py-2.5 text-gray-600">
-                              {d.createdTime ? new Date(d.createdTime).toLocaleDateString('he-IL') : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-red-600">{fmt(d.amount)}</td>
-                          </tr>
-                        ))}
-                        <tr className="bg-red-50">
-                          <td className="px-4 py-2.5 text-right text-sm font-bold text-red-700">סה"כ חובות</td>
-                          <td className="px-4 py-2.5 text-left tabular-nums font-bold text-red-700">{fmt(totalDebts)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Transactions / payments */}
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-[#1a3a7a] uppercase tracking-wide mb-2">תשלומים ({data.transactions.length})</p>
-                {data.transactions.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-2">אין תשלומים</p>
-                ) : (
-                  <div className="bg-gray-50 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-100 text-xs text-gray-500">
-                          <th className="px-4 py-2 text-right">תאריך</th>
-                          <th className="px-4 py-2 text-right">סוג</th>
-                          <th className="px-4 py-2 text-right">הערות</th>
-                          <th className="px-4 py-2 text-left">סכום</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {data.transactions.map(tx => (
-                          <tr key={tx.id}>
-                            <td className="px-4 py-2.5 text-gray-600">
-                              {tx.date ? new Date(tx.date).toLocaleDateString('he-IL') : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-gray-700">{tx.type || '—'}</td>
-                            <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.notes || ''}</td>
-                            <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">{fmt(tx.amount)}</td>
-                          </tr>
-                        ))}
-                        <tr className="bg-emerald-50">
-                          <td colSpan={3} className="px-4 py-2.5 text-right text-sm font-bold text-emerald-700">סה"כ שולם</td>
-                          <td className="px-4 py-2.5 text-left tabular-nums font-bold text-emerald-700">{fmt(totalPaid)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+              {/* Planned payments */}
+              <p className="text-xs font-semibold text-[#1a3a7a] uppercase tracking-wide mb-2">
+                תשלומים מתוכננים ({data.plannedPayments.length})
+              </p>
+              {data.plannedPayments.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">אין תשלומים מתוכננים</p>
+              ) : (
+                <div className="bg-gray-50 rounded-xl overflow-hidden mb-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-100 text-xs text-gray-500">
+                        <th className="px-4 py-2 text-right">חודש</th>
+                        <th className="px-4 py-2 text-right">שם</th>
+                        <th className="px-4 py-2 text-left">לתשלום</th>
+                        <th className="px-4 py-2 text-left">יתרה</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.plannedPayments.map(pp => {
+                        const linked = txByMonth[pp.monthYear] ?? []
+                        return (
+                          <>
+                            <tr key={pp.id} className="border-t border-gray-200">
+                              <td className="px-4 py-2.5 font-semibold text-gray-800">{pp.monthYear}</td>
+                              <td className="px-4 py-2.5 text-gray-600">{pp.name || '—'}</td>
+                              <td className="px-4 py-2.5 text-left tabular-nums text-gray-700">{fmt(pp.amount)}</td>
+                              <td className={`px-4 py-2.5 text-left tabular-nums font-bold ${pp.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {pp.balance > 0 ? fmt(pp.balance) : '✓'}
+                              </td>
+                            </tr>
+                            {linked.map(tx => (
+                              <tr key={tx.id} className="bg-emerald-50/60">
+                                <td className="px-4 py-1.5 pr-8 text-xs text-gray-400">↳ שולם {tx.date ? new Date(tx.date).toLocaleDateString('he-IL') : ''}</td>
+                                <td className="px-4 py-1.5 text-xs text-gray-500">{tx.type || ''} {tx.notes ? `· ${tx.notes}` : ''}</td>
+                                <td colSpan={2} className="px-4 py-1.5 text-left tabular-nums text-xs font-semibold text-emerald-700">{fmt(tx.amount)}</td>
+                              </tr>
+                            ))}
+                          </>
+                        )
+                      })}
+                      <tr className="bg-gray-100 border-t-2 border-gray-200">
+                        <td colSpan={2} className="px-4 py-2.5 font-bold text-gray-700">סה"כ</td>
+                        <td className="px-4 py-2.5 text-left tabular-nums font-bold text-gray-700">{fmt(totalPlanned)}</td>
+                        <td className="px-4 py-2.5 text-left tabular-nums font-bold text-red-600">{fmt(totalRemaining)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Balance bar */}
               <div className={`rounded-xl p-4 ${data.tuitionBalance > 0 ? 'bg-red-50 border border-red-100' : 'bg-emerald-50 border border-emerald-100'}`}>
@@ -213,7 +295,6 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
                     {data.tuitionBalance > 0 ? '⚠️ יתרת חוב לתשלום' : '✓ זכות'}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">שכ"ל מקורי: {fmt(data.tuitionTotal)}</p>
               </div>
             </div>
           )}
