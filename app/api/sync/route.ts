@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchAirtableRecords, TABLES, P, S, T, D, PP } from '@/lib/airtable'
+import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
 async function upsertAndPrune<R extends { id: string; synced_at: string }>(
@@ -32,7 +32,7 @@ export async function POST() {
 
   try {
     // Fetch all tables from Airtable in parallel
-    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned] =
+    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned, rawProjects] =
       await Promise.all([
         fetchAirtableRecords(TABLES.PARENTS, {
           fields: [
@@ -51,7 +51,7 @@ export async function POST() {
         }),
 
         fetchAirtableRecords(TABLES.TRANSACTIONS, {
-          fields: [T.AMOUNT, T.TYPE, T.DATE, T.MONTH_YEAR, T.NOTES, T.PARENT],
+          fields: [T.AMOUNT, T.TYPE, T.DATE, T.MONTH_YEAR, T.NOTES, T.PARENT, T.PROJECT],
         }),
 
         fetchAirtableRecords(TABLES.DEBTS, {
@@ -61,7 +61,15 @@ export async function POST() {
         fetchAirtableRecords(TABLES.PLANNED_PAYMENTS, {
           fields: [PP.NAME, PP.AMOUNT, PP.DATE, PP.MONTH_YEAR, PP.BALANCE, PP.PARENT],
         }),
+
+        fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] }),
       ])
+
+    // Map project record IDs → project names
+    const projectNameMap: Record<string, string> = {}
+    for (const r of rawProjects) {
+      projectNameMap[r.id] = String(r.fields[PROJ.NAME] || '')
+    }
 
     // Transform to Supabase rows
     const parents = rawParents
@@ -99,16 +107,21 @@ export async function POST() {
       synced_at: syncedAt,
     }))
 
-    const transactions = rawTransactions.map(r => ({
-      id: r.id,
-      parent_ids: (r.fields[T.PARENT] as string[]) || [],
-      amount: Number(r.fields[T.AMOUNT]) || 0,
-      type: String(r.fields[T.TYPE] || ''),
-      date: (r.fields[T.DATE] as string) || null,
-      month_year: String(r.fields[T.MONTH_YEAR] || ''),
-      notes: String(r.fields[T.NOTES] || ''),
-      synced_at: syncedAt,
-    }))
+    const transactions = rawTransactions.map(r => {
+      const projectIds = (r.fields[T.PROJECT] as string[]) || []
+      return {
+        id: r.id,
+        parent_ids: (r.fields[T.PARENT] as string[]) || [],
+        amount: Number(r.fields[T.AMOUNT]) || 0,
+        type: String(r.fields[T.TYPE] || ''),
+        date: (r.fields[T.DATE] as string) || null,
+        month_year: String(r.fields[T.MONTH_YEAR] || ''),
+        notes: String(r.fields[T.NOTES] || ''),
+        project_ids: projectIds,
+        project_names: projectIds.map(pid => projectNameMap[pid]).filter(Boolean),
+        synced_at: syncedAt,
+      }
+    })
 
     const debts = rawDebts.map(r => ({
       id: r.id,
@@ -136,6 +149,50 @@ export async function POST() {
     const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
     const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
 
+    // Payment allocation: split "בנין לדורות" income transactions across active children
+    let allocationsCount = 0
+    try {
+      const binyanTxs = transactions.filter(
+        tx => tx.project_names.includes('בנין לדורות') && tx.amount > 0
+      )
+      if (binyanTxs.length > 0) {
+        const studentsByParent: Record<string, typeof students> = {}
+        for (const s of students) {
+          for (const pid of s.parent_ids) {
+            if (!studentsByParent[pid]) studentsByParent[pid] = []
+            studentsByParent[pid].push(s)
+          }
+        }
+        const allocations: Array<{
+          transaction_id: string; student_id: string; parent_id: string
+          amount: number; month_year: string; synced_at: string
+        }> = []
+        for (const tx of binyanTxs) {
+          for (const parentId of tx.parent_ids) {
+            const active = (studentsByParent[parentId] ?? []).filter(s => s.status === 'פעיל')
+            if (active.length === 0) continue
+            const perStudent = Math.floor((tx.amount / active.length) * 100) / 100
+            const remainder  = Math.round((tx.amount - perStudent * active.length) * 100) / 100
+            active.forEach((s, i) => allocations.push({
+              transaction_id: tx.id,
+              student_id:     s.id,
+              parent_id:      parentId,
+              amount:         i === active.length - 1 ? perStudent + remainder : perStudent,
+              month_year:     tx.month_year,
+              synced_at:      syncedAt,
+            }))
+          }
+        }
+        await supabaseAdmin.from('payment_allocations').delete().not('id', 'is', null)
+        if (allocations.length > 0) {
+          await supabaseAdmin.from('payment_allocations').insert(allocations)
+        }
+        allocationsCount = allocations.length
+      }
+    } catch (allocErr) {
+      console.warn('payment_allocations skipped (run schema migration):', allocErr)
+    }
+
     // Record sync log
     await supabaseAdmin.from('sync_log').insert({
       parents_count: parentsCount,
@@ -155,6 +212,7 @@ export async function POST() {
         transactions: transactionsCount,
         debts: debtsCount,
         plannedPayments: plannedCount,
+        allocations: allocationsCount,
       },
     })
   } catch (err) {
