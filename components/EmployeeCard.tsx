@@ -169,7 +169,9 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
   return (
-    <div className="flex flex-col bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden" style={{ height: 'calc(100vh - 104px)' }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl overflow-hidden" style={{ height: '92vh', maxHeight: '92vh' }}>
 
       {/* ── HEADER ── */}
       <div className="px-5 pt-4 pb-0 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)' }}>
@@ -403,6 +405,7 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

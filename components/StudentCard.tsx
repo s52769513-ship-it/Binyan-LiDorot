@@ -116,10 +116,9 @@ export default function StudentCard({ studentId, onClose, onOpenParent }: Props)
     ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'
 
   return (
-    <div
-      className="flex flex-col bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden"
-      style={{ height: 'calc(100vh - 104px)' }}
-    >
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg overflow-hidden" style={{ height: '88vh', maxHeight: '88vh' }}>
       {/* Header */}
       <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
         <div className="flex items-start justify-between mb-2">
@@ -235,6 +234,7 @@ export default function StudentCard({ studentId, onClose, onOpenParent }: Props)
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   )

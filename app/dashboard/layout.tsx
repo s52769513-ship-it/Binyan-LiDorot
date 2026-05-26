@@ -5,12 +5,13 @@ import { usePathname } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 
 const NAV_LINKS = [
-  { href: '/dashboard',          label: 'דשבורד'      },
-  { href: '/dashboard/parents',  label: 'אנ"ש'        },
-  { href: '/dashboard/students', label: 'תלמידים'     },
-  { href: '/dashboard/tuition',  label: 'שכ"ל'        },
-  { href: '/dashboard/reports',  label: 'דוחות'       },
-  { href: '/dashboard/register', label: 'רישום תלמיד' },
+  { href: '/dashboard',           label: 'דשבורד'      },
+  { href: '/dashboard/parents',   label: 'אנ"ש'        },
+  { href: '/dashboard/students',  label: 'תלמידים'     },
+  { href: '/dashboard/tuition',   label: 'שכ"ל'        },
+  { href: '/dashboard/reports',   label: 'דוחות'       },
+  { href: '/dashboard/register',  label: 'רישום תלמיד' },
+  { href: '/dashboard/settings',  label: '⚙ הגדרות'   },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

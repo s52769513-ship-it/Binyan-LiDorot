@@ -1,0 +1,178 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+
+interface Settings {
+  institution_name?: string
+  address?: string
+  phone?: string
+  primary_color?: string
+  logo_url?: string
+}
+
+export default function SettingsPage() {
+  const [settings, setSettings] = useState<Settings>({})
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [success, setSuccess]   = useState('')
+  const [error, setError]       = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(d => setSettings(d ?? {}))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async (fields: Partial<Settings>) => {
+    setSaving(true); setError(''); setSuccess('')
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
+      setSettings(prev => ({ ...prev, ...fields }))
+      setSuccess('נשמר בהצלחה')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch { setError('שגיאה בשמירה') }
+    finally { setSaving(false) }
+  }
+
+  const uploadLogo = async (file: File) => {
+    setUploading(true); setError(''); setSuccess('')
+    try {
+      const form = new FormData()
+      form.append('logo', file)
+      const res = await fetch('/api/settings/upload', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
+      setSettings(prev => ({ ...prev, logo_url: data.url }))
+      setSuccess('הלוגו הועלה בהצלחה!')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch { setError('שגיאה בהעלאה') }
+    finally { setUploading(false) }
+  }
+
+  if (loading) return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)}
+    </div>
+  )
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6" dir="rtl">
+      <h2 className="text-2xl font-bold text-gray-800 text-right">הגדרות מוסד</h2>
+
+      {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
+      {error   && <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-right text-sm">{error}</div>}
+
+      {/* Logo upload */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">לוגו המוסד</h3>
+
+        <div className="flex items-center gap-6">
+          {/* Preview */}
+          <div className="flex-shrink-0">
+            {settings.logo_url ? (
+              <img src={settings.logo_url} alt="לוגו" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-gray-50 p-1" />
+            ) : (
+              <div className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs text-center">
+                אין לוגו
+              </div>
+            )}
+          </div>
+
+          {/* Upload */}
+          <div className="flex-1 space-y-2">
+            <p className="text-sm text-gray-500">העלה קובץ PNG / JPG / SVG (מומלץ רבוע, לפחות 200×200)</p>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f) }} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+            >
+              {uploading ? 'מעלה...' : settings.logo_url ? 'החלף לוגו' : 'העלה לוגו'}
+            </button>
+            {settings.logo_url && (
+              <p className="text-xs text-gray-400 break-all">{settings.logo_url}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Institution details */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">פרטי המוסד</h3>
+
+        <Field label="שם המוסד">
+          <input
+            defaultValue={settings.institution_name ?? ''}
+            onBlur={e => save({ institution_name: e.target.value })}
+            className={INPUT} placeholder="בנין לדורות"
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="טלפון">
+            <input
+              defaultValue={settings.phone ?? ''}
+              onBlur={e => save({ phone: e.target.value })}
+              className={INPUT} placeholder="04-0000000" dir="ltr"
+            />
+          </Field>
+          <Field label="כתובת">
+            <input
+              defaultValue={settings.address ?? ''}
+              onBlur={e => save({ address: e.target.value })}
+              className={INPUT} placeholder="רחוב, עיר"
+            />
+          </Field>
+        </div>
+      </div>
+
+      {saving && <p className="text-center text-sm text-gray-400 animate-pulse">שומר...</p>}
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
+        <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
+        <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`CREATE TABLE institution_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  institution_name TEXT,
+  logo_url TEXT,
+  address TEXT,
+  phone TEXT,
+  primary_color TEXT DEFAULT '#1a3a7a',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO institution_settings (id) VALUES (1)
+  ON CONFLICT (id) DO NOTHING;
+ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON institution_settings
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- Storage bucket for logo:
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('institution', 'institution', true)
+ON CONFLICT DO NOTHING;`}</pre>
+      </div>
+    </div>
+  )
+}
+
+const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white text-right'
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5 text-right">{label}</label>
+      {children}
+    </div>
+  )
+}
