@@ -275,8 +275,31 @@ export default function SettingsPage() {
       {/* Classes management */}
       <ClassesSection />
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
-        <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-2">
+        <p className="font-semibold">SQL להרצה ב-Supabase — שדות חדשים לתלמידים:</p>
+        <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`-- הוסף שדות חדשים לטבלת תלמידים
+ALTER TABLE students
+  ADD COLUMN IF NOT EXISTS id_number TEXT,
+  ADD COLUMN IF NOT EXISTS birth_date_gregorian TEXT,
+  ADD COLUMN IF NOT EXISTS birth_date_hebrew TEXT,
+  ADD COLUMN IF NOT EXISTS health_fund TEXT,
+  ADD COLUMN IF NOT EXISTS previous_school TEXT;
+
+-- מלא אוטומטית כיתות עם מסגרת לפי שם הכיתה
+INSERT INTO classes (class_name, framework)
+SELECT DISTINCT class_name,
+  CASE
+    WHEN class_name LIKE '%תלמוד תורה%' THEN 'תלמוד תורה'
+    WHEN class_name LIKE '%בית חינוך%'  THEN 'בית חינוך לבנות'
+    ELSE ''
+  END
+FROM students
+WHERE class_name IS NOT NULL AND class_name != ''
+ON CONFLICT (class_name) DO UPDATE
+  SET framework = EXCLUDED.framework
+  WHERE classes.framework = '' OR classes.framework IS NULL;`}</pre>
+
+        <p className="font-semibold mt-3">SQL להקמת טבלת הגדרות (חד פעמי אם עוד לא רצת):</p>
         <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`CREATE TABLE institution_settings (
   id INTEGER PRIMARY KEY,
   institution_name TEXT,
@@ -286,14 +309,11 @@ export default function SettingsPage() {
   primary_color TEXT DEFAULT '#1a3a7a',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 INSERT INTO institution_settings (id) VALUES (1);
-
 ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "service_role_all" ON institution_settings
   FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
-        <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
+        <p className="text-xs">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
     </div>
   )

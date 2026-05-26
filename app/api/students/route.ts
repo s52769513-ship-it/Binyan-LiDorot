@@ -6,6 +6,26 @@ async function classFrameworkMap(): Promise<Record<string, string>> {
   return Object.fromEntries((data ?? []).map(c => [c.class_name, c.framework]))
 }
 
+function detectFramework(className: string): string {
+  if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
+  if (className.includes('בית חינוך'))  return 'בית חינוך לבנות'
+  return ''
+}
+
+export function calcAge(dateStr: string): string {
+  if (!dateStr) return ''
+  const parts = dateStr.split('/')
+  if (parts.length !== 3) return ''
+  const [d, m, y] = parts
+  const birth = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
+  if (isNaN(birth.getTime())) return ''
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  if (today.getMonth() < birth.getMonth() ||
+      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--
+  return String(age)
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
@@ -13,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('students')
-      .select('id, name, gender, age, class_name, status, transportation, transportation_cost, parent_ids')
+      .select('id, name, gender, age, class_name, status, transportation, transportation_cost, parent_ids, birth_date_gregorian, birth_date_hebrew, id_number, health_fund, previous_school')
       .order('class_name', { ascending: true })
       .order('name', { ascending: true })
 
@@ -24,18 +44,28 @@ export async function GET(req: NextRequest) {
     const [{ data, error }, frameMap] = await Promise.all([query, classFrameworkMap()])
     if (error) throw error
 
-    const students = (data ?? []).map(s => ({
-      id: s.id,
-      name: s.name ?? '',
-      gender: s.gender ?? '',
-      age: s.age ?? '',
-      className: s.class_name ?? '',
-      framework: frameMap[s.class_name ?? ''] ?? '',
-      status: s.status ?? '',
-      transportation: Array.isArray(s.transportation) ? s.transportation : [],
-      transportationCost: s.transportation_cost ?? 0,
-      parentIds: Array.isArray(s.parent_ids) ? s.parent_ids : [],
-    }))
+    const students = (data ?? []).map(s => {
+      const cn = s.class_name ?? ''
+      const framework = frameMap[cn] || detectFramework(cn)
+      const birthGreg = s.birth_date_gregorian ?? ''
+      return {
+        id: s.id,
+        name: s.name ?? '',
+        gender: s.gender ?? '',
+        age: s.age ?? calcAge(birthGreg),
+        className: cn,
+        framework,
+        status: s.status ?? '',
+        transportation: Array.isArray(s.transportation) ? s.transportation : [],
+        transportationCost: s.transportation_cost ?? 0,
+        parentIds: Array.isArray(s.parent_ids) ? s.parent_ids : [],
+        birthDateGregorian: birthGreg,
+        birthDateHebrew: s.birth_date_hebrew ?? '',
+        idNumber: s.id_number ?? '',
+        healthFund: s.health_fund ?? '',
+        previousSchool: s.previous_school ?? '',
+      }
+    })
 
     return NextResponse.json({ data: students, total: students.length })
   } catch (err) {
@@ -47,18 +77,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-
     const {
       firstName, lastName, gender, className, status,
-      birthDateHebrew, birthDateGregorian,
+      birthDateGregorian, birthDateHebrew, idNumber,
       address, city, transportation, parentIds, notes,
+      healthFund, previousSchool,
     } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
     }
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
       class_name: className ?? '',
@@ -66,14 +96,22 @@ export async function POST(req: NextRequest) {
       transportation: Array.isArray(transportation) ? transportation : [],
       transportation_cost: 0,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
-      notes: [
+      birth_date_gregorian: birthDateGregorian ?? null,
+      birth_date_hebrew: birthDateHebrew ?? null,
+      id_number: idNumber ?? null,
+      health_fund: healthFund ?? null,
+      previous_school: previousSchool ?? null,
+      synced_at: new Date().toISOString(),
+    }
+
+    if (address || city) {
+      insertData.notes = [
         notes,
-        birthDateHebrew ? `תאריך לידה עברי: ${birthDateHebrew}` : null,
-        birthDateGregorian ? `תאריך לידה: ${birthDateGregorian}` : null,
         address ? `כתובת: ${address}` : null,
         city ? `עיר: ${city}` : null,
-      ].filter(Boolean).join(' | ') || null,
-      synced_at: new Date().toISOString(),
+      ].filter(Boolean).join(' | ') || null
+    } else if (notes) {
+      insertData.notes = notes
     }
 
     const { data, error } = await supabaseAdmin
@@ -83,7 +121,6 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) throw error
-
     return NextResponse.json({ success: true, id: data.id })
   } catch (err) {
     console.error('student insert error:', err)
