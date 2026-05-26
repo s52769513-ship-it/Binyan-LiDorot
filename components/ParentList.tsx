@@ -1,7 +1,6 @@
 'use client'
 
-import { ParentSummary } from '@/lib/types'
-import { SortField, FilterDebt } from './Dashboard'
+import { ParentSummary, SortField, FilterDebt } from '@/lib/types'
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('he-IL', {

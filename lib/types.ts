@@ -71,6 +71,9 @@ export interface DashboardSummary {
   lastSync?: string | null
 }
 
+export type SortField = 'last_name' | 'city' | 'children_count' | 'tuition_total' | 'tuition_balance'
+export type FilterDebt = 'all' | 'debt' | 'credit'
+
 export interface SyncResult {
   success: boolean
   syncedAt: string

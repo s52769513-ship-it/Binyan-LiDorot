@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { DashboardSummary, ParentSummary } from '@/lib/types'
+import { DashboardSummary, ParentSummary, SortField, FilterDebt } from '@/lib/types'
 import FinancialSummary from './FinancialSummary'
 import ParentList from './ParentList'
 import PaymentChart from './PaymentChart'
@@ -14,9 +14,6 @@ const EMPTY_SUMMARY: DashboardSummary = {
   monthlyData: [],
   lastSync: null,
 }
-
-export type SortField = 'last_name' | 'city' | 'children_count' | 'tuition_total' | 'tuition_balance'
-export type FilterDebt = 'all' | 'debt' | 'credit'
 
 export default function Dashboard() {
   const [summary, setSummary]             = useState<DashboardSummary>(EMPTY_SUMMARY)
