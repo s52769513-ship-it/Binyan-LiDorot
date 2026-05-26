@@ -19,6 +19,7 @@ export default function ParentsPage() {
   const [selectedId, setSelectedId]         = useState<string | null>(null)
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState('')
 
@@ -37,7 +38,12 @@ export default function ParentsPage() {
     })
     fetch(`/api/parents?${params}`)
       .then(r => r.json())
-      .then(d => { if (d.error) { setError(d.error); return }; setParents(d.data ?? []); setTotal(d.total ?? 0) })
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        setParents(d.data ?? [])
+        setTotal(d.total ?? 0)
+        if (d.statusOptions?.length) setStatusOptions(d.statusOptions)
+      })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
   }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir])
@@ -76,6 +82,7 @@ export default function ParentsPage() {
           totalPages={Math.ceil(total / 50)} loading={loading}
           search={search} filterStatus={filterStatus} filterDebt={filterDebt}
           sortField={sortField} sortDir={sortDir}
+          statusOptions={statusOptions}
           onSelectParent={setSelectedId}
           onSearch={v => { setSearch(v); setPage(0) }}
           onFilterStatus={v => { setFilterStatus(v); setPage(0) }}

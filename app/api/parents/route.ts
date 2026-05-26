@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (debt === 'debt') {
-      query = query.lt('tuition_balance', 0)
+      query = query.gt('tuition_balance', 0)
     } else if (debt === 'credit') {
-      query = query.gte('tuition_balance', 0)
+      query = query.lte('tuition_balance', 0)
     }
 
     const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']
@@ -42,8 +42,19 @@ export async function GET(req: NextRequest) {
     query = query.order(safeSort, { ascending: dir !== 'desc' })
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-    const { data, error, count } = await query
+    const [{ data, error, count }, { data: allStatuses }] = await Promise.all([
+      query,
+      supabaseAdmin.from('parents').select('status'),
+    ])
     if (error) throw error
+
+    const statusSet = new Set<string>()
+    for (const row of allStatuses ?? []) {
+      for (const s of Array.isArray(row.status) ? row.status : []) {
+        if (s) statusSet.add(s)
+      }
+    }
+    const statusOptions = [...statusSet].sort((a, b) => a.localeCompare(b, 'he'))
 
     const mapped = (data ?? []).map(p => ({
       id: p.id,
@@ -60,7 +71,7 @@ export async function GET(req: NextRequest) {
       tuitionBalance: p.tuition_balance ?? 0,
     }))
 
-    return NextResponse.json({ data: mapped, total: count ?? 0 })
+    return NextResponse.json({ data: mapped, total: count ?? 0, statusOptions })
   } catch (err) {
     console.error('parents error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת הורים' }, { status: 500 })

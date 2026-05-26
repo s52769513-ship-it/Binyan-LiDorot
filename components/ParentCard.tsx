@@ -194,10 +194,10 @@ export default function ParentCard({ parentId, onClose }: Props) {
           {parent && activeTab === 'finance' && (
             <div className="space-y-5">
               {/* Balance summary */}
-              <div className={`rounded-xl p-4 ${parent.tuitionBalance >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                <p className="text-sm text-gray-600 mb-1">חוב / זכות שכר לימוד</p>
-                <p className={`text-3xl font-bold ${parent.tuitionBalance >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                  {formatCurrency(parent.tuitionBalance)}
+              <div className={`rounded-xl p-4 ${parent.tuitionBalance > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                <p className="text-sm text-gray-600 mb-1">{parent.tuitionBalance > 0 ? 'חוב' : 'זכות'} שכר לימוד</p>
+                <p className={`text-3xl font-bold ${parent.tuitionBalance > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                  {formatCurrency(Math.abs(parent.tuitionBalance))}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   שכ"ל לתשלום: {formatCurrency(parent.tuitionTotal)}
