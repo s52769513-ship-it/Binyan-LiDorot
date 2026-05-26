@@ -17,7 +17,7 @@ function calcTransportCost(transport: string[]): number {
 export default function RegisterPage() {
   const [form, setForm] = useState({
     firstName: '', lastName: '', gender: 'זכר',
-    className: '', status: 'פעיל',
+    className: '', status: 'ממתין',
     birthGregorian: '', birthHebrew: '', idNumber: '',
     address: '', city: '', notes: '',
     healthFund: '', previousSchool: '',
@@ -91,7 +91,7 @@ export default function RegisterPage() {
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       setSuccess(true)
-      setForm({ firstName: '', lastName: '', gender: 'זכר', className: '', status: 'פעיל', birthGregorian: '', birthHebrew: '', idNumber: '', address: '', city: '', notes: '', healthFund: '', previousSchool: '' })
+      setForm({ firstName: '', lastName: '', gender: 'זכר', className: '', status: 'ממתין', birthGregorian: '', birthHebrew: '', idNumber: '', address: '', city: '', notes: '', healthFund: '', previousSchool: '' })
       setTransportation([]); setSelectedParent(null); setParentSearch(''); setClassFramework('')
       setTimeout(() => setSuccess(false), 4000)
     } catch { setError('שגיאה בשמירה') }

@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
       class_name: className ?? '',
-      status: status ?? 'פעיל',
+      status: status ?? 'ממתין',
       transportation: Array.isArray(transportation) ? transportation : [],
       transportation_cost: 0,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
