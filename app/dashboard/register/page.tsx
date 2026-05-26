@@ -3,25 +3,19 @@
 import { useEffect, useRef, useState } from 'react'
 
 interface ParentOption { id: string; name: string }
+interface ClassOption { class_name: string; framework: string }
 
-// Approximate Hebrew year from Gregorian
-function gregorianToHebrewYear(year: number): number {
-  return year + 3760
-}
-
-// Very basic Hebrew date hint (year only)
 function hebrewYearHint(gregorian: string): string {
   if (!gregorian) return ''
   const year = new Date(gregorian).getFullYear()
   const hebrewMonth = new Date(gregorian).getMonth()
-  // After Tishrei (roughly Oct), add 3761 instead of 3760
   const hebrewYear = hebrewMonth >= 9 ? year + 3761 : year + 3760
   return `שנה עברית משוערת: תש${hebrewYear.toString().slice(-3)}`
 }
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
-    firstName: '', lastName: '', gender: 'זכר', framework: 'תלמוד תורה',
+    firstName: '', lastName: '', gender: 'זכר',
     className: '', birthHebrew: '', birthGregorian: '',
     address: '', city: '', notes: '',
   })
@@ -29,16 +23,28 @@ export default function RegisterPage() {
   const [parentSearch, setParentSearch] = useState('')
   const [parentOptions, setParentOptions] = useState<ParentOption[]>([])
   const [selectedParent, setSelectedParent] = useState<ParentOption | null>(null)
-  const [showDropdown, setShowDropdown] = useState(false)
+  const [showParentDropdown, setShowParentDropdown] = useState(false)
+  const [classes, setClasses] = useState<ClassOption[]>([])
+  const [classFramework, setClassFramework] = useState('')
+  const [showClassDropdown, setShowClassDropdown] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Auto-set framework from gender
+  // Load existing classes
   useEffect(() => {
-    setForm(f => ({ ...f, framework: f.gender === 'נקבה' ? 'בית חינוך לכנות' : 'תלמוד תורה' }))
-  }, [form.gender])
+    fetch('/api/classes')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setClasses(d) })
+      .catch(() => {})
+  }, [])
+
+  // When className changes, look up framework from classes
+  useEffect(() => {
+    const match = classes.find(c => c.class_name === form.className)
+    setClassFramework(match?.framework ?? '')
+  }, [form.className, classes])
 
   // Search parents
   useEffect(() => {
@@ -57,6 +63,10 @@ export default function RegisterPage() {
   const toggleTransport = (t: string) =>
     setTransportation(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
 
+  const filteredClasses = classes.filter(c =>
+    !form.className || c.class_name.includes(form.className)
+  )
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.firstName || !form.lastName) { setError('שם פרטי ושם משפחה הם שדות חובה'); return }
@@ -67,7 +77,7 @@ export default function RegisterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firstName: form.firstName, lastName: form.lastName,
-          gender: form.gender, framework: form.framework,
+          gender: form.gender,
           className: form.className,
           birthDateHebrew: form.birthHebrew, birthDateGregorian: form.birthGregorian,
           address: form.address, city: form.city,
@@ -78,8 +88,8 @@ export default function RegisterPage() {
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       setSuccess(true)
-      setForm({ firstName: '', lastName: '', gender: 'זכר', framework: 'תלמוד תורה', className: '', birthHebrew: '', birthGregorian: '', address: '', city: '', notes: '' })
-      setTransportation([]); setSelectedParent(null); setParentSearch('')
+      setForm({ firstName: '', lastName: '', gender: 'זכר', className: '', birthHebrew: '', birthGregorian: '', address: '', city: '', notes: '' })
+      setTransportation([]); setSelectedParent(null); setParentSearch(''); setClassFramework('')
       setTimeout(() => setSuccess(false), 4000)
     } catch { setError('שגיאה בשמירה') }
     finally { setSubmitting(false) }
@@ -118,13 +128,39 @@ export default function RegisterPage() {
                 ))}
               </div>
             </Field>
+
+            {/* Framework read-only from class */}
             <Field label="מסגרת">
-              <input value={form.framework} onChange={e => set('framework', e.target.value)} className={INPUT} />
+              <div className={`${INPUT} bg-gray-50 text-gray-500 cursor-default`}>
+                {classFramework || <span className="text-gray-300">נקבע לפי הכיתה</span>}
+              </div>
             </Field>
           </div>
 
+          {/* Class with autocomplete */}
           <Field label="כיתה">
-            <input value={form.className} onChange={e => set('className', e.target.value)} className={INPUT} placeholder="א׳" />
+            <div className="relative">
+              <input
+                value={form.className}
+                onChange={e => { set('className', e.target.value); setShowClassDropdown(true) }}
+                onFocus={() => setShowClassDropdown(true)}
+                onBlur={() => setTimeout(() => setShowClassDropdown(false), 150)}
+                className={INPUT}
+                placeholder="א׳"
+              />
+              {showClassDropdown && filteredClasses.length > 0 && form.className && (
+                <div className="absolute top-full right-0 left-0 z-10 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto">
+                  {filteredClasses.map(c => (
+                    <button key={c.class_name} type="button"
+                      onClick={() => { set('className', c.class_name); setShowClassDropdown(false) }}
+                      className="w-full text-right px-4 py-2 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex justify-between">
+                      <span className="text-gray-400 text-xs">{c.framework}</span>
+                      <span>{c.class_name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Field>
         </Section>
 
@@ -176,16 +212,16 @@ export default function RegisterPage() {
                 <>
                   <input
                     value={parentSearch}
-                    onChange={e => { setParentSearch(e.target.value); setShowDropdown(true) }}
-                    onFocus={() => setShowDropdown(true)}
+                    onChange={e => { setParentSearch(e.target.value); setShowParentDropdown(true) }}
+                    onFocus={() => setShowParentDropdown(true)}
                     className={INPUT}
                     placeholder="הקלד שם הורה לחיפוש..."
                   />
-                  {showDropdown && parentOptions.length > 0 && (
+                  {showParentDropdown && parentOptions.length > 0 && (
                     <div className="absolute top-full right-0 left-0 z-10 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto">
                       {parentOptions.map(p => (
                         <button key={p.id} type="button"
-                          onClick={() => { setSelectedParent(p); setShowDropdown(false); setParentSearch('') }}
+                          onClick={() => { setSelectedParent(p); setShowParentDropdown(false); setParentSearch('') }}
                           className="w-full text-right px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0">
                           {p.name}
                         </button>
