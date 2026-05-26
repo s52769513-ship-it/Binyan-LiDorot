@@ -2,6 +2,70 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+/* ─── Import section ──────────────────────────────────── */
+function ImportSection() {
+  const [importing, setImporting] = useState(false)
+  const [result, setResult]       = useState<{ updated: number; notFound: string[]; errors: string[] } | null>(null)
+  const [error, setError]         = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const runImport = async (file: File) => {
+    setImporting(true); setResult(null); setError('')
+    try {
+      const text = await file.text()
+      const res  = await fetch('/api/admin/import-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: text,
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
+      setResult(data)
+    } catch { setError('שגיאה בייבוא') }
+    finally { setImporting(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ייבוא תלמידים מאקסל / CSV</h3>
+      <p className="text-xs text-gray-400">העלה קובץ CSV מאיירטייבל — המערכת תעדכן את כל התלמידים הקיימים לפי שם.</p>
+
+      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+
+      {result && (
+        <div className="space-y-2">
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-medium">
+            ✓ עודכנו {result.updated} תלמידים בהצלחה
+          </div>
+          {result.notFound.length > 0 && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+              <p className="font-semibold mb-1">לא נמצאו במערכת ({result.notFound.length}):</p>
+              <p className="leading-relaxed">{result.notFound.join(' · ')}</p>
+            </div>
+          )}
+          {result.errors.length > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              <p className="font-semibold mb-1">שגיאות ({result.errors.length}):</p>
+              <p className="leading-relaxed">{result.errors.join(' · ')}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) runImport(f) }} />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={importing}
+        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
+        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+      >
+        {importing ? 'מייבא...' : 'העלה קובץ CSV לייבוא'}
+      </button>
+    </div>
+  )
+}
+
 interface Settings {
   institution_name?: string
   address?: string
@@ -275,46 +339,8 @@ export default function SettingsPage() {
       {/* Classes management */}
       <ClassesSection />
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-2">
-        <p className="font-semibold">SQL להרצה ב-Supabase — שדות חדשים לתלמידים:</p>
-        <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`-- הוסף שדות חדשים לטבלת תלמידים
-ALTER TABLE students
-  ADD COLUMN IF NOT EXISTS id_number TEXT,
-  ADD COLUMN IF NOT EXISTS birth_date_gregorian TEXT,
-  ADD COLUMN IF NOT EXISTS birth_date_hebrew TEXT,
-  ADD COLUMN IF NOT EXISTS health_fund TEXT,
-  ADD COLUMN IF NOT EXISTS previous_school TEXT;
-
--- מלא אוטומטית כיתות עם מסגרת לפי שם הכיתה
-INSERT INTO classes (class_name, framework)
-SELECT DISTINCT class_name,
-  CASE
-    WHEN class_name LIKE '%תלמוד תורה%' THEN 'תלמוד תורה'
-    WHEN class_name LIKE '%בית חינוך%'  THEN 'בית חינוך לבנות'
-    ELSE ''
-  END
-FROM students
-WHERE class_name IS NOT NULL AND class_name != ''
-ON CONFLICT (class_name) DO UPDATE
-  SET framework = EXCLUDED.framework
-  WHERE classes.framework = '' OR classes.framework IS NULL;`}</pre>
-
-        <p className="font-semibold mt-3">SQL להקמת טבלת הגדרות (חד פעמי אם עוד לא רצת):</p>
-        <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`CREATE TABLE institution_settings (
-  id INTEGER PRIMARY KEY,
-  institution_name TEXT,
-  logo_url TEXT,
-  address TEXT,
-  phone TEXT,
-  primary_color TEXT DEFAULT '#1a3a7a',
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-INSERT INTO institution_settings (id) VALUES (1);
-ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_all" ON institution_settings
-  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
-        <p className="text-xs">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
-      </div>
+      {/* CSV import */}
+      <ImportSection />
     </div>
   )
 }
