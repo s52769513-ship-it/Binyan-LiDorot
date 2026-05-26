@@ -143,7 +143,7 @@ export default function SettingsPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
         <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
         <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`CREATE TABLE institution_settings (
-  id INTEGER PRIMARY KEY DEFAULT 1,
+  id INTEGER PRIMARY KEY,
   institution_name TEXT,
   logo_url TEXT,
   address TEXT,
@@ -151,16 +151,14 @@ export default function SettingsPage() {
   primary_color TEXT DEFAULT '#1a3a7a',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-INSERT INTO institution_settings (id) VALUES (1)
-  ON CONFLICT (id) DO NOTHING;
-ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_all" ON institution_settings
-  FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- Storage bucket for logo:
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('institution', 'institution', true)
-ON CONFLICT DO NOTHING;`}</pre>
+INSERT INTO institution_settings (id) VALUES (1);
+
+ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all" ON institution_settings
+  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
+        <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
     </div>
   )
