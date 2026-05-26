@@ -83,24 +83,7 @@ export default function Dashboard() {
   const totalPages = Math.ceil(total / 50)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-30 shadow-md" style={{ background: 'linear-gradient(90deg, #0d1f52 0%, #1a3a7a 50%, #0d1f52 100%)' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <button
-            onClick={() => window.location.href = '/'}
-            className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
-            style={{ borderColor: '#c9a22740', color: '#c9a227' }}
-          >
-            יציאה
-          </button>
-          <div className="text-right">
-            <h1 className="text-xl font-bold leading-tight" style={{ color: '#d4a921' }}>בנין לדורות</h1>
-            <p className="text-xs" style={{ color: '#8899cc' }}>מערכת ניהול · תלמוד תורה ובית חינוך</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
             <button onClick={() => { loadSummary(); loadParents() }} className="text-red-600 underline text-xs">נסה שוב</button>
@@ -159,7 +142,6 @@ export default function Dashboard() {
             />
           )}
         </div>
-      </main>
 
       {selectedId && (
         <ParentCard parentId={selectedId} onClose={() => setSelectedId(null)} />
