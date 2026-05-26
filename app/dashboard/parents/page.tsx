@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ParentSummary, SortField, FilterDebt } from '@/lib/types'
 import ParentList from '@/components/ParentList'
-import ParentCard from '@/components/ParentCard'
+import EmployeeCard from '@/components/EmployeeCard'
 
 export default function ParentsPage() {
   const [parents, setParents]           = useState<ParentSummary[]>([])
@@ -104,7 +104,7 @@ export default function ParentsPage() {
       )}
 
       {selectedId && (
-        <ParentCard parentId={selectedId} onClose={() => setSelectedId(null)} />
+        <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />
       )}
     </div>
   )
