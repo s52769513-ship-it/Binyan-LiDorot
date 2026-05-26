@@ -143,6 +143,62 @@ function ClassesSection() {
   )
 }
 
+/* ─── Sync section ────────────────────────────────────── */
+function SyncSection() {
+  const [syncing, setSyncing] = useState(false)
+  const [result, setResult]   = useState<{ success?: boolean; counts?: Record<string, number>; error?: string } | null>(null)
+
+  const handleSync = async () => {
+    setSyncing(true); setResult(null)
+    try {
+      const res = await fetch('/api/sync', { method: 'POST' })
+      const data = await res.json()
+      setResult(data)
+    } catch {
+      setResult({ error: 'שגיאת רשת' })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">סנכרון עם Airtable</h3>
+      <p className="text-xs text-gray-400">מסנכרן הורים, תלמידים, עסקאות, חובות ותשלומים מתוכננים מ-Airtable.</p>
+
+      <button
+        onClick={handleSync}
+        disabled={syncing}
+        className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+      >
+        {syncing ? (
+          <><span className="animate-spin inline-block">⟳</span> מסנכרן...</>
+        ) : (
+          <>⟳ סנכרן עכשיו</>
+        )}
+      </button>
+
+      {result && (
+        result.error ? (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-right">{result.error}</div>
+        ) : (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-right space-y-1">
+            <p className="font-semibold text-emerald-800">✓ סנכרון הושלם בהצלחה</p>
+            {result.counts && (
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-emerald-700 pt-1">
+                {Object.entries(result.counts).map(([k, v]) => (
+                  <span key={k}>{k}: <strong>{v}</strong></span>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({})
@@ -271,6 +327,9 @@ export default function SettingsPage() {
       </div>
 
       {saving && <p className="text-center text-sm text-gray-400 animate-pulse">שומר...</p>}
+
+      {/* Sync */}
+      <SyncSection />
 
       {/* Classes management */}
       <ClassesSection />
