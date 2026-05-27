@@ -94,15 +94,31 @@ export async function POST() {
         synced_at: syncedAt,
       }))
 
+    // Helper: extract string from Airtable single-select (may come as {id,name,color} object)
+    const selectName = (v: unknown): string =>
+      v && typeof v === 'object' && 'name' in (v as object)
+        ? String((v as { name: string }).name)
+        : String(v || '')
+
+    // Helper: extract array of strings from Airtable multi-select (may come as [{id,name,color}])
+    const selectNames = (v: unknown): string[] => {
+      if (!Array.isArray(v)) return []
+      return v.map(item =>
+        item && typeof item === 'object' && 'name' in item
+          ? String((item as { name: string }).name)
+          : String(item)
+      ).filter(Boolean)
+    }
+
     const students = rawStudents.map(r => ({
       id: r.id,
       parent_ids: (r.fields[S.PARENT] as string[]) || [],
       name: String(r.fields[S.NAME] || ''),
-      gender: String(r.fields[S.GENDER] || ''),
+      gender: selectName(r.fields[S.GENDER]),
       age: String(r.fields[S.AGE] || ''),
       class_name: String(r.fields[S.CLASS_NAME_TEXT] || ''),
-      status: String(r.fields[S.STATUS] || ''),
-      transportation: (r.fields[S.TRANSPORTATION] as string[]) || [],
+      status: selectName(r.fields[S.STATUS]),
+      transportation: selectNames(r.fields[S.TRANSPORTATION]),
       transportation_cost: Number(r.fields[S.TRANSPORTATION_COST]) || 0,
       synced_at: syncedAt,
     }))
