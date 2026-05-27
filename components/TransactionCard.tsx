@@ -18,18 +18,17 @@ interface Props {
   onDelete: (id: string) => void
 }
 
-function hebrewYearLetters(d: Date): string {
-  const raw = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { year: 'numeric' }).format(d)
-  const num = parseInt(raw) - 5000
-  if (isNaN(num) || num <= 0) return raw
-  const ONES    = ['','א','ב','ג','ד','ה','ו','ז','ח','ט']
-  const TENS    = ['','י','כ','ל','מ','נ','ס','ע','פ','צ']
-  const HUNDREDS = ['','ק','ר','ש','ת','תק','תר','תש','תת','תתק']
-  const h = Math.floor(num / 100), t = Math.floor((num % 100) / 10), o = num % 10
-  let s = HUNDREDS[h] ?? ''
+const HLETTERS_ONES    = ['','א','ב','ג','ד','ה','ו','ז','ח','ט']
+const HLETTERS_TENS    = ['','י','כ','ל','מ','נ','ס','ע','פ','צ']
+const HLETTERS_HUNDREDS = ['','ק','ר','ש','ת','תק','תר','תש','תת','תתק']
+
+function toHebrewLetters(n: number): string {
+  if (n <= 0) return ''
+  const h = Math.floor(n / 100), t = Math.floor((n % 100) / 10), o = n % 10
+  let s = HLETTERS_HUNDREDS[h] ?? ''
   if (t === 1 && o === 5) s += 'טו'
   else if (t === 1 && o === 6) s += 'טז'
-  else s += (TENS[t] ?? '') + (ONES[o] ?? '')
+  else s += (HLETTERS_TENS[t] ?? '') + (HLETTERS_ONES[o] ?? '')
   return s.length === 1 ? s + "'" : s.slice(0, -1) + '"' + s.slice(-1)
 }
 
@@ -37,10 +36,12 @@ function hebrewDate(iso: string): string {
   if (!iso) return ''
   try {
     const d = new Date(iso)
-    const dayMonth = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
-      day: 'numeric', month: 'long',
-    }).format(d)
-    return `${dayMonth} ${hebrewYearLetters(d)}`
+    const dayRaw  = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { day: 'numeric' }).format(d)
+    const month   = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { month: 'long' }).format(d)
+    const yearRaw = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { year: 'numeric' }).format(d)
+    const dayLetters  = toHebrewLetters(parseInt(dayRaw))
+    const yearLetters = toHebrewLetters(parseInt(yearRaw) - 5000)
+    return `${dayLetters} ב${month} ${yearLetters}`
   } catch {
     return iso
   }
