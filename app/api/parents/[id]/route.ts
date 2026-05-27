@@ -68,6 +68,34 @@ export async function GET(
       (classesRes.data ?? []).map(c => [c.class_name, c.framework])
     )
 
+    // ── Calculate tuition dynamically from active students ──────────────────
+    // Formula: IF(activeCount > 3, activeCount * 450, activeCount * 500) + transportTotal
+    const activeStudents = (studentsRes.data ?? []).filter(s => s.status === 'פעיל')
+    const activeCount    = activeStudents.length
+    const transportTotal = activeStudents.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
+    const baseTuition    = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
+    const computedTuitionTotal = baseTuition + transportTotal
+
+    // For the balance: if this parent has no stored balance yet (new local record),
+    // start with full computed total as balance. Otherwise keep Airtable's value.
+    const storedBalance = Number(p.tuition_balance) || 0
+    const storedTotal   = Number(p.tuition_total)   || 0
+    // If stored total equals stored balance (never had a payment recorded),
+    // recalculate balance proportionally. Otherwise keep the stored delta.
+    const computedBalance = storedTotal === 0
+      ? computedTuitionTotal          // brand-new record: owes full amount
+      : storedBalance + (computedTuitionTotal - storedTotal)  // adjust for tuition change
+
+    // Persist updated values back to DB (fire-and-forget, non-blocking)
+    if (computedTuitionTotal !== storedTotal || activeCount !== (p.children_count ?? 0)) {
+      void supabaseAdmin.from('parents').update({
+        tuition_total:   computedTuitionTotal,
+        tuition_balance: computedBalance,
+        children_count:  activeCount,
+      }).eq('id', id)
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     return NextResponse.json({
       id: p.id,
       name: p.name ?? '',
@@ -81,9 +109,9 @@ export async function GET(
       building: p.building ?? '',
       city: p.city ?? '',
       status: toArray(p.status),
-      childrenCount: p.children_count ?? 0,
-      tuitionTotal: p.tuition_total ?? 0,
-      tuitionBalance: p.tuition_balance ?? 0,
+      childrenCount: activeCount,
+      tuitionTotal: computedTuitionTotal,
+      tuitionBalance: computedBalance,
       notes: p.notes ?? '',
 
       students: (studentsRes.data ?? []).map(s => ({
