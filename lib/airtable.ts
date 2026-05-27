@@ -165,7 +165,7 @@ export async function fetchAirtableRecords(
 
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${API_KEY}` },
-      next: { revalidate: 300 },
+      cache: 'no-store',
     })
 
     if (!res.ok) {
