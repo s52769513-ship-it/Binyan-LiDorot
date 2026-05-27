@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import ParentCard from './ParentCard'
+import EmployeeCard from './EmployeeCard'
 
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
@@ -287,7 +287,7 @@ export default function Dashboard() {
       )}
 
       {selectedId && (
-        <ParentCard parentId={selectedId} onClose={() => setSelectedId(null)} />
+        <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />
       )}
       {showAddParent && (
         <AddParentModal onClose={() => setShowAddParent(false)} onSuccess={() => { setShowAddParent(false); load() }} />

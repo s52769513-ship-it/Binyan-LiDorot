@@ -107,7 +107,6 @@ export default function ParentsPage() {
           parentId={selectedId}
           onClose={() => setSelectedId(null)}
           onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
-          onOpenPayment={id => { setSelectedId(null); setSelectedPaymentId(id) }}
         />
       )}
       {selectedStudentId && (

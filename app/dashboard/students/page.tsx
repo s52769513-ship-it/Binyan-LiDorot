@@ -135,7 +135,6 @@ export default function StudentsPage() {
       {selectedParentId && (
         <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)}
           onOpenStudent={id => { setSelectedParentId(null); setSelectedStudentId(id) }}
-          onOpenPayment={id => { setSelectedParentId(null); setSelectedPaymentId(id) }}
         />
       )}
       {selectedPaymentId && (

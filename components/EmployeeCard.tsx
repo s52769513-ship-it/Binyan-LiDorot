@@ -1,8 +1,12 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ParentDetail, TransactionItem } from '@/lib/types'
+import { ParentDetail, PlannedPaymentItem, TransactionItem, WomanDetail } from '@/lib/types'
 import { TransactionRow } from '@/components/TransactionCard'
+
+const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
+const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 
 /* ─── helpers ──────────────────────────────────────── */
 const fmt = (n: number) =>
@@ -11,139 +15,6 @@ const fmt = (n: number) =>
 function fmtDate(d: string) {
   if (!d) return '—'
   return new Intl.DateTimeFormat('he-IL').format(new Date(d))
-}
-
-/* ─── FinancialBreakdown ────────────────────────────── */
-function FinancialBreakdown({
-  parent,
-  onClose,
-}: {
-  parent: ParentDetail
-  onClose: () => void
-}) {
-  const activeStudents = parent.students.filter(s => s.status === 'פעיל')
-  const activeCount = activeStudents.length
-  const tuitionPerChild = activeCount <= 3 ? 500 : 450
-  const calculatedTuition = activeCount * tuitionPerChild
-  const transportTotal = activeStudents.reduce((s, st) => s + (st.transportationCost ?? 0), 0)
-  const grandTotal = calculatedTuition + transportTotal
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
-        dir="rtl"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 text-lg leading-none">✕</button>
-          <h2 className="text-lg font-bold text-gray-800">פירוט כספי — {parent.name}</h2>
-        </div>
-
-        <div className="p-4 space-y-3">
-          {/* Children */}
-          <div className="bg-blue-50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-lg">👨‍👩‍👧‍👦</span>
-              <span className="font-semibold text-gray-800">ילדים פעילים ({activeCount}{parent.childrenCount !== activeCount ? ` מתוך ${parent.childrenCount}` : ''})</span>
-            </div>
-            {parent.students.length > 0 ? (
-              <ul className="space-y-1 pr-2">
-                {parent.students.map(s => (
-                  <li key={s.id} className="text-sm text-gray-700 flex items-center justify-between">
-                    <span className="text-xs text-gray-400">{s.className || ''}</span>
-                    <span>{s.name}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-gray-400 pr-2">אין מידע על ילדים</p>
-            )}
-          </div>
-
-          {/* Transport */}
-          <div className="bg-emerald-50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-lg">🚌</span>
-              <span className="font-semibold text-gray-800">הסעות</span>
-            </div>
-            {parent.students.some(s => s.transportation.length > 0) ? (
-              <ul className="space-y-2 pr-2">
-                {parent.students.map(s => (
-                  <li key={s.id} className="text-sm text-gray-700">
-                    <span className="font-medium">{s.name}:</span>{' '}
-                    {s.transportation.length > 0 ? s.transportation.join(', ') : 'ללא הסעות'}
-                    {s.transportationCost > 0 && (
-                      <span className="text-gray-500 mr-1">({fmt(s.transportationCost)})</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-gray-400 pr-2">ללא הסעות</p>
-            )}
-            {transportTotal > 0 && (
-              <div className="mt-2.5 pt-2 border-t border-emerald-100 text-sm font-semibold text-emerald-700 flex justify-between">
-                <span>{fmt(transportTotal)}</span>
-                <span>סה"כ הסעות</span>
-              </div>
-            )}
-          </div>
-
-          {/* Tuition calculation */}
-          <div className="bg-amber-50 rounded-xl p-4">
-            <div className="font-semibold text-gray-800 mb-2">חישוב שכר לימוד</div>
-            <div className="text-sm text-gray-700 font-mono bg-white/60 rounded-lg px-3 py-2 text-left" dir="ltr">
-              {activeCount} × {tuitionPerChild.toLocaleString('he-IL')} ₪ = {calculatedTuition.toLocaleString('he-IL')} ₪
-            </div>
-            <div className="text-xs text-gray-400 mt-1.5 text-right">
-              {activeCount <= 3 ? 'עד 3 ילדים פעילים: 500 ₪ לתלמיד' : 'מעל 3 ילדים פעילים: 450 ₪ לתלמיד'}
-            </div>
-          </div>
-
-          {/* Grand total */}
-          <div className="bg-indigo-50 rounded-xl p-4">
-            <div className="font-semibold text-gray-800 mb-2">סה"כ לתשלום</div>
-            <div className="text-sm text-gray-700 font-mono bg-white/60 rounded-lg px-3 py-2 text-left space-y-1" dir="ltr">
-              <div>{calculatedTuition.toLocaleString('he-IL')} ₪ (שכ"ל)</div>
-              {transportTotal > 0 && <div>+ {transportTotal.toLocaleString('he-IL')} ₪ (הסעות)</div>}
-              <div className="border-t border-indigo-100 pt-1 font-bold text-indigo-800">
-                = {grandTotal.toLocaleString('he-IL')} ₪
-              </div>
-            </div>
-          </div>
-
-          {/* Actual balance from DB */}
-          {parent.tuitionBalance !== 0 && (
-            <div className={`rounded-xl p-4 ${parent.tuitionBalance > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-xl font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {fmt(Math.abs(parent.tuitionBalance))}
-                </span>
-                <span className="text-sm font-medium text-gray-600">
-                  {parent.tuitionBalance > 0 ? 'חוב פתוח נוכחי' : 'זכות נוכחית'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function toHebrewDate(d: string) {
-  if (!d) return ''
-  try {
-    return new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
-      day: 'numeric', month: 'long', year: 'numeric',
-    }).format(new Date(d))
-  } catch { return '' }
 }
 
 /* ─── InlineField ───────────────────────────────────── */
@@ -213,7 +84,6 @@ interface Props {
   parentId: string
   onClose: () => void
   onOpenStudent?: (studentId: string) => void
-  onOpenPayment?: (paymentId: string) => void
 }
 
 /* ─── badge ─────────────────────────────────────────── */
@@ -230,20 +100,35 @@ function Badge({ text }: { text: string }) {
   )
 }
 
-type TabKey = 'details' | 'children' | 'payments'
+type TabKey = 'details' | 'children' | 'payments' | 'salary'
+type SalarySubTab = 'summary' | 'settings' | 'women'
 
 /* ═══════════════════════════════════════════════════════
-   MAIN COMPONENT — side panel (not modal)
+   MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
-export default function EmployeeCard({ parentId, onClose, onOpenStudent, onOpenPayment }: Props) {
-  const [parent, setParent] = useState<ParentDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [tab, setTab] = useState<TabKey>('details')
-  const [monthFilter, setMonthFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props) {
+  const [parent, setParent]       = useState<ParentDetail | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [tab, setTab]             = useState<TabKey>('details')
+
+  // Planned payments
+  const [selectedPP, setSelectedPP]         = useState<PlannedPaymentItem | null>(null)
+  const [showAddTx, setShowAddTx]           = useState(false)
+  const [showAddPlanned, setShowAddPlanned] = useState(false)
+  const [showAddTxForPP, setShowAddTxForPP] = useState(false)
+
+  // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
-  const [showBreakdown, setShowBreakdown] = useState(false)
+
+  // Salary
+  const [salarySubTab, setSalarySubTab]               = useState<SalarySubTab>('summary')
+  const [editingWoman, setEditingWoman]               = useState<string | null>(null)
+  const [womanDraft, setWomanDraft]                   = useState<Record<string, string | number | boolean>>({})
+  const [savingWoman, setSavingWoman]                 = useState(false)
+  const [editingSettings, setEditingSettings]         = useState(false)
+  const [settingsDraft, setSettingsDraft]             = useState<Record<string, string | number | boolean>>({})
+  const [savingSettings, setSavingSettings]           = useState(false)
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -273,302 +158,728 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onOpenP
     setParent(prev => prev ? { ...prev, ...fields } as ParentDetail : prev)
   }, [parentId])
 
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'details',  label: 'פרטים' },
-    ...(parent && parent.students.length > 0        ? [{ key: 'children' as TabKey, label: `ילדים (${parent.students.length})` }] : []),
-    ...(parent && parent.plannedPayments.length > 0 ? [{ key: 'payments' as TabKey, label: 'תשלומים' }] : []),
-  ]
+  const patchWoman = async (womanId: string, fields: Record<string, unknown>) => {
+    await fetch(`/api/women/${womanId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    })
+  }
 
-  const allMonths = [...new Set(parent?.plannedPayments.map(p => p.monthYear).filter(Boolean) ?? [])]
-  const filteredPayments = (parent?.plannedPayments ?? []).filter(p => {
-    if (monthFilter && p.monthYear !== monthFilter) return false
-    if (statusFilter) {
-      const s = p.balance <= 0 ? 'שולם' : (p.amount - p.balance) > 0 ? 'חלקי' : 'פתוח'
-      if (s !== statusFilter) return false
-    }
-    return true
-  })
+  // Planned payment helpers
+  const today = new Date(); today.setHours(0,0,0,0)
+  const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
+  const overduePPs = (parent?.plannedPayments ?? []).filter(isOverdue)
+  const pendingPPs = (parent?.plannedPayments ?? []).filter(pp => !isOverdue(pp) && pp.balance > 0)
+  const paidPPs    = (parent?.plannedPayments ?? []).filter(pp => pp.balance <= 0)
+  const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
 
-  const totalDebt       = (parent?.plannedPayments ?? []).reduce((s, p) => s + Math.max(0, p.balance), 0)
-  const currentMonth    = `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
+  const currentMonth    = `${String(new Date().getMonth()+1).padStart(2,'0')}/${new Date().getFullYear()}`
   const thisMonthPP     = (parent?.plannedPayments ?? []).filter(p => p.monthYear === currentMonth)
   const paidThisMonth   = thisMonthPP.reduce((s, p) => s + Math.max(0, p.amount - p.balance), 0)
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
+  const totalDebt       = (parent?.plannedPayments ?? []).reduce((s, p) => s + Math.max(0, p.balance), 0)
+
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'details',  label: 'פרטים' },
+    { key: 'children', label: `ילדים${parent ? ` (${parent.students.length})` : ''}` },
+    { key: 'payments', label: '📋 תשלומים' },
+    { key: 'salary',   label: '💼 משכורת' },
+  ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl overflow-hidden" style={{ height: '92vh', maxHeight: '92vh' }}>
+      <div
+        className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl overflow-hidden"
+        style={{ height: '92vh', maxHeight: '92vh' }}
+      >
 
-      {/* ── HEADER ── */}
-      <div className="px-5 pt-4 pb-0 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)' }}>
-        <div className="flex items-start justify-between mb-3">
-          <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
-          <div className="text-right flex-1 mr-2">
-            {loading
-              ? <div className="h-7 w-48 bg-white/20 rounded animate-pulse mb-1 ml-auto" />
-              : <h2 className="text-xl font-bold text-white">{parent?.name || '—'}</h2>
-            }
-            <div className="flex items-center gap-1.5 justify-end mt-1 flex-wrap">
-              {parent?.city && <span className="text-white/50 text-xs">{parent.city}</span>}
-              {(parent?.status ?? []).slice(0, 3).map(s => <Badge key={s} text={s} />)}
+        {/* ── HEADER ── */}
+        <div className="px-5 pt-4 pb-0 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)' }}>
+          <div className="flex items-start justify-between mb-2">
+            <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            <div className="text-right flex-1 mr-2">
+              {loading
+                ? <div className="h-7 w-48 bg-white/20 rounded animate-pulse mb-1 ml-auto" />
+                : <h2 className="text-xl font-bold text-white">{parent?.name || '—'}</h2>
+              }
+              <div className="flex items-center gap-1.5 justify-end mt-1 flex-wrap">
+                {parent?.city && <span className="text-white/50 text-xs">{parent.city}</span>}
+                {(parent?.status ?? []).slice(0, 3).map(s => <Badge key={s} text={s} />)}
+              </div>
+            </div>
+          </div>
+
+          {/* Financial strip */}
+          {parent && (
+            <div className="flex gap-px mb-0 mt-1">
+              <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
+                <p className={`text-base font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                  {fmt(Math.abs(parent.tuitionBalance))}
+                </p>
+                <p className="text-[10px] text-white/50">{parent.tuitionBalance > 0 ? 'חוב' : 'זכות'}</p>
+              </div>
+              <div className="flex-1 bg-white/10 px-3 py-2 text-center">
+                <p className="text-base font-bold text-white/80 tabular-nums">{parent.childrenCount}</p>
+                <p className="text-[10px] text-white/50">ילדים</p>
+              </div>
+              <div className="flex-1 bg-white/10 px-3 py-2 text-center">
+                <p className="text-base font-bold text-white/80 tabular-nums">{fmt(parent.tuitionTotal)}</p>
+                <p className="text-[10px] text-white/50">שכ"ל</p>
+              </div>
+              {parent.salaryGross > 0 && (
+                <div className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center">
+                  <p className="text-base font-bold text-purple-300 tabular-nums">{fmt(parent.salaryGross)}</p>
+                  <p className="text-[10px] text-white/50">משכורת</p>
+                </div>
+              )}
+              {parent.salaryGross === 0 && <div className="flex-1 bg-white/10 rounded-tr-xl" />}
+            </div>
+          )}
+
+          {/* Tabs + quick actions */}
+          <div className="flex items-center gap-0.5 mt-2" dir="rtl">
+            <div className="flex gap-0.5 flex-1 overflow-x-auto">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-3 py-2 text-xs font-semibold transition-colors rounded-t-lg whitespace-nowrap ${
+                    tab === t.key ? 'bg-white text-[#1a3a7a]' : 'text-white/60 hover:text-white hover:bg-white/10'
+                  }`}
+                >{t.label}</button>
+              ))}
+            </div>
+            {/* Quick actions */}
+            <div className="flex gap-1 shrink-0 pb-1">
+              <button
+                onClick={() => setShowAddTx(true)}
+                className="px-2.5 py-1 text-xs rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium transition-colors whitespace-nowrap"
+              >+ תנועה</button>
+              <button
+                onClick={() => setShowAddPlanned(true)}
+                className="px-2.5 py-1 text-xs rounded-lg bg-amber-500/80 hover:bg-amber-400 text-white font-medium transition-colors whitespace-nowrap"
+              >+ מתוכנן</button>
             </div>
           </div>
         </div>
 
-        {/* Financial strip */}
-        {parent && (
-          <div className="flex gap-px mb-0 mt-2">
-            <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
-              <p className={`text-base font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                {fmt(Math.abs(parent.tuitionBalance))}
-              </p>
-              <p className="text-[10px] text-white/50">{parent.tuitionBalance > 0 ? 'חוב' : 'זכות'}</p>
+        {/* ── BODY ── */}
+        <div className="flex-1 overflow-y-auto bg-gray-50/50" dir="rtl">
+          {loading && (
+            <div className="p-4 space-y-3">
+              {[1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}
             </div>
-            <div className="flex-1 bg-white/10 px-3 py-2 text-center">
-              <p className="text-base font-bold text-white/80 tabular-nums">{parent.childrenCount}</p>
-              <p className="text-[10px] text-white/50">ילדים</p>
-            </div>
-            <div className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center">
-              <p className="text-base font-bold text-white/80 tabular-nums">{fmt(parent.tuitionTotal)}</p>
-              <p className="text-[10px] text-white/50">שכ"ל</p>
-            </div>
-          </div>
-        )}
+          )}
+          {error && <div className="p-4 text-red-600 text-sm bg-red-50 m-4 rounded-xl">{error}</div>}
 
-        {/* Tabs */}
-        <div className="flex gap-0.5 mt-3" dir="rtl">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-xs font-semibold transition-colors rounded-t-lg ${
-                tab === t.key ? 'bg-white text-[#1a3a7a]' : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
-            >{t.label}</button>
-          ))}
+          {/* ── DETAILS TAB ── */}
+          {parent && tab === 'details' && (
+            <div className="p-4 space-y-4">
+              <SectionCard title="פרטי קשר">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
+                  <InlineField label="שם פרטי (אבא)" value={parent.firstName}   onSave={v => patch({ firstName: v })} />
+                  <InlineField label="שם משפחה"       value={parent.lastName}    onSave={v => patch({ lastName: v })} />
+                  <InlineField label="שם האמא"         value={parent.motherName}  onSave={v => patch({ motherName: v })} />
+                  <InlineField label="מייל"             value={parent.email}       onSave={v => patch({ email: v })} type="email" dir="ltr" />
+                  <InlineField label="טלפון אבא"       value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" dir="ltr" />
+                  <InlineField label="טלפון אמא"       value={parent.motherPhone} onSave={v => patch({ motherPhone: v })} type="tel" dir="ltr" />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="כתובת">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-3 p-4">
+                  <InlineField label="עיר"        value={parent.city}     onSave={v => patch({ city: v })} />
+                  <InlineField label="רחוב"       value={parent.address}  onSave={v => patch({ address: v })} />
+                  <InlineField label="בניין/דירה" value={parent.building} onSave={v => patch({ building: v })} />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="הערות">
+                <div className="p-4">
+                  <InlineField label="" value={parent.notes} onSave={v => patch({ notes: v })} multiline />
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {/* ── CHILDREN TAB ── */}
+          {parent && tab === 'children' && (
+            <div className="p-4 space-y-3">
+              {parent.students.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-8">אין ילדים רשומים</p>
+              ) : (
+                parent.students.map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => onOpenStudent?.(s.id)}
+                    className={`bg-white border border-gray-200 rounded-xl p-4 transition-colors ${
+                      onOpenStudent ? 'cursor-pointer hover:border-[#1a3a7a] hover:bg-blue-50/30' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {s.status && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            s.status === 'פעיל' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>{s.status}</span>
+                        )}
+                        {s.framework && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            s.framework === 'בית חינוך לבנות' ? 'bg-pink-50 text-pink-700' : 'bg-blue-50 text-blue-700'
+                          }`}>{s.framework}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-gray-900">{s.name}</p>
+                        <span className="text-xs text-gray-400">
+                          {s.gender === 'זכר' ? '👦' : s.gender === 'נקבה' ? '👧' : '🧒'}
+                          {s.age ? ` גיל ${s.age}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {(s.classDepartment || s.className) && (
+                        <div className="text-right col-span-2">
+                          <div className="text-[10px] text-gray-400">כיתה / אגף</div>
+                          <div className="font-medium text-gray-700">{s.classDepartment || s.className}</div>
+                        </div>
+                      )}
+                      {s.transportation.length > 0 && (
+                        <div className="text-right">
+                          <div className="text-[10px] text-gray-400">הסעה</div>
+                          <div className="font-medium text-gray-700">
+                            {s.transportation.join(', ')}
+                            {s.transportationCost > 0 && <span className="text-gray-400"> ({fmt(s.transportationCost)})</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── PAYMENTS TAB ── */}
+          {parent && tab === 'payments' && (
+            <div className="p-4 space-y-4">
+              {/* Summary chips */}
+              <div className="grid grid-cols-3 gap-2">
+                <SummaryNum label="חוב פתוח כולל" value={fmt(totalDebt)}       color="text-red-600"     bg="bg-red-50" />
+                <SummaryNum label="שולם החודש"     value={fmt(paidThisMonth)}   color="text-emerald-700" bg="bg-emerald-50" />
+                <SummaryNum label="נותר לחודש"     value={fmt(remainThisMonth)} color="text-amber-600"   bg="bg-amber-50" />
+              </div>
+
+              {/* Overdue banner */}
+              {overdueTotal > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-xs text-red-500 mb-0.5">סכום באיחור תשלום</p>
+                  <p className="text-3xl font-bold text-red-700">{fmt(overdueTotal)}</p>
+                  <p className="text-xs text-red-400 mt-1">{overduePPs.length} תשלומים שעברו תאריך</p>
+                </div>
+              )}
+
+              {/* Two-panel: pending | paid */}
+              {parent.plannedPayments.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-6">אין תשלומים מתוכננים</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Right: pending/overdue */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      ממתין ({overduePPs.length + pendingPPs.length})
+                    </h4>
+                    <div className="space-y-1.5">
+                      {[...overduePPs, ...pendingPPs].map(pp => (
+                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                          className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                            isOverdue(pp)
+                              ? 'bg-red-50 border-red-200 hover:border-red-400'
+                              : 'bg-white border-gray-200 hover:border-indigo-300'
+                          }`}>
+                          <div className="flex justify-between items-center">
+                            <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                              {fmt(pp.balance)}
+                            </span>
+                            <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                          </div>
+                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                          {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Left: paid */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      שולם ({paidPPs.length})
+                    </h4>
+                    <div className="space-y-1.5">
+                      {paidPPs.map(pp => (
+                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                          className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                            <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                          </div>
+                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Transactions */}
+              {transactions.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-600 bg-gray-50 flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{transactions.length} תנועות</span>
+                    <span>תנועות כספיות</span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
+                        <th className="px-3 py-2">תאריך</th>
+                        <th className="px-3 py-2">סוג</th>
+                        <th className="px-3 py-2 text-left">סכום</th>
+                        <th className="px-3 py-2">הערות</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.map(tx => (
+                        <TransactionRow
+                          key={tx.id}
+                          tx={tx}
+                          onUpdate={updated => setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))}
+                          onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SALARY TAB ── */}
+          {parent && tab === 'salary' && (
+            <div className="p-4">
+              {/* Sub-tabs */}
+              <div className="flex gap-0.5 mb-4 border-b border-gray-200">
+                {(['summary', 'settings', 'women'] as const).map(st => (
+                  <button key={st} onClick={() => setSalarySubTab(st)}
+                    className={`py-2 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                      salarySubTab === st
+                        ? 'border-[#1a3a7a] text-[#1a3a7a]'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}>
+                    {st === 'summary' ? 'סיכום'
+                      : st === 'settings' ? '⚙ הגדרות'
+                      : `👩 נשים${parent.women?.length ? ` (${parent.women.length})` : ''}`}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── סיכום ── */}
+              {salarySubTab === 'summary' && (
+                <div className="space-y-4">
+                  {parent.salaryGross > 0 || parent.baseHourlyRate > 0 ? (
+                    <>
+                      <div className="bg-indigo-50 rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-2xl font-bold text-indigo-800">{fmt(parent.salaryGross)}</span>
+                          <span className="text-sm text-gray-500">ברוטו</span>
+                        </div>
+                        {parent.deductTuition && (
+                          <div className="border-t border-indigo-200 pt-2 mt-2 space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-red-500">− {fmt(parent.tuitionBalance > 0 ? parent.tuitionBalance : 0)}</span>
+                              <span className="text-gray-400">קיזוז שכ"ל</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xl font-bold text-emerald-700">{fmt(parent.salaryNet)}</span>
+                              <span className="text-sm text-gray-600">לתשלום</span>
+                            </div>
+                          </div>
+                        )}
+                        {!parent.deductTuition && (
+                          <p className="text-xs text-gray-400 mt-1">ללא קיזוז שכר לימוד</p>
+                        )}
+                      </div>
+
+                      {/* Family total if has women */}
+                      {parent.women && parent.women.length > 0 && (
+                        <div className="bg-purple-50 rounded-xl p-3">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-semibold">{fmt(parent.salaryGross)}</span>
+                            <span className="text-purple-600 font-medium">בעל</span>
+                          </div>
+                          {parent.women.map(w => (
+                            <div key={w.id} className="flex justify-between text-sm mb-1">
+                              <span className="font-semibold">{fmt(w.salaryGross)}</span>
+                              <span className="text-purple-500">{w.name?.split(' ').slice(-1)[0]}</span>
+                            </div>
+                          ))}
+                          <div className="border-t border-purple-200 mt-2 pt-2 flex justify-between font-bold text-sm">
+                            <span className="text-purple-800">
+                              {fmt(parent.salaryGross + parent.women.reduce((s, w) => s + w.salaryGross, 0))}
+                            </span>
+                            <span className="text-purple-600">סה&quot;כ משפחתי</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <SectionCard title="פירוט">
+                        <div className="p-4 space-y-2">
+                          {parent.baseHourlyRate > 0 && (
+                            <DetailRow label="שכר בסיס לשעה" value={`${fmt(parent.baseHourlyRate)} × ${parent.monthlyHoursDecimal} ש'`} />
+                          )}
+                          {parent.seniorityBonusHourly > 0 && (
+                            <DetailRow label="ותק לשעה" value={`${fmt(parent.seniorityBonusHourly)} × ${parent.monthlyHoursDecimal} ש'`} />
+                          )}
+                          {parent.fixedBonus > 0 && (
+                            <DetailRow label="תוספת קבועה" value={fmt(parent.fixedBonus)} />
+                          )}
+                          {parent.transportReimbursement > 0 && (
+                            <DetailRow label="הסעות" value={fmt(parent.transportReimbursement)} />
+                          )}
+                          {parent.exceptionalExpenses > 0 && (
+                            <DetailRow label="הוצאות חריגות" value={`− ${fmt(parent.exceptionalExpenses)}`} />
+                          )}
+                        </div>
+                      </SectionCard>
+                    </>
+                  ) : (
+                    <p className="text-center text-gray-400 text-sm py-8">אין נתוני משכורת</p>
+                  )}
+                </div>
+              )}
+
+              {/* ── הגדרות ── */}
+              {salarySubTab === 'settings' && (
+                <div className="space-y-4">
+                  {!editingSettings ? (
+                    <>
+                      <SectionCard title="הגדרות שכר">
+                        <div className="p-4 space-y-2">
+                          <DetailRow label="שכר בסיס לשעה"   value={parent.baseHourlyRate > 0 ? fmt(parent.baseHourlyRate) : '—'} />
+                          <DetailRow label="תוספת ותק לשעה"  value={parent.seniorityBonusHourly > 0 ? fmt(parent.seniorityBonusHourly) : '—'} />
+                          <DetailRow label="שעות חודשיות"    value={parent.monthlyHoursDecimal > 0 ? `${parent.monthlyHoursDecimal}` : '—'} />
+                          <DetailRow label="תוספת קבועה"     value={parent.fixedBonus > 0 ? fmt(parent.fixedBonus) : '—'} />
+                          <DetailRow label="תשלום הסעות"     value={parent.transportReimbursement > 0 ? fmt(parent.transportReimbursement) : '—'} />
+                          <DetailRow label="הוצאות חריגות"   value={parent.exceptionalExpenses > 0 ? fmt(parent.exceptionalExpenses) : '—'} />
+                        </div>
+                      </SectionCard>
+                      <SectionCard title="קיזוזים">
+                        <div className="p-4 space-y-2">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${parent.deductTuition ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>
+                              {parent.deductTuition ? '✓ מקזז שכ"ל' : 'לא מקזז'}
+                            </span>
+                            <span className="text-gray-400">קיזוז שכר לימוד</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${parent.showSpouseSalary ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>
+                              {parent.showSpouseSalary ? '✓ כולל בן זוג' : 'ללא בן זוג'}
+                            </span>
+                            <span className="text-gray-400">הצגת משכורת בן זוג</span>
+                          </div>
+                        </div>
+                      </SectionCard>
+                      <button
+                        onClick={() => {
+                          setSettingsDraft({
+                            baseHourlyRate: parent.baseHourlyRate,
+                            seniorityBonusHourly: parent.seniorityBonusHourly,
+                            monthlyHoursDecimal: parent.monthlyHoursDecimal,
+                            fixedBonus: parent.fixedBonus,
+                            exceptionalExpenses: parent.exceptionalExpenses,
+                            transportReimbursement: parent.transportReimbursement,
+                            deductTuition: parent.deductTuition,
+                            showSpouseSalary: parent.showSpouseSalary,
+                          })
+                          setEditingSettings(true)
+                        }}
+                        className="w-full py-2 rounded-xl border border-[#1a3a7a]/30 text-[#1a3a7a] text-sm font-medium hover:bg-indigo-50 transition-colors"
+                      >
+                        ✏ ערוך הגדרות
+                      </button>
+                    </>
+                  ) : (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-gray-700 text-sm">עריכת הגדרות שכר</h4>
+                      {([
+                        { key: 'baseHourlyRate', label: 'שכר בסיס לשעה ₪' },
+                        { key: 'seniorityBonusHourly', label: 'תוספת ותק לשעה ₪' },
+                        { key: 'monthlyHoursDecimal', label: 'שעות חודשיות' },
+                        { key: 'fixedBonus', label: 'תוספת קבועה ₪' },
+                        { key: 'exceptionalExpenses', label: 'הוצאות חריגות ₪' },
+                        { key: 'transportReimbursement', label: 'תשלום הסעות ₪' },
+                      ] as const).map(({ key, label }) => (
+                        <div key={key}>
+                          <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                          <input
+                            type="number"
+                            value={String(settingsDraft[key] ?? '')}
+                            onChange={e => setSettingsDraft(d => ({ ...d, [key]: parseFloat(e.target.value) || 0 }))}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                          />
+                        </div>
+                      ))}
+                      <div className="flex gap-4 items-center pt-1">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={!!settingsDraft.deductTuition}
+                            onChange={e => setSettingsDraft(d => ({ ...d, deductTuition: e.target.checked }))}
+                            className="w-4 h-4 accent-[#1a3a7a]" />
+                          קיזוז שכר לימוד
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={!!settingsDraft.showSpouseSalary}
+                            onChange={e => setSettingsDraft(d => ({ ...d, showSpouseSalary: e.target.checked }))}
+                            className="w-4 h-4 accent-[#1a3a7a]" />
+                          כולל בן זוג
+                        </label>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={() => setEditingSettings(false)}
+                          className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                          ביטול
+                        </button>
+                        <button
+                          disabled={savingSettings}
+                          onClick={async () => {
+                            setSavingSettings(true)
+                            try {
+                              await patch(settingsDraft)
+                              setEditingSettings(false)
+                            } finally { setSavingSettings(false) }
+                          }}
+                          className="flex-1 py-2 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium disabled:opacity-60 hover:bg-[#0d1f52]"
+                        >
+                          {savingSettings ? 'שומר...' : 'שמור'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── נשים ── */}
+              {salarySubTab === 'women' && (
+                <div className="space-y-3">
+                  {(!parent.women || parent.women.length === 0) ? (
+                    <p className="text-center text-gray-400 text-sm py-8">אין נשים מקושרות</p>
+                  ) : (
+                    parent.women.map((w: WomanDetail) => (
+                      <div key={w.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                        {/* Woman header */}
+                        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+                          <button
+                            onClick={() => {
+                              if (editingWoman === w.id) { setEditingWoman(null) }
+                              else {
+                                setWomanDraft({
+                                  salaryGross: w.salaryGross,
+                                  baseHourlyRate: w.baseHourlyRate,
+                                  fixedBonus: w.fixedBonus,
+                                  monthlyHoursDecimal: w.monthlyHoursDecimal,
+                                  exceptionalExpenses: w.exceptionalExpenses,
+                                })
+                                setEditingWoman(w.id)
+                              }
+                            }}
+                            className="text-xs text-[#1a3a7a] hover:text-[#0d1f52] font-medium"
+                          >
+                            {editingWoman === w.id ? 'ביטול' : '✏ ערוך'}
+                          </button>
+                          <div className="text-right">
+                            <p className="font-semibold text-gray-800">{w.name}</p>
+                            <div className="flex gap-1 justify-end mt-0.5">
+                              {w.role.map(r => (
+                                <span key={r} className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded-full">{r}</span>
+                              ))}
+                              {w.status && <span className="text-xs text-gray-400">{w.status}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* View mode */}
+                        {editingWoman !== w.id && (
+                          <div className="px-4 py-3 space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xl font-bold text-[#1a3a7a]">{fmt(w.salaryGross)}</span>
+                              <span className="text-xs text-gray-400">סה&quot;כ לתשלום</span>
+                            </div>
+                            {w.baseHourlyRate > 0 && (
+                              <p className="text-xs text-gray-500">
+                                {fmt(w.baseHourlyRate)}/שעה × {w.monthlyHoursDecimal} ש'
+                                {w.fixedBonus > 0 ? ` + ${fmt(w.fixedBonus)} קבועה` : ''}
+                              </p>
+                            )}
+                            {w.notes && (
+                              <p className="text-xs text-gray-400 italic">{w.notes}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Edit mode */}
+                        {editingWoman === w.id && (
+                          <div className="px-4 py-3 space-y-3">
+                            {([
+                              { key: 'salaryGross', label: 'סה"כ לתשלום ₪' },
+                              { key: 'baseHourlyRate', label: 'שכר בסיס לשעה ₪' },
+                              { key: 'fixedBonus', label: 'תוספת קבועה ₪' },
+                              { key: 'monthlyHoursDecimal', label: 'שעות חודשיות' },
+                              { key: 'exceptionalExpenses', label: 'הוצאות חריגות ₪' },
+                            ] as const).map(({ key, label }) => (
+                              <div key={key}>
+                                <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                                <input
+                                  type="number"
+                                  value={String(womanDraft[key] ?? '')}
+                                  onChange={e => setWomanDraft(d => ({ ...d, [key]: parseFloat(e.target.value) || 0 }))}
+                                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                                />
+                              </div>
+                            ))}
+                            <div className="flex gap-2">
+                              <button onClick={() => setEditingWoman(null)}
+                                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                                ביטול
+                              </button>
+                              <button
+                                disabled={savingWoman}
+                                onClick={async () => {
+                                  setSavingWoman(true)
+                                  try {
+                                    await patchWoman(w.id, womanDraft)
+                                    setEditingWoman(null)
+                                    load()
+                                  } finally { setSavingWoman(false) }
+                                }}
+                                className="flex-1 py-2 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium disabled:opacity-60 hover:bg-[#0d1f52]"
+                              >
+                                {savingWoman ? 'שומר...' : 'שמור'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── BODY ── */}
-      <div className="flex-1 overflow-y-auto bg-gray-50/50" dir="rtl">
-        {loading && (
-          <div className="p-4 space-y-3">
-            {[1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}
-          </div>
-        )}
-        {error && <div className="p-4 text-red-600 text-sm bg-red-50 m-4 rounded-xl">{error}</div>}
-
-        {/* ── DETAILS TAB ── */}
-        {parent && tab === 'details' && (
-          <div className="p-4 space-y-4">
-            {/* Contact grid */}
-            <Card title="פרטי קשר">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                <InlineField label="שם פרטי"    value={parent.firstName}   onSave={v => patch({ firstName: v })} />
-                <InlineField label="שם משפחה"   value={parent.lastName}    onSave={v => patch({ lastName: v })} />
-                <InlineField label="שם האמא"    value={parent.motherName}  onSave={v => patch({ motherName: v })} />
-                <InlineField label="מייל"        value={parent.email}       onSave={v => patch({ email: v })} type="email" dir="ltr" />
-                <InlineField label="טלפון אבא"  value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" dir="ltr" />
-                <InlineField label="טלפון אמא"  value={parent.motherPhone} onSave={v => patch({ motherPhone: v })} type="tel" dir="ltr" />
-              </div>
-            </Card>
-
-            {/* Address */}
-            <Card title="כתובת">
-              <div className="grid grid-cols-3 gap-x-4 gap-y-3 p-4">
-                <InlineField label="עיר"        value={parent.city}     onSave={v => patch({ city: v })} />
-                <InlineField label="רחוב"       value={parent.address}  onSave={v => patch({ address: v })} />
-                <InlineField label="בניין/דירה" value={parent.building} onSave={v => patch({ building: v })} />
-              </div>
-            </Card>
-
-            {/* Notes */}
-            <Card title="הערות">
-              <div className="p-4">
-                <InlineField label="" value={parent.notes} onSave={v => patch({ notes: v })} multiline />
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* ── CHILDREN TAB ── */}
-        {parent && tab === 'children' && (
-          <div className="p-4 space-y-3">
-            {parent.students.map(s => (
-              <div key={s.id}
-                onClick={() => onOpenStudent?.(s.id)}
-                className={`bg-white border border-gray-200 rounded-xl p-4 transition-colors ${onOpenStudent ? 'cursor-pointer hover:border-[#1a3a7a] hover:bg-blue-50/30' : 'hover:border-[#1a3a7a]/30'}`}>
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="flex items-center gap-1.5">
-                    {s.status && (
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        s.status === 'פעיל' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                      }`}>{s.status}</span>
-                    )}
-                    {s.framework && (
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        s.framework === 'בית חינוך לבנות' ? 'bg-pink-50 text-pink-700' : 'bg-blue-50 text-blue-700'
-                      }`}>{s.framework}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold text-gray-900">{s.name}</p>
-                    {onOpenStudent && <span className="text-[10px] text-[#1a3a7a]/50 group-hover:opacity-100">← פתח כרטיס</span>}
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
-                  {s.className && (
-                    <div className="text-right">
-                      <div className="text-[10px] text-gray-400">כיתה</div>
-                      <div className="font-medium text-gray-700">{s.className}</div>
-                    </div>
-                  )}
-                  {s.age && (
-                    <div className="text-right">
-                      <div className="text-[10px] text-gray-400">גיל</div>
-                      <div className="font-medium text-gray-700">{s.age}</div>
-                    </div>
-                  )}
-                  {s.transportation.length > 0 && (
-                    <div className="text-right">
-                      <div className="text-[10px] text-gray-400">הסעה</div>
-                      <div className="font-medium text-gray-700">{s.transportation.join(', ')}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── PAYMENTS TAB ── */}
-        {parent && tab === 'payments' && (
-          <div className="p-4 space-y-4">
-            {/* Breakdown button */}
-            <button
-              onClick={() => setShowBreakdown(true)}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors text-right group"
-            >
-              <span className="text-xs text-indigo-400 group-hover:text-indigo-600">←</span>
-              <div>
-                <span className="text-sm font-semibold text-indigo-700">פירוט כספי מלא</span>
-                <span className="text-xs text-indigo-400 mr-2">ילדים · הסעות · שכ"ל · סה"כ</span>
-              </div>
-            </button>
-
-            {/* 3 summary numbers */}
-            <div className="grid grid-cols-3 gap-2">
-              <SummaryNum label="חוב פתוח כולל" value={fmt(totalDebt)}       color="text-red-600"     bg="bg-red-50" />
-              <SummaryNum label="שולם החודש"     value={fmt(paidThisMonth)}   color="text-emerald-700" bg="bg-emerald-50" />
-              <SummaryNum label="נותר לחודש"     value={fmt(remainThisMonth)} color="text-amber-600"   bg="bg-amber-50" />
+      {/* ── Planned payment detail modal ── */}
+      {selectedPP && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setSelectedPP(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setSelectedPP(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800 text-base">{selectedPP.name || 'תשלום מתוכנן'}</h3>
             </div>
-
-            {/* Filters */}
-            <div className="flex gap-2">
-              <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
-                className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none">
-                <option value="">כל החודשים</option>
-                {allMonths.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none">
-                <option value="">כל הסטטוסים</option>
-                {['שולם','חלקי','פתוח'].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            {/* Planned payments table */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-right text-xs font-semibold text-gray-500">
-                    <th className="px-3 py-2">חודש</th>
-                    <th className="px-3 py-2 text-left">חוב</th>
-                    <th className="px-3 py-2 text-left">שולם</th>
-                    <th className="px-3 py-2 text-left">נותר</th>
-                    <th className="px-3 py-2 text-center">סטטוס</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredPayments.length === 0
-                    ? <tr><td colSpan={5} className="text-center py-6 text-gray-400 text-sm">אין נתונים</td></tr>
-                    : filteredPayments.map(pp => {
-                      const paid   = Math.max(0, pp.amount - pp.balance)
-                      const remain = Math.max(0, pp.balance)
-                      const status = remain <= 0 ? 'שולם' : paid > 0 ? 'חלקי' : 'פתוח'
-                      return (
-                        <tr key={pp.id}
-                          onClick={() => onOpenPayment?.(pp.id)}
-                          className={`hover:bg-gray-50 ${onOpenPayment ? 'cursor-pointer hover:bg-blue-50/40' : ''}`}>
-                          <td className="px-3 py-2.5 font-medium text-right">{pp.monthYear || fmtDate(pp.date)}</td>
-                          <td className="px-3 py-2.5 text-left tabular-nums text-gray-600">{fmt(pp.amount)}</td>
-                          <td className="px-3 py-2.5 text-left tabular-nums text-emerald-700 font-medium">{fmt(paid)}</td>
-                          <td className="px-3 py-2.5 text-left tabular-nums font-semibold text-red-600">
-                            {remain > 0 ? fmt(remain) : <span className="text-emerald-600">✓</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              status === 'שולם' ? 'bg-emerald-50 text-emerald-700'
-                              : status === 'חלקי' ? 'bg-amber-50 text-amber-700'
-                              : 'bg-red-50 text-red-700'}`}>{status}</span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Transactions — using TransactionRow */}
-            {transactions.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-600 bg-gray-50">
-                  תנועות כספיות
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
-                      <th className="px-3 py-2">תאריך</th>
-                      <th className="px-3 py-2">סוג</th>
-                      <th className="px-3 py-2 text-left">סכום</th>
-                      <th className="px-3 py-2">הערות</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.map(tx => (
-                      <TransactionRow
-                        key={tx.id}
-                        tx={tx}
-                        onUpdate={updated => setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))}
-                        onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-3 mb-5">
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-bold text-gray-800">{fmt(selectedPP.amount)}</span>
+                <span className="text-xs text-gray-400">סכום מתוכנן</span>
               </div>
+              {selectedPP.balance > 0 ? (
+                <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
+                  <span className="text-lg font-bold text-red-600">{fmt(selectedPP.balance)}</span>
+                  <span className="text-xs text-red-400">יתרה לתשלום</span>
+                </div>
+              ) : (
+                <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
+                  <span className="text-sm font-semibold text-emerald-600">✓ שולם במלואו</span>
+                </div>
+              )}
+              {selectedPP.date && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{fmtDate(selectedPP.date)}</span>
+                  <span className="text-gray-400">תאריך</span>
+                </div>
+              )}
+              {selectedPP.monthYear && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{selectedPP.monthYear}</span>
+                  <span className="text-gray-400">חודש</span>
+                </div>
+              )}
+            </div>
+            {selectedPP.balance > 0 && (
+              <button
+                onClick={() => setShowAddTxForPP(true)}
+                className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-semibold text-sm hover:bg-emerald-800 transition-colors"
+              >
+                + הוסף תשלום
+              </button>
             )}
           </div>
-        )}
-      </div>
-      </div>
+        </div>
+      )}
 
-      {showBreakdown && parent && (
-        <FinancialBreakdown parent={parent} onClose={() => setShowBreakdown(false)} />
+      {/* ── Modals ── */}
+      {showAddTx && parent && (
+        <AddTransactionModal
+          parentId={parentId}
+          parentName={parent.name}
+          onClose={() => setShowAddTx(false)}
+          onSuccess={() => { setShowAddTx(false); load() }}
+        />
+      )}
+      {showAddTxForPP && selectedPP && parent && (
+        <AddTransactionModal
+          parentId={parentId}
+          parentName={parent.name}
+          prefilledAmount={selectedPP.balance}
+          prefilledNotes={selectedPP.name}
+          onClose={() => setShowAddTxForPP(false)}
+          onSuccess={() => { setShowAddTxForPP(false); setSelectedPP(null); load() }}
+        />
+      )}
+      {showAddPlanned && parent && (
+        <AddPlannedPaymentModal
+          parentId={parentId}
+          parentName={parent.name}
+          onClose={() => setShowAddPlanned(false)}
+          onSuccess={() => { setShowAddPlanned(false); load() }}
+        />
       )}
     </div>
   )
 }
 
 /* ─── sub-components ──────────────────────────────────── */
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">
         {title}
       </div>
       {children}
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center text-sm">
+      <span className="font-medium text-gray-800">{value}</span>
+      <span className="text-gray-400">{label}</span>
     </div>
   )
 }
