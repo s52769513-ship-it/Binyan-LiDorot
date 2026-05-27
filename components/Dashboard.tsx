@@ -6,6 +6,7 @@ import EmployeeCard from './EmployeeCard'
 
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
+const DeptDebtModal       = dynamic(() => import('./DeptDebtModal'),       { ssr: false })
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -47,10 +48,13 @@ function MiniBar({ pct, color }: { pct: number; color: string }) {
   )
 }
 
-function DeptCard({ d }: { d: DeptStat }) {
+function DeptCard({ d, onClick }: { d: DeptStat; onClick: () => void }) {
   const c = DEPT_COLOR[d.name] ?? DEPT_COLOR['אחר']
   return (
-    <div className={`rounded-lg border border-gray-200 p-3 flex flex-col gap-1.5 ${c.bg}`}>
+    <button
+      onClick={onClick}
+      className={`rounded-lg border border-gray-200 p-3 flex flex-col gap-1.5 ${c.bg} w-full text-right hover:shadow-md hover:border-gray-300 transition-all`}
+    >
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-gray-700">{d.name}</span>
         <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
@@ -72,8 +76,11 @@ function DeptCard({ d }: { d: DeptStat }) {
         </div>
       </div>
       <MiniBar pct={d.collectionPct} color={c.bar} />
-      <div className="text-[10px] text-gray-400 text-left">{d.parentsInDebt} משפחות בחוב</div>
-    </div>
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] text-gray-400">{d.parentsInDebt} משפחות בחוב</div>
+        <div className="text-[10px] text-gray-400 flex items-center gap-0.5">פירוט ←</div>
+      </div>
+    </button>
   )
 }
 
@@ -132,9 +139,10 @@ export default function Dashboard() {
   const [data, setData]       = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
-  const [selectedId, setSelectedId]   = useState<string | null>(null)
-  const [showAddParent, setShowAddParent]   = useState(false)
-  const [showAddTx, setShowAddTx]           = useState(false)
+  const [selectedId, setSelectedId]       = useState<string | null>(null)
+  const [showAddParent, setShowAddParent] = useState(false)
+  const [showAddTx, setShowAddTx]         = useState(false)
+  const [deptModal, setDeptModal]         = useState<string | null>(null)
 
   const load = () => {
     setLoading(true); setError('')
@@ -216,7 +224,9 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-2">
             {loading
               ? [1,2].map(i => <div key={i} className="h-24 bg-gray-100 rounded-lg animate-pulse" />)
-              : (d?.departmentStats ?? [] as DeptStat[]).map((ds: DeptStat) => <DeptCard key={ds.name} d={ds} />)
+              : (d?.departmentStats ?? [] as DeptStat[]).map((ds: DeptStat) => (
+                  <DeptCard key={ds.name} d={ds} onClick={() => setDeptModal(ds.name)} />
+                ))
             }
           </div>
         </div>
@@ -299,6 +309,7 @@ export default function Dashboard() {
         <MonthChart data={d.monthlyData} />
       )}
 
+      {deptModal && <DeptDebtModal framework={deptModal} onClose={() => setDeptModal(null)} />}
       {selectedId && <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />}
       {showAddParent && (
         <AddParentModal onClose={() => setShowAddParent(false)} onSuccess={() => { setShowAddParent(false); load() }} />
