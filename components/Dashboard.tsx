@@ -19,6 +19,7 @@ const fmtDate = (d: string) => {
 interface DebtAlert   { id: string; name: string; balance: number; childrenCount: number }
 interface RecentTx    { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; parentName: string }
 interface MonthlyItem { month: string; planned: number; actual: number }
+interface DeptStat    { framework: string; expected: number; paid: number; remaining: number; totalDebt: number; familiesCount: number; pct: number }
 
 interface DashboardData {
   plannedThisMonth: number
@@ -91,6 +92,84 @@ function MonthChart({ data }: { data: MonthlyItem[] }) {
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-emerald-500" />נגבה</span>
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-[#1a3a7a]" />חודש פעיל</span>
       </div>
+    </div>
+  )
+}
+
+function DepartmentBlock() {
+  const [depts, setDepts]     = useState<DeptStat[] | null>(null)
+  const [month, setMonth]     = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/summary/department')
+      .then(r => r.json())
+      .then(d => { setDepts(d.departments ?? []); setMonth(d.month ?? '') })
+      .catch(() => setDepts([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const FW_COLOR: Record<string, { bar: string; badge: string; text: string }> = {
+    'תלמוד תורה':       { bar: '#1a3a7a', badge: 'bg-blue-50 text-blue-800',   text: 'text-blue-700' },
+    'בית חינוך לבנות': { bar: '#7c3aed', badge: 'bg-violet-50 text-violet-800', text: 'text-violet-700' },
+    'לא מוגדר':         { bar: '#9ca3af', badge: 'bg-gray-50 text-gray-500',    text: 'text-gray-500' },
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+        <h3 className="font-semibold text-gray-800">סיכום לפי אגף</h3>
+        {month && <span className="text-xs text-gray-400">· {month}</span>}
+      </div>
+
+      {loading ? (
+        <div className="p-4 space-y-3">
+          {[1, 2].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />)}
+        </div>
+      ) : !depts?.length ? (
+        <div className="py-10 text-center text-gray-400 text-sm">אין נתונים</div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {depts.map(d => {
+            const colors = FW_COLOR[d.framework] ?? FW_COLOR['לא מוגדר']
+            return (
+              <div key={d.framework} className="px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${colors.badge}`}>{d.framework}</span>
+                  <span className="text-xs text-gray-400 mr-auto">{d.familiesCount} משפחות</span>
+                  <span className={`text-xs font-bold tabular-nums ${colors.text}`}>{d.pct}%</span>
+                </div>
+
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, d.pct)}%`, background: colors.bar }} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="text-[11px] text-gray-400">צפוי</div>
+                    <div className="text-sm font-semibold tabular-nums text-gray-800">₪{fmt(d.expected)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-400">שולם</div>
+                    <div className="text-sm font-semibold tabular-nums text-emerald-700">₪{fmt(d.paid)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-400">נותר</div>
+                    <div className="text-sm font-semibold tabular-nums text-amber-600">₪{fmt(d.remaining)}</div>
+                  </div>
+                </div>
+
+                {d.totalDebt > 0 && (
+                  <div className="flex items-center justify-between text-xs text-gray-400 border-t border-gray-50 pt-1.5">
+                    <span>חוב מצטבר כולל</span>
+                    <span className="font-semibold text-red-500 tabular-nums">₪{fmt(d.totalDebt)}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -195,6 +274,9 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* Department summary */}
+      <DepartmentBlock />
 
       {/* Middle row: debt alerts + recent transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
