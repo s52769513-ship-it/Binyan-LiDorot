@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { createPlannedPaymentInAirtable } from '@/lib/airtable-write'
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,18 +10,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
     }
 
-    const syncedAt = new Date().toISOString()
-
-    const airtableId = await createPlannedPaymentInAirtable({
-      amount: Number(amount),
-      name: name || undefined,
-      date: date || undefined,
-      monthYear: monthYear || undefined,
-      parentIds: Array.isArray(parentIds) ? parentIds : [],
-    })
+    const id = crypto.randomUUID()
+    // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
+    const syncedAt = '2099-12-31T23:59:59.999Z'
 
     const row = {
-      id: airtableId,
+      id,
       amount: Number(amount),
       name: name || '',
       date: date || null,
@@ -31,10 +24,10 @@ export async function POST(req: NextRequest) {
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       synced_at: syncedAt,
     }
-    const { error } = await supabaseAdmin.from('planned_payments').upsert(row, { onConflict: 'id' })
+    const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
-    return NextResponse.json({ success: true, id: airtableId })
+    return NextResponse.json({ success: true, id })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('planned-payments POST error:', message)

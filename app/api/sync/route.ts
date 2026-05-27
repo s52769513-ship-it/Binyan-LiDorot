@@ -109,11 +109,19 @@ export async function POST() {
 
     const transactions = rawTransactions.map(r => {
       const projectIds = (r.fields[T.PROJECT] as string[]) || []
+      // Airtable single-select comes as {id, name, color} — extract the name
+      const typeField = r.fields[T.TYPE]
+      const typeName = typeField && typeof typeField === 'object' && 'name' in (typeField as object)
+        ? String((typeField as { name: string }).name)
+        : String(typeField || '')
+      const rawAmount = Number(r.fields[T.AMOUNT]) || 0
+      // הוצאה = expense → store as negative
+      const amount = typeName.includes('הוצאה') ? -Math.abs(rawAmount) : rawAmount
       return {
         id: r.id,
         parent_ids: (r.fields[T.PARENT] as string[]) || [],
-        amount: Number(r.fields[T.AMOUNT]) || 0,
-        type: String(r.fields[T.TYPE] || ''),
+        amount,
+        type: typeName,
         date: (r.fields[T.DATE] as string) || null,
         month_year: String(r.fields[T.MONTH_YEAR] || ''),
         notes: String(r.fields[T.NOTES] || ''),

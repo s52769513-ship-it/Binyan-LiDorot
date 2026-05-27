@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { createTransactionInAirtable } from '@/lib/airtable-write'
 
 const PAGE_SIZE = 50
 
@@ -95,21 +94,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
     }
 
-    const syncedAt = new Date().toISOString()
+    const id = crypto.randomUUID()
+    // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
+    const syncedAt = '2099-12-31T23:59:59.999Z'
 
-    // Create in Airtable first (get canonical ID)
-    const airtableId = await createTransactionInAirtable({
-      amount: Number(amount),
-      type: type || undefined,
-      date: date || undefined,
-      monthYear: monthYear || undefined,
-      notes: notes || undefined,
-      parentIds: Array.isArray(parentIds) ? parentIds : [],
-    })
-
-    // Upsert to Supabase with Airtable ID so sync doesn't conflict
     const row = {
-      id: airtableId,
+      id,
       amount: Number(amount),
       type: type || '',
       date: date || null,
@@ -120,10 +110,10 @@ export async function POST(req: NextRequest) {
       project_names: [],
       synced_at: syncedAt,
     }
-    const { error } = await supabaseAdmin.from('transactions').upsert(row, { onConflict: 'id' })
+    const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
 
-    return NextResponse.json({ success: true, id: airtableId })
+    return NextResponse.json({ success: true, id })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('transaction POST error:', message)

@@ -20,10 +20,11 @@ export function calcAge(dateStr: string): string {
   const birth = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
   if (isNaN(birth.getTime())) return ''
   const today = new Date()
-  let age = today.getFullYear() - birth.getFullYear()
-  if (today.getMonth() < birth.getMonth() ||
-      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--
-  return String(age)
+  let years = today.getFullYear() - birth.getFullYear()
+  let months = today.getMonth() - birth.getMonth()
+  if (today.getDate() < birth.getDate()) months--
+  if (months < 0) { years--; months += 12 }
+  return `${years}.${months}`
 }
 
 export async function GET(req: NextRequest) {
@@ -94,21 +95,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
     }
 
-    const { createStudentInAirtable } = await import('@/lib/airtable-write')
+    const id = crypto.randomUUID()
+    // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
+    const syncedAt = '2099-12-31T23:59:59.999Z'
 
     const calcedAge = birthDateGregorian ? calcAge(birthDateGregorian) : ''
     const tc = transportationCost ?? calcTransportCost(Array.isArray(transportation) ? transportation : [])
-
-    const airtableId = await createStudentInAirtable({
-      firstName, lastName,
-      gender: gender ?? '',
-      age: calcedAge || undefined,
-      className: className || undefined,
-      status: status ?? 'ממתין',
-      transportation: Array.isArray(transportation) ? transportation : [],
-      transportationCost: tc > 0 ? tc : undefined,
-      parentIds: Array.isArray(parentIds) ? parentIds : [],
-    })
 
     let notesVal = notes || ''
     if (address || city) {
@@ -116,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     const row = {
-      id: airtableId,
+      id,
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
       age: calcedAge,
@@ -131,13 +123,13 @@ export async function POST(req: NextRequest) {
       health_fund: healthFund ?? null,
       previous_school: previousSchool ?? null,
       notes: notesVal || null,
-      synced_at: new Date().toISOString(),
+      synced_at: syncedAt,
     }
 
-    const { error } = await supabaseAdmin.from('students').upsert(row, { onConflict: 'id' })
+    const { error } = await supabaseAdmin.from('students').insert(row)
     if (error) throw error
 
-    return NextResponse.json({ success: true, id: airtableId })
+    return NextResponse.json({ success: true, id })
   } catch (err) {
     console.error('student insert error:', err)
     return NextResponse.json({ error: 'שגיאה בשמירת הרישום' }, { status: 500 })

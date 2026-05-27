@@ -87,18 +87,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
     }
 
-    const { createParentInAirtable } = await import('@/lib/airtable-write')
-    const syncedAt = new Date().toISOString()
-
-    const airtableId = await createParentInAirtable({
-      firstName, lastName, motherName, fatherPhone, motherPhone,
-      email, address, building, city,
-      status: Array.isArray(status) ? status : (status ? [status] : ['פעיל']),
-      notes,
-    })
+    const id = crypto.randomUUID()
+    // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
+    const syncedAt = '2099-12-31T23:59:59.999Z'
 
     const row = {
-      id: airtableId,
+      id,
       name: [firstName, lastName].filter(Boolean).join(' '),
       first_name: firstName || '',
       last_name:  lastName  || '',
@@ -116,10 +110,10 @@ export async function POST(req: NextRequest) {
       tuition_balance: 0,
       synced_at: syncedAt,
     }
-    const { error } = await supabaseAdmin.from('parents').upsert(row, { onConflict: 'id' })
+    const { error } = await supabaseAdmin.from('parents').insert(row)
     if (error) throw error
 
-    return NextResponse.json({ success: true, id: airtableId })
+    return NextResponse.json({ success: true, id })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('parent POST error:', message)
