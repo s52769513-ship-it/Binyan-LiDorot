@@ -846,12 +846,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           onSuccess={() => { setShowAddTx(false); load() }}
         />
       )}
-      {showAddTxForPP && txForPP && parent && (
+      {showAddTxForPP && txForPP && (
         <AddTransactionModal
-          parentId={parentId}
-          parentName={parent.name}
+          fixedLabel="בנין לדורות"
+          sourceLabel={txForPP.name}
           prefilledAmount={txForPP.balance}
-          prefilledNotes={txForPP.name}
+          plannedPaymentId={txForPP.id}
           onClose={() => { setShowAddTxForPP(false); setTxForPP(null) }}
           onSuccess={() => { setShowAddTxForPP(false); setTxForPP(null); load() }}
         />

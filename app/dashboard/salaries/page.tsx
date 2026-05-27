@@ -72,8 +72,11 @@ function SettingsTab() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
-  const [showDetails, setShowDetails] = useState<string | null>(null)
+  const [openId, setOpenId]       = useState<string | null>(null)
   const [openCard, setOpenCard]   = useState<string | null>(null)
+  const [saving, setSaving]       = useState<string | null>(null)
+  // Edits keyed by employee id
+  const [edits, setEdits]         = useState<Record<string, Partial<Employee>>>({})
 
   useEffect(() => {
     fetch('/api/salaries')
@@ -88,6 +91,28 @@ function SettingsTab() {
   const totalGross  = filtered.reduce((s, e) => s + (e.showSpouseSalary ? e.familySalary : e.salaryGross), 0)
   const totalDeduct = filtered.reduce((s, e) => s + e.tuitionDeduction, 0)
   const totalNet    = filtered.reduce((s, e) => s + e.netAfterTuition, 0)
+
+  const getEdit = (id: string): Partial<Employee> => edits[id] ?? {}
+  const setEdit = (id: string, field: keyof Employee, value: unknown) =>
+    setEdits(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), [field]: value } }))
+
+  const save = async (emp: Employee) => {
+    const patch = edits[emp.id]
+    if (!patch || Object.keys(patch).length === 0) { setOpenId(null); return }
+    setSaving(emp.id)
+    try {
+      await fetch(`/api/parents/${emp.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      // Refresh
+      const data = await fetch('/api/salaries').then(r => r.json())
+      if (Array.isArray(data)) setEmployees(data)
+      setEdits(prev => { const n = {...prev}; delete n[emp.id]; return n })
+      setOpenId(null)
+    } finally { setSaving(null) }
+  }
 
   return (
     <div className="space-y-4">
@@ -104,7 +129,7 @@ function SettingsTab() {
             <p className="text-base font-bold text-indigo-800">{fmt(totalGross)}</p>
           </div>
           <div className="bg-red-50 rounded-xl px-4 py-2 text-center flex-1">
-            <p className="text-xs text-gray-500">קיזוז שכ"ל</p>
+            <p className="text-xs text-gray-500">קיזוז שכ&quot;ל</p>
             <p className="text-base font-bold text-red-700">− {fmt(totalDeduct)}</p>
           </div>
           <div className="bg-emerald-50 rounded-xl px-4 py-2 text-center flex-1">
@@ -124,7 +149,7 @@ function SettingsTab() {
                 <th className="px-4 py-3 text-right font-semibold">שם</th>
                 <th className="px-4 py-3 text-center font-semibold">שעות</th>
                 <th className="px-4 py-3 text-center font-semibold">ברוטו</th>
-                <th className="px-4 py-3 text-center font-semibold">קיזוז שכ"ל</th>
+                <th className="px-4 py-3 text-center font-semibold">קיזוז שכ&quot;ל</th>
                 <th className="px-4 py-3 text-center font-semibold">נטו לתשלום</th>
                 <th className="px-4 py-3 text-center font-semibold">אשה</th>
                 <th className="px-2 py-3" />
@@ -132,12 +157,13 @@ function SettingsTab() {
             </thead>
             <tbody>
               {filtered.map(emp => {
-                const isOpen = showDetails === emp.id
+                const isOpen = openId === emp.id
+                const ed = getEdit(emp.id)
                 const displayGross = emp.showSpouseSalary ? emp.familySalary : emp.salaryGross
                 return (
                   <>
                     <tr key={emp.id}
-                      onClick={() => setShowDetails(isOpen ? null : emp.id)}
+                      onClick={() => setOpenId(isOpen ? null : emp.id)}
                       className={`border-b border-gray-100 cursor-pointer transition-colors ${isOpen ? 'bg-indigo-50' : 'hover:bg-gray-50/60'}`}>
                       <td className="px-4 py-3 font-medium text-gray-800">
                         <button
@@ -175,16 +201,80 @@ function SettingsTab() {
                       <td className="px-2 py-3 text-gray-400 text-xs">{isOpen ? '▲' : '▼'}</td>
                     </tr>
                     {isOpen && (
-                      <tr key={`${emp.id}-detail`} className="bg-indigo-50/50">
+                      <tr key={`${emp.id}-edit`} className="bg-indigo-50/50 border-b border-gray-100">
                         <td colSpan={7} className="px-6 py-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                            {emp.baseHourlyRate > 0 && <InfoChip label="שכר בסיס לשעה" value={fmt(emp.baseHourlyRate)} />}
-                            {emp.seniorityBonusHourly > 0 && <InfoChip label="תוספת ותק לשעה" value={fmt(emp.seniorityBonusHourly)} />}
-                            {emp.monthlyHoursDecimal > 0 && <InfoChip label="שעות חודשיות" value={`${emp.monthlyHoursDecimal} שעות`} />}
-                            {emp.fixedBonus > 0 && <InfoChip label="תוספת קבועה" value={fmt(emp.fixedBonus)} />}
-                            {emp.transportReimbursement > 0 && <InfoChip label="תשלום הסעות" value={fmt(emp.transportReimbursement)} />}
-                            {emp.exceptionalExpenses > 0 && <InfoChip label="הוצאות חריגות" value={`− ${fmt(emp.exceptionalExpenses)}`} color="red" />}
-                            {emp.deductTuition && <InfoChip label={'קיזוז שכ"ל'} value="✓ מופחת" color="amber" />}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">שכר בסיס לשעה</span>
+                              <input type="number" min="0" step="10"
+                                defaultValue={emp.baseHourlyRate || ''}
+                                onChange={e => setEdit(emp.id, 'baseHourlyRate', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">שעות חודשיות</span>
+                              <input type="number" min="0" step="1"
+                                defaultValue={emp.monthlyHoursDecimal || ''}
+                                onChange={e => setEdit(emp.id, 'monthlyHoursDecimal', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">תוספת ותק לשעה</span>
+                              <input type="number" min="0" step="1"
+                                defaultValue={emp.seniorityBonusHourly || ''}
+                                onChange={e => setEdit(emp.id, 'seniorityBonusHourly', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">תוספת קבועה</span>
+                              <input type="number" min="0" step="10"
+                                defaultValue={emp.fixedBonus || ''}
+                                onChange={e => setEdit(emp.id, 'fixedBonus', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">תשלום הסעות</span>
+                              <input type="number" min="0" step="10"
+                                defaultValue={emp.transportReimbursement || ''}
+                                onChange={e => setEdit(emp.id, 'transportReimbursement', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-500">הוצאות חריגות</span>
+                              <input type="number" min="0" step="10"
+                                defaultValue={emp.exceptionalExpenses || ''}
+                                onChange={e => setEdit(emp.id, 'exceptionalExpenses', Number(e.target.value))}
+                                className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer col-span-1 pt-4">
+                              <input type="checkbox"
+                                defaultChecked={emp.deductTuition}
+                                onChange={e => setEdit(emp.id, 'deductTuition', e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" />
+                              <span className="text-gray-600">קיזוז שכ&quot;ל</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer col-span-1 pt-4">
+                              <input type="checkbox"
+                                defaultChecked={emp.showSpouseSalary}
+                                onChange={e => setEdit(emp.id, 'showSpouseSalary', e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" />
+                              <span className="text-gray-600">כולל שכר אשה</span>
+                            </label>
+                          </div>
+                          <div className="flex gap-2 justify-start">
+                            <button
+                              onClick={e => { e.stopPropagation(); save(emp) }}
+                              disabled={saving === emp.id}
+                              className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+                            >
+                              {saving === emp.id ? 'שומר...' : 'שמור שינויים'}
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); setOpenId(null); setEdits(prev => { const n={...prev}; delete n[emp.id]; return n }) }}
+                              className="px-4 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              ביטול
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -337,8 +427,10 @@ function PlannedTab() {
       {openCard && <EmployeeCard parentId={openCard} onClose={() => setOpenCard(null)} />}
       {showAddTx && (
         <AddTransactionModal
+          fixedLabel="בנין לדורות"
+          sourceLabel={showAddTx.name}
           prefilledAmount={showAddTx.balance}
-          prefilledNotes={showAddTx.name}
+          plannedPaymentId={showAddTx.id}
           onClose={() => setShowAddTx(null)}
           onSuccess={() => { setShowAddTx(null); setLoading(true); fetch('/api/planned-payments?project=משכורת').then(r=>r.json()).then(d=>{if(Array.isArray(d))setPlanned(d)}).finally(()=>setLoading(false)) }}
         />
