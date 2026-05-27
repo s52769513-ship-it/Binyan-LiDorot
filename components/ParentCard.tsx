@@ -30,7 +30,7 @@ export default function ParentCard({ parentId, onClose }: Props) {
   const [parent, setParent] = useState<ParentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'details' | 'students' | 'finance'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'students' | 'finance' | 'salary'>('details')
 
   useEffect(() => {
     setLoading(true)
@@ -84,18 +84,18 @@ export default function ParentCard({ parentId, onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-5">
-          {(['details', 'students', 'finance'] as const).map(tab => (
+        <div className="flex border-b border-gray-100 px-5 overflow-x-auto">
+          {(['details', 'students', 'finance', 'salary'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === tab
                   ? 'border-indigo-600 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'details' ? 'פרטים אישיים' : tab === 'students' ? 'ילדים' : 'מצב כספי'}
+              {tab === 'details' ? 'פרטים אישיים' : tab === 'students' ? 'ילדים' : tab === 'finance' ? 'מצב כספי' : '💼 משכורת'}
             </button>
           ))}
         </div>
@@ -252,6 +252,106 @@ export default function ParentCard({ parentId, onClose }: Props) {
                       </div>
                     </div>
                   ))}
+                </Section>
+              )}
+            </div>
+          )}
+
+          {parent && activeTab === 'salary' && (
+            <div className="space-y-4" dir="rtl">
+              {parent.salaryGross > 0 || parent.baseHourlyRate > 0 ? (
+                <>
+                  {/* Salary summary */}
+                  <div className={`rounded-xl p-4 ${parent.deductTuition ? 'bg-blue-50' : 'bg-indigo-50'}`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-2xl font-bold text-indigo-800">{formatCurrency(parent.salaryGross)}</span>
+                      <span className="text-sm text-gray-600">סה"כ ברוטו</span>
+                    </div>
+                    {parent.deductTuition && (
+                      <div className="border-t border-indigo-200 pt-2 mt-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-red-600 font-medium">
+                            − {formatCurrency(parent.tuitionBalance > 0 ? parent.tuitionBalance : 0)} קיזוז שכ"ל
+                          </span>
+                          <span className="text-gray-500">ניכוי שכר לימוד</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xl font-bold text-emerald-700">{formatCurrency(parent.salaryNet)}</span>
+                          <span className="text-sm text-gray-600 font-medium">סה"כ לתשלום</span>
+                        </div>
+                      </div>
+                    )}
+                    {!parent.deductTuition && (
+                      <p className="text-xs text-gray-500">ללא קיזוז שכר לימוד</p>
+                    )}
+                  </div>
+
+                  {/* Breakdown */}
+                  <Section title="פירוט שכר">
+                    {parent.baseHourlyRate > 0 && (
+                      <Row
+                        label="שכר בסיס לשעה"
+                        value={`${formatCurrency(parent.baseHourlyRate)} × ${parent.monthlyHoursDecimal} שעות`}
+                      />
+                    )}
+                    {parent.seniorityBonusHourly > 0 && (
+                      <Row
+                        label="תוספת ותק לשעה"
+                        value={`${formatCurrency(parent.seniorityBonusHourly)} × ${parent.monthlyHoursDecimal} שעות`}
+                      />
+                    )}
+                    {parent.fixedBonus > 0 && (
+                      <Row label="תוספת קבועה" value={formatCurrency(parent.fixedBonus)} />
+                    )}
+                    {parent.transportReimbursement > 0 && (
+                      <Row label="תשלום הסעות" value={formatCurrency(parent.transportReimbursement)} />
+                    )}
+                    {parent.exceptionalExpenses > 0 && (
+                      <Row label="הוצאות חריגות" value={`− ${formatCurrency(parent.exceptionalExpenses)}`} />
+                    )}
+                  </Section>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-400 text-sm">אין נתוני משכורת</div>
+              )}
+
+              {/* Wife salary section */}
+              {parent.women && parent.women.length > 0 && (
+                <Section title="משכורת אשה">
+                  {parent.women.map(w => (
+                    <div key={w.id} className="border border-gray-200 rounded-xl p-3 mb-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-indigo-700">{formatCurrency(w.salaryGross)}</span>
+                        <div className="text-right">
+                          <p className="font-medium text-gray-800">{w.name}</p>
+                          {w.status && <p className="text-xs text-gray-400">{w.status}</p>}
+                        </div>
+                      </div>
+                      {w.baseHourlyRate > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatCurrency(w.baseHourlyRate)}/שעה × {w.monthlyHoursDecimal} שעות
+                          {w.fixedBonus > 0 ? ` + ${formatCurrency(w.fixedBonus)} קבועה` : ''}
+                        </p>
+                      )}
+                      {w.role.length > 0 && (
+                        <div className="flex gap-1 mt-1 justify-end flex-wrap">
+                          {w.role.map(r => (
+                            <span key={r} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full">{r}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {parent.showSpouseSalary && parent.women.length > 0 && (
+                    <div className="border-t border-gray-200 pt-2 mt-1">
+                      <div className="flex justify-between font-semibold text-sm">
+                        <span className="text-indigo-800">
+                          {formatCurrency(parent.salaryGross + parent.women.reduce((s, w) => s + w.salaryGross, 0))}
+                        </span>
+                        <span className="text-gray-600">סה"כ משפחתי</span>
+                      </div>
+                    </div>
+                  )}
                 </Section>
               )}
             </div>

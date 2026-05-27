@@ -49,6 +49,20 @@ export interface PlannedPaymentItem {
   balance: number
 }
 
+export interface WomanDetail {
+  id: string
+  name: string
+  baseHourlyRate: number
+  monthlyHoursDecimal: number
+  fixedBonus: number
+  exceptionalExpenses: number
+  salaryGross: number
+  isFixedSalary: boolean
+  status: string
+  role: string[]
+  notes: string
+}
+
 export interface ParentDetail extends ParentSummary {
   motherName: string
   address: string
@@ -58,6 +72,19 @@ export interface ParentDetail extends ParentSummary {
   debts: DebtItem[]
   plannedPayments: PlannedPaymentItem[]
   transactions: TransactionItem[]
+  // Salary fields
+  baseHourlyRate: number
+  seniorityBonusHourly: number
+  monthlyHoursDecimal: number
+  fixedBonus: number
+  exceptionalExpenses: number
+  transportReimbursement: number
+  deductTuition: boolean
+  showSpouseSalary: boolean
+  calculateWifeTuition: boolean
+  salaryGross: number
+  salaryNet: number
+  women: WomanDetail[]
 }
 
 export interface MonthlyStat {

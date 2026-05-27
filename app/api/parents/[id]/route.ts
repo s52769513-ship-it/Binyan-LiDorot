@@ -38,7 +38,7 @@ export async function GET(
   try {
     const { id } = await params
 
-    const [parentRes, studentsRes, debtsRes, plannedRes, transactionsRes, classesRes] =
+    const [parentRes, studentsRes, debtsRes, plannedRes, transactionsRes, classesRes, womenRes] =
       await Promise.all([
         supabaseAdmin.from('parents').select('*').eq('id', id).single(),
         supabaseAdmin.from('students').select('*').contains('parent_ids', [id]),
@@ -55,6 +55,7 @@ export async function GET(
           .order('date', { ascending: false })
           .limit(30),
         supabaseAdmin.from('classes').select('class_name, framework'),
+        supabaseAdmin.from('women').select('*').contains('parent_ids', [id]),
       ])
 
     if (parentRes.error) throw parentRes.error
@@ -67,6 +68,28 @@ export async function GET(
     const frameMap = Object.fromEntries(
       (classesRes.data ?? []).map(c => [c.class_name, c.framework])
     )
+
+    // ── Calculate tuition dynamically from active students ──────────────────
+    const activeStudents = (studentsRes.data ?? []).filter(s => s.status === 'פעיל')
+    const activeCount    = activeStudents.length
+    const transportTotal = activeStudents.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
+    const baseTuition    = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
+    const computedTuitionTotal = baseTuition + transportTotal
+
+    const storedBalance = Number(p.tuition_balance) || 0
+    const storedTotal   = Number(p.tuition_total)   || 0
+    const computedBalance = storedTotal === 0
+      ? computedTuitionTotal
+      : storedBalance + (computedTuitionTotal - storedTotal)
+
+    if (computedTuitionTotal !== storedTotal || activeCount !== (p.children_count ?? 0)) {
+      void supabaseAdmin.from('parents').update({
+        tuition_total:   computedTuitionTotal,
+        tuition_balance: computedBalance,
+        children_count:  activeCount,
+      }).eq('id', id)
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     return NextResponse.json({
       id: p.id,
@@ -81,10 +104,37 @@ export async function GET(
       building: p.building ?? '',
       city: p.city ?? '',
       status: toArray(p.status),
-      childrenCount: p.children_count ?? 0,
-      tuitionTotal: p.tuition_total ?? 0,
-      tuitionBalance: p.tuition_balance ?? 0,
+      childrenCount: activeCount,
+      tuitionTotal: computedTuitionTotal,
+      tuitionBalance: computedBalance,
       notes: p.notes ?? '',
+
+      // Salary fields
+      baseHourlyRate: p.base_hourly_rate ?? 0,
+      seniorityBonusHourly: p.seniority_bonus_hourly ?? 0,
+      monthlyHoursDecimal: p.monthly_hours_decimal ?? 0,
+      fixedBonus: p.fixed_bonus ?? 0,
+      exceptionalExpenses: p.exceptional_expenses ?? 0,
+      transportReimbursement: p.transport_reimbursement ?? 0,
+      deductTuition: p.deduct_tuition ?? false,
+      showSpouseSalary: p.show_spouse_salary ?? false,
+      calculateWifeTuition: p.calculate_wife_tuition ?? false,
+      salaryGross: p.salary_gross ?? 0,
+      salaryNet: p.salary_after_tuition ?? 0,
+
+      women: (womenRes.data ?? []).map(w => ({
+        id: w.id,
+        name: w.name ?? '',
+        baseHourlyRate: w.base_hourly_rate ?? 0,
+        monthlyHoursDecimal: w.monthly_hours_decimal ?? 0,
+        fixedBonus: w.fixed_bonus ?? 0,
+        exceptionalExpenses: w.exceptional_expenses ?? 0,
+        salaryGross: w.salary_gross ?? 0,
+        isFixedSalary: w.is_fixed_salary ?? false,
+        status: w.status ?? '',
+        role: toArray(w.role),
+        notes: w.notes ?? '',
+      })),
 
       students: (studentsRes.data ?? []).map(s => ({
         id: s.id,
@@ -118,7 +168,9 @@ export async function GET(
         amount: tx.amount ?? 0,
         type: tx.type ?? '',
         date: tx.date ?? '',
+        monthYear: tx.month_year ?? '',
         notes: tx.notes ?? '',
+        projectNames: (tx.project_names as string[]) ?? [],
       })),
     })
   } catch (err) {

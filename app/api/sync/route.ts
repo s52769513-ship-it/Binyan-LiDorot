@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ } from '@/lib/airtable'
+import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ, PS, W } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
 async function upsertAndPrune<R extends { id: string; synced_at: string }>(
@@ -32,7 +32,7 @@ export async function POST() {
 
   try {
     // Fetch all tables from Airtable in parallel
-    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned, rawProjects] =
+    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned, rawProjects, rawWomen] =
       await Promise.all([
         fetchAirtableRecords(TABLES.PARENTS, {
           fields: [
@@ -40,6 +40,10 @@ export async function POST() {
             P.FATHER_PHONE, P.MOTHER_PHONE, P.EMAIL,
             P.ADDRESS, P.BUILDING, P.CITY, P.STATUS,
             P.CHILDREN_COUNT, P.TUITION_TOTAL, P.TUITION_BALANCE, P.NOTES,
+            PS.BASE_HOURLY, PS.SENIORITY_HOURLY, PS.FIXED_BONUS,
+            PS.EXCEPTIONAL_EXPENSES, PS.DEDUCT_TUITION, PS.SHOW_SPOUSE_SALARY,
+            PS.CALC_WIFE_TUITION, PS.MONTHLY_HOURS_DECIMAL, PS.TRANSPORT_REIMBURSEMENT,
+            PS.SALARY_GROSS, PS.SALARY_NET, PS.WOMAN_LINKS,
           ],
         }),
 
@@ -62,8 +66,14 @@ export async function POST() {
           fields: [PP.NAME, PP.AMOUNT, PP.DATE, PP.MONTH_YEAR, PP.BALANCE, PP.PARENT],
         }),
 
-        fetchAirtableRecords(TABLES.PROJECTS, {
-          fields: [PROJ.NAME],
+        fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] }),
+
+        fetchAirtableRecords(TABLES.WOMEN, {
+          fields: [
+            W.NAME, W.HUSBAND_LINKS, W.BASE_HOURLY, W.FIXED_BONUS,
+            W.MONTHLY_HOURS_DECIMAL, W.SALARY_FIXED_TOTAL, W.SALARY_GROSS,
+            W.STATUS, W.EXCEPTIONAL_EXPENSES, W.IS_FIXED_SALARY, W.ROLE, W.NOTES,
+          ],
         }),
       ])
 
@@ -71,6 +81,26 @@ export async function POST() {
     const projectNameMap: Record<string, string> = {}
     for (const r of rawProjects) {
       projectNameMap[r.id] = String(r.fields[PROJ.NAME] || '')
+    }
+
+    // Helper: extract string from Airtable single-select (may come as {id,name,color} object)
+    const selectName = (v: unknown): string => {
+      const raw = v && typeof v === 'object' && 'name' in (v as object)
+        ? String((v as { name: string }).name)
+        : String(v || '')
+      // Normalise legacy values from this Airtable base
+      if (raw === 'V') return 'פעיל'
+      return raw
+    }
+
+    // Helper: extract array of strings from Airtable multi-select (may come as [{id,name,color}])
+    const selectNames = (v: unknown): string[] => {
+      if (!Array.isArray(v)) return []
+      return v.map(item =>
+        item && typeof item === 'object' && 'name' in item
+          ? String((item as { name: string }).name)
+          : String(item)
+      ).filter(Boolean)
     }
 
     // Transform to Supabase rows
@@ -88,11 +118,24 @@ export async function POST() {
         address: String(r.fields[P.ADDRESS] || ''),
         building: String(r.fields[P.BUILDING] || ''),
         city: String(r.fields[P.CITY] || ''),
-        status: (r.fields[P.STATUS] as string[]) || [],
+        status: selectNames(r.fields[P.STATUS]),
         children_count: Number(r.fields[P.CHILDREN_COUNT]) || 0,
         tuition_total: Number(r.fields[P.TUITION_TOTAL]) || 0,
         tuition_balance: Number(r.fields[P.TUITION_BALANCE]) || 0,
         notes: String(r.fields[P.NOTES] || ''),
+        // Salary fields
+        base_hourly_rate:        Number(r.fields[PS.BASE_HOURLY]) || 0,
+        seniority_bonus_hourly:  Number(r.fields[PS.SENIORITY_HOURLY]) || 0,
+        fixed_bonus:             Number(r.fields[PS.FIXED_BONUS]) || 0,
+        exceptional_expenses:    Number(r.fields[PS.EXCEPTIONAL_EXPENSES]) || 0,
+        transport_reimbursement: Number(r.fields[PS.TRANSPORT_REIMBURSEMENT]) || 0,
+        deduct_tuition:          Boolean(r.fields[PS.DEDUCT_TUITION]) || false,
+        show_spouse_salary:      Boolean(r.fields[PS.SHOW_SPOUSE_SALARY]) || false,
+        calculate_wife_tuition:  Boolean(r.fields[PS.CALC_WIFE_TUITION]) || false,
+        monthly_hours_decimal:   Number(r.fields[PS.MONTHLY_HOURS_DECIMAL]) || 0,
+        salary_gross:            Number(r.fields[PS.SALARY_GROSS]) || 0,
+        salary_after_tuition:    Number(r.fields[PS.SALARY_NET]) || 0,
+        woman_ids:               (r.fields[PS.WOMAN_LINKS] as string[]) || [],
         synced_at: syncedAt,
       }))
 
@@ -100,22 +143,30 @@ export async function POST() {
       id: r.id,
       parent_ids: (r.fields[S.PARENT] as string[]) || [],
       name: String(r.fields[S.NAME] || ''),
-      gender: String(r.fields[S.GENDER] || ''),
+      gender: selectName(r.fields[S.GENDER]),
       age: String(r.fields[S.AGE] || ''),
       class_name: String(r.fields[S.CLASS_NAME_TEXT] || ''),
-      status: String(r.fields[S.STATUS] || ''),
-      transportation: (r.fields[S.TRANSPORTATION] as string[]) || [],
+      status: selectName(r.fields[S.STATUS]),
+      transportation: selectNames(r.fields[S.TRANSPORTATION]),
       transportation_cost: Number(r.fields[S.TRANSPORTATION_COST]) || 0,
       synced_at: syncedAt,
     }))
 
     const transactions = rawTransactions.map(r => {
       const projectIds = (r.fields[T.PROJECT] as string[]) || []
+      // Airtable single-select comes as {id, name, color} — extract the name
+      const typeField = r.fields[T.TYPE]
+      const typeName = typeField && typeof typeField === 'object' && 'name' in (typeField as object)
+        ? String((typeField as { name: string }).name)
+        : String(typeField || '')
+      const rawAmount = Number(r.fields[T.AMOUNT]) || 0
+      // הוצאה = expense → store as negative
+      const amount = typeName.includes('הוצאה') ? -Math.abs(rawAmount) : rawAmount
       return {
         id: r.id,
         parent_ids: (r.fields[T.PARENT] as string[]) || [],
-        amount: Number(r.fields[T.AMOUNT]) || 0,
-        type: String(r.fields[T.TYPE] || ''),
+        amount,
+        type: typeName,
         date: (r.fields[T.DATE] as string) || null,
         month_year: String(r.fields[T.MONTH_YEAR] || ''),
         notes: String(r.fields[T.NOTES] || ''),
@@ -144,12 +195,30 @@ export async function POST() {
       synced_at: syncedAt,
     }))
 
+    const women = rawWomen.map(r => ({
+      id: r.id,
+      parent_ids: (r.fields[W.HUSBAND_LINKS] as string[]) || [],
+      name: String(r.fields[W.NAME] || ''),
+      base_hourly_rate:      Number(r.fields[W.BASE_HOURLY]) || 0,
+      fixed_bonus:           Number(r.fields[W.FIXED_BONUS]) || 0,
+      monthly_hours_decimal: Number(r.fields[W.MONTHLY_HOURS_DECIMAL]) || 0,
+      exceptional_expenses:  Number(r.fields[W.EXCEPTIONAL_EXPENSES]) || 0,
+      salary_total:          Number(r.fields[W.SALARY_FIXED_TOTAL]) || 0,
+      salary_gross:          Number(r.fields[W.SALARY_GROSS]) || 0,
+      status:                selectName(r.fields[W.STATUS]),
+      is_fixed_salary:       Boolean(r.fields[W.IS_FIXED_SALARY]) || false,
+      role:                  selectNames(r.fields[W.ROLE]),
+      notes:                 String(r.fields[W.NOTES] || ''),
+      synced_at: syncedAt,
+    }))
+
     // Upsert all tables (sequentially – parents first because others may reference them)
     const parentsCount       = await upsertAndPrune('parents', parents, syncedAt)
     const studentsCount      = await upsertAndPrune('students', students, syncedAt)
     const transactionsCount  = await upsertAndPrune('transactions', transactions, syncedAt)
     const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
     const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
+    const womenCount         = await upsertAndPrune('women', women, syncedAt)
 
     // Payment allocation: split "בנין לדורות" income transactions across active children
     let allocationsCount = 0
@@ -157,9 +226,7 @@ export async function POST() {
       const binyanTxs = transactions.filter(
         tx => tx.project_names.includes('בנין לדורות') && tx.amount > 0
       )
-
       if (binyanTxs.length > 0) {
-        // Index students by parent for fast lookup
         const studentsByParent: Record<string, typeof students> = {}
         for (const s of students) {
           for (const pid of s.parent_ids) {
@@ -167,12 +234,10 @@ export async function POST() {
             studentsByParent[pid].push(s)
           }
         }
-
         const allocations: Array<{
           transaction_id: string; student_id: string; parent_id: string
           amount: number; month_year: string; synced_at: string
         }> = []
-
         for (const tx of binyanTxs) {
           for (const parentId of tx.parent_ids) {
             const active = (studentsByParent[parentId] ?? []).filter(s => s.status === 'פעיל')
@@ -189,18 +254,14 @@ export async function POST() {
             }))
           }
         }
-
-        // Replace all allocations atomically
         await supabaseAdmin.from('payment_allocations').delete().not('id', 'is', null)
         if (allocations.length > 0) {
-          const { error } = await supabaseAdmin.from('payment_allocations').insert(allocations)
-          if (error) throw error
+          await supabaseAdmin.from('payment_allocations').insert(allocations)
         }
         allocationsCount = allocations.length
       }
     } catch (allocErr) {
-      // Non-fatal: table may not exist yet – run schema migration first
-      console.warn('payment_allocations skipped:', allocErr)
+      console.warn('payment_allocations skipped (run schema migration):', allocErr)
     }
 
     // Record sync log
@@ -223,6 +284,7 @@ export async function POST() {
         debts: debtsCount,
         plannedPayments: plannedCount,
         allocations: allocationsCount,
+        women: womenCount,
       },
     })
   } catch (err) {

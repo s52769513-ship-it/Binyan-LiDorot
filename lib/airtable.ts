@@ -11,6 +11,7 @@ export const TABLES = {
   PLANNED_PAYMENTS: 'tblM32gMmdJePBohJ',
   DEBTS: 'tbl9Si2hlAgEn0IFl',
   PROJECTS: 'tblZXTI3fMyW8C7Kj',
+  WOMEN: 'tbluX3nEiLeCgPf64',
 } as const
 
 // Parent field IDs (tblLUe8hRdvpejO9W)
@@ -78,6 +79,38 @@ export const PP = {
   PARENT: 'fldWxiXVEjT0E9mOF',
   BALANCE: 'fldHrfV6mvI8gpHxg',
   MONTH_YEAR: 'fldC0iUgWbWrR9pKK',
+} as const
+
+// Parent salary field IDs (additional, on tblLUe8hRdvpejO9W)
+export const PS = {
+  BASE_HOURLY:             'fldejlbzncLuobXe3',
+  SENIORITY_HOURLY:        'fldSOOqiVpjevUeAC',
+  FIXED_BONUS:             'fldw9g01UIBRx6zeh',
+  EXCEPTIONAL_EXPENSES:    'fld1usleGIo7PpKkG',
+  DEDUCT_TUITION:          'fld8rir6xpXB9BdP0',
+  SHOW_SPOUSE_SALARY:      'fldGjP1yVfEno4fiH',
+  CALC_WIFE_TUITION:       'fld8qpGJhzKyc0RzB',
+  MONTHLY_HOURS_DECIMAL:   'fld5SVqiKDSWexAFE',
+  TRANSPORT_REIMBURSEMENT: 'fldl7WYi6AcWGEdB1',
+  SALARY_GROSS:            'fldEwx2qe8uKeSJ42',
+  SALARY_NET:              'fldNjIF4s6BohmWrc',
+  WOMAN_LINKS:             'fld59vtt4Rwlpkalc',
+} as const
+
+// Women field IDs (tbluX3nEiLeCgPf64)
+export const W = {
+  NAME:                  'fldsW3EWbgknXGxln',
+  HUSBAND_LINKS:         'fld6JEZf2HILLDujz',
+  BASE_HOURLY:           'fldAt0ptzBXOKgQLh',
+  FIXED_BONUS:           'fldtrTFYoGIjLzAUE',
+  MONTHLY_HOURS_DECIMAL: 'fldGotO2GrDoNOw0E',
+  SALARY_FIXED_TOTAL:    'fldv0ioUvivNxN4PC',
+  SALARY_GROSS:          'fldBdmVAmDBbVlcEH',
+  STATUS:                'fldgg60DN3hQuj42p',
+  EXCEPTIONAL_EXPENSES:  'fldoZMkIxSslAfljB',
+  IS_FIXED_SALARY:       'fldoZlrqkfRsludGL',
+  ROLE:                  'fldR7i5JgCP1mYMeM',
+  NOTES:                 'fldM1BmdQpOGMqXMi',
 } as const
 
 export interface AirtableRecord {

@@ -8,8 +8,10 @@ const NAV_LINKS = [
   { href: '/dashboard',          label: 'דשבורד'      },
   { href: '/dashboard/parents',  label: 'אנ"ש'        },
   { href: '/dashboard/students', label: 'תלמידים'     },
-  { href: '/dashboard/tuition',  label: 'שכ"ל'        },
-  { href: '/dashboard/reports',  label: 'דוחות'       },
+  { href: '/dashboard/tuition',       label: 'שכ"ל'        },
+  { href: '/dashboard/transactions',  label: 'תנועות'      },
+  { href: '/dashboard/salaries',      label: '💼 משכורות'  },
+  { href: '/dashboard/reports',    label: 'דוחות'       },
   { href: '/dashboard/register', label: 'רישום תלמיד' },
   { href: '/dashboard/settings', label: '⚙ הגדרות'   },
 ]
