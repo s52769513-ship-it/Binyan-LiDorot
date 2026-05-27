@@ -19,6 +19,7 @@ export interface StudentDetail {
   gender: string
   age: string | number
   className: string
+  classDepartment: string   // formula: "כיתה X – אגף Y"
   framework: string
   status: string
   transportation: string[]

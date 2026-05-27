@@ -169,8 +169,10 @@ export default function ParentCard({ parentId, onClose }: Props) {
                         </div>
                         <p className="font-semibold text-gray-800">{s.name}</p>
                       </div>
-                      {s.className && (
-                        <p className="text-sm text-gray-500">כיתה: {s.className}</p>
+                      {(s.classDepartment || s.className) && (
+                        <p className="text-sm text-gray-500">
+                          {s.classDepartment || `כיתה: ${s.className}`}
+                        </p>
                       )}
                       {s.transportation.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-gray-100">

@@ -142,6 +142,7 @@ export async function GET(
         gender: s.gender ?? '',
         age: s.age ?? '',
         className: s.class_name ?? '',
+        classDepartment: s.class_department ?? s.class_name ?? '',
         framework: frameMap[s.class_name ?? ''] ?? '',
         status: s.status ?? '',
         transportation: toArray(s.transportation),

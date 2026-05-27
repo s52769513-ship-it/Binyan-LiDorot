@@ -51,6 +51,7 @@ export async function POST() {
           fields: [
             S.NAME, S.GENDER, S.AGE, S.CLASS_NAME_TEXT,
             S.STATUS, S.TRANSPORTATION, S.TRANSPORTATION_COST, S.PARENT,
+            S.DEPARTMENT_LINKS, S.CLASS_DEPARTMENT,
           ],
         }),
 
@@ -146,6 +147,9 @@ export async function POST() {
       gender: selectName(r.fields[S.GENDER]),
       age: String(r.fields[S.AGE] || ''),
       class_name: String(r.fields[S.CLASS_NAME_TEXT] || ''),
+      // formula field returns the combined "כיתה X – אגף Y" display string
+      class_department: String(r.fields[S.CLASS_DEPARTMENT] || ''),
+      department_ids: (r.fields[S.DEPARTMENT_LINKS] as string[]) || [],
       status: selectName(r.fields[S.STATUS]),
       transportation: selectNames(r.fields[S.TRANSPORTATION]),
       transportation_cost: Number(r.fields[S.TRANSPORTATION_COST]) || 0,
