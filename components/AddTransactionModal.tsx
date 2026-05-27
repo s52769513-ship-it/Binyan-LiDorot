@@ -21,11 +21,12 @@ interface Props {
   prefilledNotes?: string
   sourceLabel?: string       // shows a "מקור" chip (e.g. the planned payment name)
   plannedPaymentId?: string  // links this transaction to a planned payment (updates its balance)
+  preselectedProject?: string
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function AddTransactionModal({ parentId, parentName, fixedLabel, prefilledAmount, prefilledNotes, sourceLabel, plannedPaymentId, onClose, onSuccess }: Props) {
+export default function AddTransactionModal({ parentId, parentName, fixedLabel, prefilledAmount, prefilledNotes, sourceLabel, plannedPaymentId, preselectedProject, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
@@ -35,7 +36,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [date, setDate]           = useState(todayStr)
   const [monthYear, setMonthYear] = useState(getMonthYear(todayStr))
   const [notes, setNotes]         = useState(prefilledNotes ?? '')
-  const [project, setProject]     = useState('')
+  const [project, setProject]     = useState(preselectedProject ?? '')
   const [projects, setProjects]   = useState<string[]>([])
   const [parentSearch, setParentSearch] = useState(parentName ?? '')
   const [parentOptions, setParentOptions] = useState<ParentOption[]>([])

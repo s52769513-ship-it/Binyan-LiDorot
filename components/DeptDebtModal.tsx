@@ -41,7 +41,10 @@ export default function DeptDebtModal({ framework, onClose }: Props) {
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [addTxFor, setAddTxFor]     = useState<{ id: string; name: string } | null>(null)
+  const [addTxFor, setAddTxFor]     = useState<{
+    id: string; name: string;
+    plannedPaymentId?: string; sourceLabel?: string; amount?: number
+  } | null>(null)
   const [expanded, setExpanded]     = useState<Record<string, boolean>>({})
 
   const load = () => {
@@ -156,13 +159,25 @@ export default function DeptDebtModal({ framework, onClose }: Props) {
                                 <div className="text-[10px] text-gray-400">{pp.monthYear}</div>
                               )}
                             </div>
-                            <div className="text-right flex-shrink-0">
+                            <div className="text-right flex-shrink-0 ml-2">
                               <div className="text-xs font-bold text-amber-700 tabular-nums">
                                 ₪{fmt(pp.balance)}
                                 <span className="text-[10px] font-normal text-gray-400 mr-1">/ ₪{fmt(pp.amount)}</span>
                               </div>
                               <div className="text-[10px] text-gray-400">יתרה פתוחה</div>
                             </div>
+                            <button
+                              onClick={() => setAddTxFor({
+                                id: p.id,
+                                name: p.name,
+                                plannedPaymentId: pp.id,
+                                sourceLabel: pp.name || pp.monthYear,
+                                amount: pp.balance,
+                              })}
+                              className="flex-shrink-0 px-2 py-1 rounded-lg bg-emerald-700 text-white text-[11px] font-medium hover:bg-emerald-800 transition-colors"
+                            >
+                              + שלם
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -195,6 +210,10 @@ export default function DeptDebtModal({ framework, onClose }: Props) {
         <AddTransactionModal
           parentId={addTxFor.id}
           parentName={addTxFor.name}
+          plannedPaymentId={addTxFor.plannedPaymentId}
+          sourceLabel={addTxFor.sourceLabel}
+          prefilledAmount={addTxFor.amount}
+          preselectedProject="בנין לדורות"
           onClose={() => setAddTxFor(null)}
           onSuccess={() => { setAddTxFor(null); load() }}
         />
