@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ParentDetail } from '@/lib/types'
+import dynamic from 'next/dynamic'
+import { ParentDetail, PlannedPaymentItem } from '@/lib/types'
+
+const AddTransactionModal   = dynamic(() => import('./AddTransactionModal'),   { ssr: false })
+const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('he-IL', {
@@ -30,7 +34,20 @@ export default function ParentCard({ parentId, onClose }: Props) {
   const [parent, setParent] = useState<ParentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'details' | 'students' | 'finance' | 'salary'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'students' | 'finance' | 'payments' | 'salary'>('details')
+  const [selectedPP, setSelectedPP] = useState<PlannedPaymentItem | null>(null)
+  const [showAddTx, setShowAddTx]           = useState(false)
+  const [showAddPlanned, setShowAddPlanned] = useState(false)
+  const [showAddTxForPP, setShowAddTxForPP] = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    fetch(`/api/parents/${parentId}`)
+      .then(r => r.json())
+      .then(data => { if (!data.error) setParent(data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -83,21 +100,34 @@ export default function ParentCard({ parentId, onClose }: Props) {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-5 overflow-x-auto">
-          {(['details', 'students', 'finance', 'salary'] as const).map(tab => (
+        {/* Tabs + quick actions */}
+        <div className="flex items-center border-b border-gray-100 px-3 overflow-x-auto gap-0.5">
+          {(['details', 'students', 'finance', 'payments', 'salary'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+              className={`py-3 px-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === tab
                   ? 'border-indigo-600 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'details' ? 'פרטים אישיים' : tab === 'students' ? 'ילדים' : tab === 'finance' ? 'מצב כספי' : '💼 משכורת'}
+              {tab === 'details' ? 'פרטים'
+               : tab === 'students' ? 'ילדים'
+               : tab === 'finance' ? 'כספים'
+               : tab === 'payments' ? '📋 תשלומים'
+               : '💼 משכורת'}
             </button>
           ))}
+          <div className="flex-1" />
+          <button onClick={() => setShowAddTx(true)}
+            className="px-2.5 py-1 text-xs rounded-lg bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition-colors whitespace-nowrap">
+            + תנועה
+          </button>
+          <button onClick={() => setShowAddPlanned(true)}
+            className="px-2.5 py-1 text-xs rounded-lg bg-amber-500 text-white font-medium hover:bg-amber-600 transition-colors whitespace-nowrap mr-1">
+            + מתוכנן
+          </button>
         </div>
 
         {/* Body */}
@@ -201,9 +231,7 @@ export default function ParentCard({ parentId, onClose }: Props) {
                 <p className={`text-3xl font-bold ${parent.tuitionBalance >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                   {formatCurrency(parent.tuitionBalance)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  שכ"ל לתשלום: {formatCurrency(parent.tuitionTotal)}
-                </p>
+                <p className="text-xs text-gray-500 mt-1">שכ"ל לתשלום: {formatCurrency(parent.tuitionTotal)}</p>
               </div>
 
               {/* Debts */}
@@ -223,41 +251,163 @@ export default function ParentCard({ parentId, onClose }: Props) {
                 </Section>
               )}
 
-              {/* Planned payments */}
-              {parent.plannedPayments.length > 0 && (
-                <Section title={`תשלומים מתוכננים (${parent.plannedPayments.length})`}>
-                  {parent.plannedPayments.slice(0, 6).map(pp => (
-                    <div key={pp.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                      <span className={`text-sm font-medium ${pp.balance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        יתרה: {formatCurrency(pp.balance)}
-                      </span>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-700">{pp.monthYear}</p>
-                        <p className="text-xs text-gray-400">{formatCurrency(pp.amount)} מתוכנן</p>
-                      </div>
-                    </div>
-                  ))}
-                </Section>
-              )}
-
-              {/* Transactions */}
+              {/* Recent transactions */}
               {parent.transactions.length > 0 && (
                 <Section title={`תנועות אחרונות (${parent.transactions.length})`}>
-                  {parent.transactions.slice(0, 10).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                      <span className="text-sm font-semibold text-emerald-700">
-                        {formatCurrency(tx.amount)}
-                      </span>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-700">{tx.type || '—'}</p>
-                        <p className="text-xs text-gray-400">{formatDate(tx.date)}</p>
+                  {parent.transactions.slice(0, 15).map(tx => (
+                    <div key={tx.id} className="py-2.5 border-b border-gray-100 last:border-0">
+                      <div className="flex justify-between items-start">
+                        <span className={`text-sm font-bold tabular-nums ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                          {tx.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(tx.amount))}
+                        </span>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-700">{tx.type || '—'}</p>
+                          <p className="text-xs text-gray-400">{formatDate(tx.date)}{tx.monthYear ? ` · ${tx.monthYear}` : ''}</p>
+                        </div>
                       </div>
+                      {(tx.projectNames?.length > 0 || tx.notes) && (
+                        <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
+                          {tx.notes && <span className="text-xs text-gray-400 truncate max-w-[140px]">{tx.notes}</span>}
+                          {tx.projectNames?.map(p => (
+                            <span key={p} className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">{p}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </Section>
               )}
             </div>
           )}
+
+          {/* ── Planned Payments Tab ── */}
+          {parent && activeTab === 'payments' && (() => {
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const isOverdue  = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
+            const pendingPPs = parent.plannedPayments.filter(pp => !isOverdue(pp) && pp.balance > 0)
+            const overduePPs = parent.plannedPayments.filter(isOverdue)
+            const paidPPs    = parent.plannedPayments.filter(pp => pp.balance <= 0)
+            const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
+
+            return (
+              <div dir="rtl" className="space-y-4">
+                {/* Overdue banner */}
+                {overdueTotal > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <p className="text-xs text-red-500 mb-0.5">סכום באיחור תשלום</p>
+                    <p className="text-3xl font-bold text-red-700">{formatCurrency(overdueTotal)}</p>
+                    <p className="text-xs text-red-400 mt-1">{overduePPs.length} תשלומים שעברו תאריך</p>
+                  </div>
+                )}
+
+                {parent.plannedPayments.length === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-8">אין תשלומים מתוכננים</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Right: pending / overdue */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        ממתין ({overduePPs.length + pendingPPs.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {[...overduePPs, ...pendingPPs].map(pp => (
+                          <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                            className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                              isOverdue(pp)
+                                ? 'bg-red-50 border-red-200 hover:border-red-400'
+                                : 'bg-white border-gray-200 hover:border-indigo-300'
+                            }`}>
+                            <div className="flex justify-between items-center">
+                              <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                                {formatCurrency(pp.balance)}
+                              </span>
+                              <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                            </div>
+                            {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                            {isOverdue(pp) && (
+                              <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Left: paid */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        שולם ({paidPPs.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {paidPPs.map(pp => (
+                          <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                            className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-bold text-emerald-600">✓ {formatCurrency(pp.amount)}</span>
+                              <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                            </div>
+                            {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Planned payment detail modal */}
+                {selectedPP && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+                    onClick={e => { if (e.target === e.currentTarget) setSelectedPP(null) }}>
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+                    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
+                      <div className="flex items-center justify-between mb-4">
+                        <button onClick={() => setSelectedPP(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                        <h3 className="font-bold text-gray-800 text-base">{selectedPP.name || 'תשלום מתוכנן'}</h3>
+                      </div>
+
+                      <div className="space-y-3 mb-5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-2xl font-bold text-gray-800">{formatCurrency(selectedPP.amount)}</span>
+                          <span className="text-xs text-gray-400">סכום מתוכנן</span>
+                        </div>
+                        {selectedPP.balance > 0 && (
+                          <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
+                            <span className="text-lg font-bold text-red-600">{formatCurrency(selectedPP.balance)}</span>
+                            <span className="text-xs text-red-400">יתרה לתשלום</span>
+                          </div>
+                        )}
+                        {selectedPP.balance <= 0 && (
+                          <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
+                            <span className="text-sm font-semibold text-emerald-600">✓ שולם במלואו</span>
+                          </div>
+                        )}
+                        {selectedPP.date && (
+                          <div className="flex justify-between text-sm text-gray-600">
+                            <span>{formatDate(selectedPP.date)}</span>
+                            <span className="text-gray-400">תאריך</span>
+                          </div>
+                        )}
+                        {selectedPP.monthYear && (
+                          <div className="flex justify-between text-sm text-gray-600">
+                            <span>{selectedPP.monthYear}</span>
+                            <span className="text-gray-400">חודש</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedPP.balance > 0 && (
+                        <button
+                          onClick={() => setShowAddTxForPP(true)}
+                          className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-semibold text-sm hover:bg-emerald-800 transition-colors">
+                          + הוסף תשלום
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {parent && activeTab === 'salary' && (
             <div className="space-y-4" dir="rtl">
@@ -360,6 +510,38 @@ export default function ParentCard({ parentId, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* Add transaction modal */}
+      {showAddTx && (
+        <AddTransactionModal
+          parentId={parentId}
+          parentName={parent?.name}
+          onClose={() => setShowAddTx(false)}
+          onSuccess={() => { setShowAddTx(false); reload() }}
+        />
+      )}
+
+      {/* Add planned payment modal */}
+      {showAddPlanned && (
+        <AddPlannedPaymentModal
+          parentId={parentId}
+          parentName={parent?.name}
+          onClose={() => setShowAddPlanned(false)}
+          onSuccess={() => { setShowAddPlanned(false); reload() }}
+        />
+      )}
+
+      {/* Add payment for specific planned payment */}
+      {showAddTxForPP && selectedPP && (
+        <AddTransactionModal
+          parentId={parentId}
+          parentName={parent?.name}
+          prefilledAmount={selectedPP.balance}
+          prefilledNotes={selectedPP.name || selectedPP.monthYear}
+          onClose={() => setShowAddTxForPP(false)}
+          onSuccess={() => { setShowAddTxForPP(false); setSelectedPP(null); reload() }}
+        />
+      )}
     </div>
   )
 }

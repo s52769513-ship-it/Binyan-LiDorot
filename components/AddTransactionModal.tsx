@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-interface Props {
-  parentId?: string
-  parentName?: string
-  onClose: () => void
-  onSuccess?: () => void
-}
-
-const TRANSACTION_TYPES = ['מזומן', 'העברה בנקאית', 'שיק', 'ביט/פייבוקס', 'אחר']
+const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
 
 interface ParentOption { id: string; name: string }
 
@@ -20,16 +13,25 @@ function getMonthYear(dateStr: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-export default function AddTransactionModal({ parentId, parentName, onClose, onSuccess }: Props) {
+interface Props {
+  parentId?: string
+  parentName?: string
+  prefilledAmount?: number
+  prefilledNotes?: string
+  onClose: () => void
+  onSuccess?: () => void
+}
+
+export default function AddTransactionModal({ parentId, parentName, prefilledAmount, prefilledNotes, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
   const [direction, setDirection] = useState<'הכנסה' | 'הוצאה'>('הכנסה')
-  const [amount, setAmount]       = useState('')
-  const [type, setType]           = useState('מזומן')
+  const [amount, setAmount]       = useState(prefilledAmount ? String(Math.abs(prefilledAmount)) : '')
+  const [type, setType]           = useState('העברה')
   const [date, setDate]           = useState(todayStr)
   const [monthYear, setMonthYear] = useState(getMonthYear(todayStr))
-  const [notes, setNotes]         = useState('')
+  const [notes, setNotes]         = useState(prefilledNotes ?? '')
   const [project, setProject]     = useState('')
   const [projects, setProjects]   = useState<string[]>([])
   const [parentSearch, setParentSearch] = useState(parentName ?? '')
@@ -204,11 +206,11 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
             )}
           </div>
 
-          {/* Type */}
+          {/* Payment method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">אמצעי תשלום</label>
             <div className="flex flex-wrap gap-2">
-              {TRANSACTION_TYPES.map(t => (
+              {PAYMENT_METHODS.map(t => (
                 <button key={t} type="button" onClick={() => setType(t)}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                     type === t ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
