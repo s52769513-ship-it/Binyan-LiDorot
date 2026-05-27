@@ -2,71 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-/* ─── Import section ──────────────────────────────────── */
-function ImportSection() {
-  const [importing, setImporting] = useState(false)
-  const [result, setResult]       = useState<{ updated: number; classes: number; notFound: string[]; errors: string[] } | null>(null)
-  const [error, setError]         = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  const runImport = async (file: File) => {
-    setImporting(true); setResult(null); setError('')
-    try {
-      const text = await file.text()
-      const res  = await fetch('/api/admin/import-students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        body: text,
-      })
-      const data = await res.json()
-      if (data.error) { setError(data.error); return }
-      setResult(data)
-    } catch { setError('שגיאה בייבוא') }
-    finally { setImporting(false) }
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ייבוא תלמידים מאקסל / CSV</h3>
-      <p className="text-xs text-gray-400">העלה קובץ CSV מאיירטייבל — המערכת תעדכן את כל התלמידים הקיימים לפי שם.</p>
-
-      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
-
-      {result && (
-        <div className="space-y-2">
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-medium">
-            ✓ עודכנו {result.updated} תלמידים בהצלחה
-            {result.classes > 0 && ` · נוצרו/עודכנו ${result.classes} כיתות`}
-          </div>
-          {result.notFound.length > 0 && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-              <p className="font-semibold mb-1">לא נמצאו במערכת ({result.notFound.length}):</p>
-              <p className="leading-relaxed">{result.notFound.join(' · ')}</p>
-            </div>
-          )}
-          {result.errors.length > 0 && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              <p className="font-semibold mb-1">שגיאות ({result.errors.length}):</p>
-              <p className="leading-relaxed">{result.errors.join(' · ')}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) runImport(f) }} />
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={importing}
-        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
-        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
-      >
-        {importing ? 'מייבא...' : 'העלה קובץ CSV לייבוא'}
-      </button>
-    </div>
-  )
-}
-
 interface Settings {
   institution_name?: string
   address?: string
@@ -208,86 +143,6 @@ function ClassesSection() {
   )
 }
 
-/* ─── Admin tools section ────────────────────────────── */
-function AdminSection() {
-  const [fixSigns, setFixSigns]   = useState<{ loading: boolean; result: string }>({ loading: false, result: '' })
-  const [allocate, setAllocate]   = useState<{ loading: boolean; result: string }>({ loading: false, result: '' })
-
-  const runAction = async (
-    url: string,
-    setState: React.Dispatch<React.SetStateAction<{ loading: boolean; result: string }>>
-  ) => {
-    setState({ loading: true, result: '' })
-    try {
-      const res  = await fetch(url, { method: 'POST' })
-      const data = await res.json()
-      if (data.error) {
-        setState({ loading: false, result: `שגיאה: ${data.error}` })
-      } else {
-        const parts = Object.entries(data)
-          .filter(([k]) => k !== 'success')
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(' · ')
-        setState({ loading: false, result: `✓ הושלם — ${parts}` })
-      }
-    } catch {
-      setState({ loading: false, result: 'שגיאת רשת' })
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">כלי ניהול</h3>
-
-      {/* Fix transaction signs */}
-      <div className="flex flex-col gap-2 pb-4 border-b border-gray-100">
-        <div className="flex items-start justify-between gap-4">
-          <div className="text-right">
-            <p className="text-sm font-medium text-gray-700">תיקון סימן תנועות</p>
-            <p className="text-xs text-gray-400 mt-0.5">מושך מחדש את כל התנועות מאיירטייבל ומתקן הוצאה→מינוס / הכנסה→פלוס</p>
-          </div>
-          <button
-            onClick={() => runAction('/api/admin/fix-transaction-signs', setFixSigns)}
-            disabled={fixSigns.loading}
-            className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
-          >
-            {fixSigns.loading ? '⟳ מתקן...' : 'תקן תנועות'}
-          </button>
-        </div>
-        {fixSigns.result && (
-          <p className={`text-xs rounded-lg px-3 py-2 ${fixSigns.result.startsWith('שגיאה') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
-            {fixSigns.result}
-          </p>
-        )}
-      </div>
-
-      {/* Recalculate allocations */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="text-right">
-            <p className="text-sm font-medium text-gray-700">חישוב חלוקת תשלומים</p>
-            <p className="text-xs text-gray-400 mt-0.5">מחשב מחדש את חלוקת עסקאות בנין לדורות בין הילדים הפעילים</p>
-          </div>
-          <button
-            onClick={() => runAction('/api/admin/recalculate-allocations', setAllocate)}
-            disabled={allocate.loading}
-            className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white' }}
-          >
-            {allocate.loading ? '⟳ מחשב...' : 'חשב חלוקה'}
-          </button>
-        </div>
-        {allocate.result && (
-          <p className={`text-xs rounded-lg px-3 py-2 ${allocate.result.startsWith('שגיאה') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
-            {allocate.result}
-          </p>
-        )}
-      </div>
-    </div>
-  )
-}
-
 /* ─── Sync section ────────────────────────────────────── */
 function SyncSection() {
   const [syncing, setSyncing] = useState(false)
@@ -296,7 +151,7 @@ function SyncSection() {
   const handleSync = async () => {
     setSyncing(true); setResult(null)
     try {
-      const res  = await fetch('/api/sync', { method: 'POST' })
+      const res = await fetch('/api/sync', { method: 'POST' })
       const data = await res.json()
       setResult(data)
     } catch {
@@ -317,7 +172,11 @@ function SyncSection() {
         className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
         style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
       >
-        {syncing ? '⟳ מסנכרן...' : '⟳ סנכרן עכשיו'}
+        {syncing ? (
+          <><span className="animate-spin inline-block">⟳</span> מסנכרן...</>
+        ) : (
+          <>⟳ סנכרן עכשיו</>
+        )}
       </button>
 
       {result && (
@@ -472,14 +331,29 @@ export default function SettingsPage() {
       {/* Sync */}
       <SyncSection />
 
-      {/* Admin tools */}
-      <AdminSection />
-
       {/* Classes management */}
       <ClassesSection />
 
-      {/* CSV import */}
-      <ImportSection />
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
+        <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
+        <pre className="text-xs bg-white border border-amber-100 rounded-lg p-3 overflow-x-auto text-left" dir="ltr">{`CREATE TABLE institution_settings (
+  id INTEGER PRIMARY KEY,
+  institution_name TEXT,
+  logo_url TEXT,
+  address TEXT,
+  phone TEXT,
+  primary_color TEXT DEFAULT '#1a3a7a',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO institution_settings (id) VALUES (1);
+
+ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all" ON institution_settings
+  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
+        <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
+      </div>
     </div>
   )
 }

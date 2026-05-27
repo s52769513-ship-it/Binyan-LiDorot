@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ } from '@/lib/airtable'
+import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ, PS, W } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 
 async function upsertAndPrune<R extends { id: string; synced_at: string }>(
@@ -32,7 +32,7 @@ export async function POST() {
 
   try {
     // Fetch all tables from Airtable in parallel
-    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned, rawProjects] =
+    const [rawParents, rawStudents, rawTransactions, rawDebts, rawPlanned, rawProjects, rawWomen] =
       await Promise.all([
         fetchAirtableRecords(TABLES.PARENTS, {
           fields: [
@@ -40,6 +40,10 @@ export async function POST() {
             P.FATHER_PHONE, P.MOTHER_PHONE, P.EMAIL,
             P.ADDRESS, P.BUILDING, P.CITY, P.STATUS,
             P.CHILDREN_COUNT, P.TUITION_TOTAL, P.TUITION_BALANCE, P.NOTES,
+            PS.BASE_HOURLY, PS.SENIORITY_HOURLY, PS.FIXED_BONUS,
+            PS.EXCEPTIONAL_EXPENSES, PS.DEDUCT_TUITION, PS.SHOW_SPOUSE_SALARY,
+            PS.CALC_WIFE_TUITION, PS.MONTHLY_HOURS_DECIMAL, PS.TRANSPORT_REIMBURSEMENT,
+            PS.SALARY_GROSS, PS.SALARY_NET, PS.WOMAN_LINKS,
           ],
         }),
 
@@ -63,6 +67,14 @@ export async function POST() {
         }),
 
         fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] }),
+
+        fetchAirtableRecords(TABLES.WOMEN, {
+          fields: [
+            W.NAME, W.HUSBAND_LINKS, W.BASE_HOURLY, W.FIXED_BONUS,
+            W.MONTHLY_HOURS_DECIMAL, W.SALARY_FIXED_TOTAL, W.SALARY_GROSS,
+            W.STATUS, W.EXCEPTIONAL_EXPENSES, W.IS_FIXED_SALARY, W.ROLE, W.NOTES,
+          ],
+        }),
       ])
 
     // Map project record IDs → project names
@@ -70,29 +82,6 @@ export async function POST() {
     for (const r of rawProjects) {
       projectNameMap[r.id] = String(r.fields[PROJ.NAME] || '')
     }
-
-    // Transform to Supabase rows
-    const parents = rawParents
-      .filter(r => r.fields[P.NAME])
-      .map(r => ({
-        id: r.id,
-        name: String(r.fields[P.NAME] || ''),
-        first_name: String(r.fields[P.FIRST_NAME] || ''),
-        last_name: String(r.fields[P.LAST_NAME] || ''),
-        mother_name: String(r.fields[P.MOTHER_NAME] || ''),
-        father_phone: String(r.fields[P.FATHER_PHONE] || ''),
-        mother_phone: String(r.fields[P.MOTHER_PHONE] || ''),
-        email: String(r.fields[P.EMAIL] || ''),
-        address: String(r.fields[P.ADDRESS] || ''),
-        building: String(r.fields[P.BUILDING] || ''),
-        city: String(r.fields[P.CITY] || ''),
-        status: (r.fields[P.STATUS] as string[]) || [],
-        children_count: Number(r.fields[P.CHILDREN_COUNT]) || 0,
-        tuition_total: Number(r.fields[P.TUITION_TOTAL]) || 0,
-        tuition_balance: Number(r.fields[P.TUITION_BALANCE]) || 0,
-        notes: String(r.fields[P.NOTES] || ''),
-        synced_at: syncedAt,
-      }))
 
     // Helper: extract string from Airtable single-select (may come as {id,name,color} object)
     const selectName = (v: unknown): string => {
@@ -113,6 +102,42 @@ export async function POST() {
           : String(item)
       ).filter(Boolean)
     }
+
+    // Transform to Supabase rows
+    const parents = rawParents
+      .filter(r => r.fields[P.NAME])
+      .map(r => ({
+        id: r.id,
+        name: String(r.fields[P.NAME] || ''),
+        first_name: String(r.fields[P.FIRST_NAME] || ''),
+        last_name: String(r.fields[P.LAST_NAME] || ''),
+        mother_name: String(r.fields[P.MOTHER_NAME] || ''),
+        father_phone: String(r.fields[P.FATHER_PHONE] || ''),
+        mother_phone: String(r.fields[P.MOTHER_PHONE] || ''),
+        email: String(r.fields[P.EMAIL] || ''),
+        address: String(r.fields[P.ADDRESS] || ''),
+        building: String(r.fields[P.BUILDING] || ''),
+        city: String(r.fields[P.CITY] || ''),
+        status: selectNames(r.fields[P.STATUS]),
+        children_count: Number(r.fields[P.CHILDREN_COUNT]) || 0,
+        tuition_total: Number(r.fields[P.TUITION_TOTAL]) || 0,
+        tuition_balance: Number(r.fields[P.TUITION_BALANCE]) || 0,
+        notes: String(r.fields[P.NOTES] || ''),
+        // Salary fields
+        base_hourly_rate:        Number(r.fields[PS.BASE_HOURLY]) || 0,
+        seniority_bonus_hourly:  Number(r.fields[PS.SENIORITY_HOURLY]) || 0,
+        fixed_bonus:             Number(r.fields[PS.FIXED_BONUS]) || 0,
+        exceptional_expenses:    Number(r.fields[PS.EXCEPTIONAL_EXPENSES]) || 0,
+        transport_reimbursement: Number(r.fields[PS.TRANSPORT_REIMBURSEMENT]) || 0,
+        deduct_tuition:          Boolean(r.fields[PS.DEDUCT_TUITION]) || false,
+        show_spouse_salary:      Boolean(r.fields[PS.SHOW_SPOUSE_SALARY]) || false,
+        calculate_wife_tuition:  Boolean(r.fields[PS.CALC_WIFE_TUITION]) || false,
+        monthly_hours_decimal:   Number(r.fields[PS.MONTHLY_HOURS_DECIMAL]) || 0,
+        salary_gross:            Number(r.fields[PS.SALARY_GROSS]) || 0,
+        salary_after_tuition:    Number(r.fields[PS.SALARY_NET]) || 0,
+        woman_ids:               (r.fields[PS.WOMAN_LINKS] as string[]) || [],
+        synced_at: syncedAt,
+      }))
 
     const students = rawStudents.map(r => ({
       id: r.id,
@@ -170,12 +195,30 @@ export async function POST() {
       synced_at: syncedAt,
     }))
 
+    const women = rawWomen.map(r => ({
+      id: r.id,
+      parent_ids: (r.fields[W.HUSBAND_LINKS] as string[]) || [],
+      name: String(r.fields[W.NAME] || ''),
+      base_hourly_rate:      Number(r.fields[W.BASE_HOURLY]) || 0,
+      fixed_bonus:           Number(r.fields[W.FIXED_BONUS]) || 0,
+      monthly_hours_decimal: Number(r.fields[W.MONTHLY_HOURS_DECIMAL]) || 0,
+      exceptional_expenses:  Number(r.fields[W.EXCEPTIONAL_EXPENSES]) || 0,
+      salary_total:          Number(r.fields[W.SALARY_FIXED_TOTAL]) || 0,
+      salary_gross:          Number(r.fields[W.SALARY_GROSS]) || 0,
+      status:                selectName(r.fields[W.STATUS]),
+      is_fixed_salary:       Boolean(r.fields[W.IS_FIXED_SALARY]) || false,
+      role:                  selectNames(r.fields[W.ROLE]),
+      notes:                 String(r.fields[W.NOTES] || ''),
+      synced_at: syncedAt,
+    }))
+
     // Upsert all tables (sequentially – parents first because others may reference them)
     const parentsCount       = await upsertAndPrune('parents', parents, syncedAt)
     const studentsCount      = await upsertAndPrune('students', students, syncedAt)
     const transactionsCount  = await upsertAndPrune('transactions', transactions, syncedAt)
     const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
     const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
+    const womenCount         = await upsertAndPrune('women', women, syncedAt)
 
     // Payment allocation: split "בנין לדורות" income transactions across active children
     let allocationsCount = 0
@@ -241,6 +284,7 @@ export async function POST() {
         debts: debtsCount,
         plannedPayments: plannedCount,
         allocations: allocationsCount,
+        women: womenCount,
       },
     })
   } catch (err) {
