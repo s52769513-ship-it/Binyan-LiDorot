@@ -95,10 +95,14 @@ export async function POST() {
       }))
 
     // Helper: extract string from Airtable single-select (may come as {id,name,color} object)
-    const selectName = (v: unknown): string =>
-      v && typeof v === 'object' && 'name' in (v as object)
+    const selectName = (v: unknown): string => {
+      const raw = v && typeof v === 'object' && 'name' in (v as object)
         ? String((v as { name: string }).name)
         : String(v || '')
+      // Normalise legacy values from this Airtable base
+      if (raw === 'V') return 'פעיל'
+      return raw
+    }
 
     // Helper: extract array of strings from Airtable multi-select (may come as [{id,name,color}])
     const selectNames = (v: unknown): string[] => {
