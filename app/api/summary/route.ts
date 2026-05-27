@@ -21,6 +21,11 @@ export async function GET() {
       plannedByMonthRes,
       txByMonthRes,
       lastSyncRes,
+      studentsRes,
+      classesRes,
+      ppDeptRes,
+      txDeptRes,
+      allParentsDebtRes,
     ] = await Promise.all([
       supabase.from('planned_payments').select('amount').eq('month_year', currentMonthYear),
 
@@ -54,7 +59,58 @@ export async function GET() {
         .order('synced_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+
+      supabase.from('students').select('parent_ids, class_name'),
+      supabase.from('classes').select('class_name, framework'),
+      supabase.from('planned_payments').select('parent_ids, amount').eq('month_year', currentMonthYear),
+      supabase.from('transactions').select('parent_ids, amount').eq('month_year', currentMonthYear).gt('amount', 0),
+      supabase.from('parents').select('id, tuition_balance').gt('tuition_balance', 0),
     ])
+
+    // Build department breakdown (parent → framework via students → classes)
+    const classFrameworkMap: Record<string, string> = {}
+    for (const c of classesRes.data ?? []) {
+      if (c.framework) classFrameworkMap[c.class_name as string] = c.framework as string
+    }
+    const parentFrameworkMap: Record<string, string> = {}
+    for (const s of studentsRes.data ?? []) {
+      const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
+      for (const pid of (s.parent_ids as string[]) ?? []) {
+        if (pid && fw && !parentFrameworkMap[pid]) parentFrameworkMap[pid] = fw
+      }
+    }
+
+    const DEPT_KEYS = ['תלמוד תורה', 'בית חינוך לבנות'] as const
+    type DeptKey = typeof DEPT_KEYS[number] | 'אחר'
+    const deptAcc: Record<DeptKey, { planned: number; actual: number; debt: number; parentsInDebt: number }> = {
+      'תלמוד תורה':       { planned: 0, actual: 0, debt: 0, parentsInDebt: 0 },
+      'בית חינוך לבנות': { planned: 0, actual: 0, debt: 0, parentsInDebt: 0 },
+      'אחר':              { planned: 0, actual: 0, debt: 0, parentsInDebt: 0 },
+    }
+    const getBucket = (pids: string[]) => {
+      const fw = pids.length > 0 ? (parentFrameworkMap[pids[0]] ?? 'אחר') : 'אחר'
+      return (deptAcc[fw as DeptKey] ?? deptAcc['אחר'])
+    }
+    for (const pp of ppDeptRes.data ?? [])
+      getBucket((pp.parent_ids as string[]) ?? []).planned += Number(pp.amount) || 0
+    for (const tx of txDeptRes.data ?? [])
+      getBucket((tx.parent_ids as string[]) ?? []).actual += Number(tx.amount) || 0
+    for (const p of allParentsDebtRes.data ?? []) {
+      const fw = parentFrameworkMap[p.id as string] ?? 'אחר'
+      const b = deptAcc[fw as DeptKey] ?? deptAcc['אחר']
+      b.debt += Number(p.tuition_balance) || 0
+      b.parentsInDebt += 1
+    }
+    const departmentStats = (Object.entries(deptAcc) as [DeptKey, typeof deptAcc['אחר']][])
+      .filter(([, v]) => v.planned > 0 || v.actual > 0 || v.debt > 0)
+      .map(([name, v]) => ({
+        name,
+        planned:       Math.round(v.planned),
+        actual:        Math.round(v.actual),
+        debt:          Math.round(v.debt),
+        parentsInDebt: v.parentsInDebt,
+        collectionPct: v.planned > 0 ? Math.round((v.actual / v.planned) * 100) : 0,
+      }))
 
     // Fetch parent names for recent transactions
     const txParentIds = [...new Set((recentTxRes.data ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
@@ -122,6 +178,7 @@ export async function GET() {
       recentTransactions,
       monthlyData,
       lastSync: lastSyncRes.data?.synced_at ?? null,
+      departmentStats,
       // Legacy fields
       totalDebts:              Math.round(totalDebts),
       totalPlannedPayments:    Math.round(totalPlannedPayments),
