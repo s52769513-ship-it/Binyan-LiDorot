@@ -52,6 +52,12 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const all = req.nextUrl.searchParams.get('all') === 'true'
+    if (all) {
+      const { error } = await supabaseAdmin.from('classes').delete().neq('class_name', '')
+      if (error) throw error
+      return NextResponse.json({ success: true, deleted: 'all' })
+    }
     const { className } = await req.json()
     if (!className) return NextResponse.json({ error: 'className required' }, { status: 400 })
     const { error } = await supabaseAdmin

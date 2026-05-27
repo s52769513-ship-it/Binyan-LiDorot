@@ -66,6 +66,16 @@ function ClassesSection() {
     finally { setDeleting(null) }
   }
 
+  const deleteAllClasses = async () => {
+    if (!confirm(`למחוק את כל ${classes.length} הכיתות? הסינק יבנה אותן מחדש.`)) return
+    setDeleting('__all__')
+    try {
+      await fetch('/api/classes?all=true', { method: 'DELETE' })
+      setClasses([])
+    } catch { setError('שגיאה במחיקה') }
+    finally { setDeleting(null) }
+  }
+
   const addNew = async () => {
     if (!newName.trim()) return
     const ok = await upsertClass(newName.trim(), newFw)
@@ -84,8 +94,21 @@ function ClassesSection() {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ניהול כיתות ומסגרות</h3>
-      <p className="text-xs text-gray-400">קבע לכל כיתה את המסגרת שלה — זה קובע את הסיווג של כל תלמיד.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ניהול כיתות ומסגרות</h3>
+          <p className="text-xs text-gray-400 mt-0.5">קבע לכל כיתה את המסגרת שלה — זה קובע את הסיווג של כל תלמיד.</p>
+        </div>
+        {classes.length > 0 && (
+          <button
+            onClick={deleteAllClasses}
+            disabled={deleting === '__all__'}
+            className="text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {deleting === '__all__' ? 'מוחק...' : 'איפוס כל הכיתות'}
+          </button>
+        )}
+      </div>
 
       {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
 
