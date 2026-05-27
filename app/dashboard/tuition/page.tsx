@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import ParentCard from '@/components/ParentCard'
+import EmployeeCard from '@/components/EmployeeCard'
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -245,7 +245,7 @@ export default function TuitionPage() {
       )}
 
       {selectedParent && (
-        <ParentCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
+        <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
       )}
     </div>
   )
