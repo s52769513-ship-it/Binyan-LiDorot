@@ -86,8 +86,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       firstName, lastName, gender, className, status,
+      age: ageFromBody,
       birthDateGregorian, birthDateHebrew, idNumber,
-      address, city, transportation, parentIds, notes,
+      transportation, parentIds,
       healthFund, previousSchool, transportationCost,
     } = body
 
@@ -99,15 +100,13 @@ export async function POST(req: NextRequest) {
     // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
     const syncedAt = '2099-12-31T23:59:59.999Z'
 
-    const calcedAge = birthDateGregorian ? calcAge(birthDateGregorian) : ''
+    // Use birth date for age calc if available, otherwise use age sent from form
+    const calcedAge = birthDateGregorian
+      ? calcAge(birthDateGregorian)
+      : (ageFromBody ? String(ageFromBody) : '')
     const tc = transportationCost ?? calcTransportCost(Array.isArray(transportation) ? transportation : [])
 
-    let notesVal = notes || ''
-    if (address || city) {
-      notesVal = [notes, address ? `כתובת: ${address}` : null, city ? `עיר: ${city}` : null].filter(Boolean).join(' | ')
-    }
-
-    const row = {
+    const row: Record<string, unknown> = {
       id,
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
@@ -117,21 +116,23 @@ export async function POST(req: NextRequest) {
       transportation: Array.isArray(transportation) ? transportation : [],
       transportation_cost: tc,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
-      birth_date_gregorian: birthDateGregorian ?? null,
-      birth_date_hebrew: birthDateHebrew ?? null,
-      id_number: idNumber ?? null,
-      health_fund: healthFund ?? null,
-      previous_school: previousSchool ?? null,
-      notes: notesVal || null,
       synced_at: syncedAt,
     }
+
+    // Only add optional columns if they have values (avoids errors if columns don't exist yet)
+    if (birthDateGregorian) row.birth_date_gregorian = birthDateGregorian
+    if (birthDateHebrew)    row.birth_date_hebrew    = birthDateHebrew
+    if (idNumber)           row.id_number            = idNumber
+    if (healthFund)         row.health_fund          = healthFund
+    if (previousSchool)     row.previous_school      = previousSchool
 
     const { error } = await supabaseAdmin.from('students').insert(row)
     if (error) throw error
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
-    console.error('student insert error:', err)
-    return NextResponse.json({ error: 'שגיאה בשמירת הרישום' }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('student insert error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
