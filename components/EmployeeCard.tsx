@@ -114,6 +114,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Planned payments
   const [selectedPP, setSelectedPP]         = useState<PlannedPaymentItem | null>(null)
+  const [txForPP, setTxForPP]               = useState<PlannedPaymentItem | null>(null)
   const [showAddTx, setShowAddTx]           = useState(false)
   const [showAddPlanned, setShowAddPlanned] = useState(false)
   const [showAddTxForPP, setShowAddTxForPP] = useState(false)
@@ -822,7 +823,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
             </div>
             {selectedPP.balance > 0 && (
               <button
-                onClick={() => setShowAddTxForPP(true)}
+                onClick={() => {
+                  setTxForPP(selectedPP)   // save data before closing
+                  setSelectedPP(null)       // close PP modal first
+                  setShowAddTxForPP(true)   // then open transaction modal (no z-index conflict)
+                }}
                 className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-semibold text-sm hover:bg-emerald-800 transition-colors"
               >
                 + הוסף תשלום
@@ -841,14 +846,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           onSuccess={() => { setShowAddTx(false); load() }}
         />
       )}
-      {showAddTxForPP && selectedPP && parent && (
+      {showAddTxForPP && txForPP && parent && (
         <AddTransactionModal
           parentId={parentId}
           parentName={parent.name}
-          prefilledAmount={selectedPP.balance}
-          prefilledNotes={selectedPP.name}
-          onClose={() => setShowAddTxForPP(false)}
-          onSuccess={() => { setShowAddTxForPP(false); setSelectedPP(null); load() }}
+          prefilledAmount={txForPP.balance}
+          prefilledNotes={txForPP.name}
+          onClose={() => { setShowAddTxForPP(false); setTxForPP(null) }}
+          onSuccess={() => { setShowAddTxForPP(false); setTxForPP(null); load() }}
         />
       )}
       {showAddPlanned && parent && (
