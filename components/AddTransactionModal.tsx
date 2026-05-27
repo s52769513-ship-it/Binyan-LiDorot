@@ -16,13 +16,15 @@ function getMonthYear(dateStr: string): string {
 interface Props {
   parentId?: string
   parentName?: string
+  fixedLabel?: string        // shows a fixed label instead of parent picker (e.g. "בנין לדורות")
   prefilledAmount?: number
   prefilledNotes?: string
+  sourceLabel?: string       // shows a "מקור" chip (e.g. the planned payment name)
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function AddTransactionModal({ parentId, parentName, prefilledAmount, prefilledNotes, onClose, onSuccess }: Props) {
+export default function AddTransactionModal({ parentId, parentName, fixedLabel, prefilledAmount, prefilledNotes, sourceLabel, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
@@ -136,8 +138,22 @@ export default function AddTransactionModal({ parentId, parentName, prefilledAmo
             </button>
           </div>
 
-          {/* Parent search (only if not pre-linked) */}
-          {!parentId ? (
+          {/* Parent search / fixed label */}
+          {fixedLabel ? (
+            /* Institution-level payment — show fixed label, no picker */
+            <div className="space-y-2">
+              <div className="bg-[#1a3a7a]/10 rounded-lg p-3 text-sm font-medium text-[#1a3a7a] flex items-center justify-between">
+                <span className="text-xs text-[#1a3a7a]/60">מוסד</span>
+                <span>{fixedLabel}</span>
+              </div>
+              {sourceLabel && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm flex items-center justify-between">
+                  <span className="text-xs text-amber-600">מקור תשלום</span>
+                  <span className="font-medium text-amber-800">{sourceLabel}</span>
+                </div>
+              )}
+            </div>
+          ) : !parentId ? (
             <div ref={parentRef} className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">הורה</label>
               <input value={selectedParent ? selectedParent.name : parentSearch}
@@ -158,8 +174,17 @@ export default function AddTransactionModal({ parentId, parentName, prefilledAmo
               )}
             </div>
           ) : (
-            <div className="bg-blue-50 rounded-lg p-3 text-sm font-medium text-[#1a3a7a]">
-              הורה: {parentName}
+            <div className="space-y-2">
+              <div className="bg-blue-50 rounded-lg p-3 text-sm font-medium text-[#1a3a7a] flex items-center justify-between">
+                <span className="text-xs text-[#1a3a7a]/60">הורה</span>
+                <span>{parentName}</span>
+              </div>
+              {sourceLabel && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm flex items-center justify-between">
+                  <span className="text-xs text-amber-600">מקור תשלום</span>
+                  <span className="font-medium text-amber-800">{sourceLabel}</span>
+                </div>
+              )}
             </div>
           )}
 

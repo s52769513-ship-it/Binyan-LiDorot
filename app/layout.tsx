@@ -10,6 +10,11 @@ const heebo = Heebo({
 export const metadata: Metadata = {
   title: 'בנין לדורות – מערכת ניהול',
   description: 'מערכת ניהול תלמוד תורה ובית חינוך',
+  icons: {
+    icon: '/api/favicon',
+    shortcut: '/api/favicon',
+    apple: '/api/favicon',
+  },
 }
 
 export default function RootLayout({

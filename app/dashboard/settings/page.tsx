@@ -19,12 +19,13 @@ const FRAMEWORKS = ['תלמוד תורה', 'בית חינוך לבנות']
 
 /* ─── Classes section ─────────────────────────────────── */
 function ClassesSection() {
-  const [classes, setClasses]     = useState<ClassRow[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [newName, setNewName]     = useState('')
-  const [newFw, setNewFw]         = useState(FRAMEWORKS[0])
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
+  const [classes, setClasses]         = useState<ClassRow[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [newName, setNewName]         = useState('')
+  const [newFw, setNewFw]             = useState(FRAMEWORKS[0])
+  const [saving, setSaving]           = useState(false)
+  const [deleting, setDeleting]       = useState<string | null>(null)
+  const [error, setError]             = useState('')
 
   const load = () => {
     setLoading(true)
@@ -52,6 +53,19 @@ function ClassesSection() {
     finally { setSaving(false) }
   }
 
+  const deleteClass = async (className: string) => {
+    setDeleting(className)
+    try {
+      await fetch('/api/classes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ className }),
+      })
+      setClasses(prev => prev.filter(c => c.class_name !== className))
+    } catch { setError('שגיאה במחיקה') }
+    finally { setDeleting(null) }
+  }
+
   const addNew = async () => {
     if (!newName.trim()) return
     const ok = await upsertClass(newName.trim(), newFw)
@@ -65,6 +79,9 @@ function ClassesSection() {
 
   if (loading) return <div className="h-20 bg-gray-100 rounded-xl animate-pulse" />
 
+  const unlinked = classes.filter(c => !c.framework)
+  const linked   = classes.filter(c => !!c.framework)
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ניהול כיתות ומסגרות</h3>
@@ -75,9 +92,15 @@ function ClassesSection() {
       {/* Existing classes */}
       {classes.length > 0 && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
-          {classes.some(c => !c.framework) && (
-            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700 font-medium">
-              ⚠ כיתות ללא מסגרת — יש להגדיר כדי שהתלמידים יסווגו נכון
+          {unlinked.length > 0 && (
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700 font-medium flex items-center justify-between">
+              <button
+                onClick={() => { if (confirm(`למחוק ${unlinked.length} כיתות לא מקושרות?`)) unlinked.forEach(c => deleteClass(c.class_name)) }}
+                className="text-xs text-red-600 hover:text-red-800 font-semibold underline"
+              >
+                מחק הכל
+              </button>
+              <span>⚠ {unlinked.length} כיתות ללא מסגרת — יש להגדיר או למחוק</span>
             </div>
           )}
           <table className="w-full text-sm">
@@ -85,10 +108,11 @@ function ClassesSection() {
               <tr className="bg-gray-50 text-right text-xs font-semibold text-gray-500">
                 <th className="px-4 py-2.5">שם כיתה</th>
                 <th className="px-4 py-2.5">מסגרת</th>
+                <th className="px-2 py-2.5 w-8" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {classes.map(c => (
+              {[...linked, ...unlinked].map(c => (
                 <tr key={c.class_name} className={`hover:bg-gray-50 ${!c.framework ? 'bg-amber-50/40' : ''}`}>
                   <td className="px-4 py-2.5 font-medium text-gray-800">
                     {!c.framework && <span className="text-amber-500 ml-1">⚠</span>}
@@ -103,9 +127,19 @@ function ClassesSection() {
                         !c.framework ? 'border-amber-300 text-amber-700' : 'border-gray-200'
                       }`}
                     >
-                      <option value="">— לא מוגדר —</option>
+                      <option value="">— לא מקושר —</option>
                       {FRAMEWORKS.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
+                  </td>
+                  <td className="px-2 py-2.5 text-center">
+                    <button
+                      onClick={() => deleteClass(c.class_name)}
+                      disabled={deleting === c.class_name}
+                      className="text-gray-300 hover:text-red-500 text-base transition-colors disabled:opacity-40"
+                      title="מחק כיתה"
+                    >
+                      {deleting === c.class_name ? '...' : '✕'}
+                    </button>
                   </td>
                 </tr>
               ))}

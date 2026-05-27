@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+export async function GET(req: NextRequest) {
+  try {
+    const nameFilter = req.nextUrl.searchParams.get('name') ?? ''
+    let query = supabaseAdmin
+      .from('planned_payments')
+      .select('id, name, amount, balance, date, month_year, parent_ids')
+      .order('date', { ascending: false })
+      .limit(200)
+
+    if (nameFilter) query = query.ilike('name', `%${nameFilter}%`)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return NextResponse.json(
+      (data ?? []).map(p => ({
+        id: p.id,
+        name: p.name ?? '',
+        amount: p.amount ?? 0,
+        balance: p.balance ?? 0,
+        date: p.date ?? '',
+        monthYear: p.month_year ?? '',
+        parentIds: p.parent_ids ?? [],
+      }))
+    )
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()

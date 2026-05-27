@@ -7,7 +7,9 @@ function detectFramework(className: string): string {
   return ''
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const linkedOnly = req.nextUrl.searchParams.get('linked') === 'true'
+
   const [classesRes, studentsRes] = await Promise.all([
     supabaseAdmin.from('classes').select('class_name, framework').order('class_name', { ascending: true }),
     supabaseAdmin.from('students').select('class_name').not('class_name', 'is', null).neq('class_name', ''),
@@ -27,6 +29,7 @@ export async function GET() {
 
   const result = Array.from(defined.entries())
     .map(([class_name, framework]) => ({ class_name, framework }))
+    .filter(c => !linkedOnly || !!c.framework)   // ?linked=true → only classes with a framework
     .sort((a, b) => a.class_name.localeCompare(b.class_name, 'he'))
 
   return NextResponse.json(result)
@@ -46,3 +49,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { className } = await req.json()
+    if (!className) return NextResponse.json({ error: 'className required' }, { status: 400 })
+    const { error } = await supabaseAdmin
+      .from('classes')
+      .delete()
+      .eq('class_name', className)
+    if (error) throw error
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
