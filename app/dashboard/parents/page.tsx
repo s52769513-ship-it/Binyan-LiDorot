@@ -6,6 +6,9 @@ import ParentList from '@/components/ParentList'
 import EmployeeCard from '@/components/EmployeeCard'
 import StudentCard from '@/components/StudentCard'
 import PaymentCard from '@/components/PaymentCard'
+import dynamic from 'next/dynamic'
+
+const AddParentModal = dynamic(() => import('@/components/AddParentModal'), { ssr: false })
 
 export default function ParentsPage() {
   const [parents, setParents]           = useState<ParentSummary[]>([])
@@ -22,6 +25,7 @@ export default function ParentsPage() {
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState('')
+  const [showAddParent, setShowAddParent] = useState(false)
 
   const [debouncedSearch, setDebouncedSearch] = useState('')
   useEffect(() => {
@@ -58,9 +62,15 @@ export default function ParentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-400">{loading ? 'טוען...' : `${total} אנ"ש`}</span>
+      <div className="flex items-center justify-between" dir="rtl">
         <h2 className="text-2xl font-bold text-gray-800">רשימת אנ&quot;ש</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{loading ? 'טוען...' : `${total} אנ"ש`}</span>
+          <button onClick={() => setShowAddParent(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium hover:bg-[#1a3a7a]/90 transition-colors">
+            <span className="text-base leading-none">+</span> הוספת משפחה
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -107,6 +117,12 @@ export default function ParentsPage() {
       {selectedPaymentId && (
         <PaymentCard paymentId={selectedPaymentId} onClose={() => setSelectedPaymentId(null)}
           onOpenParent={id => { setSelectedPaymentId(null); setSelectedId(id) }} />
+      )}
+      {showAddParent && (
+        <AddParentModal
+          onClose={() => setShowAddParent(false)}
+          onSuccess={id => { setShowAddParent(false); loadParents(); setSelectedId(id) }}
+        />
       )}
     </div>
   )

@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { ParentDetail } from '@/lib/types'
+import dynamic from 'next/dynamic'
+
+const AddStudentModal       = dynamic(() => import('./AddStudentModal'),       { ssr: false })
+const AddTransactionModal   = dynamic(() => import('./AddTransactionModal'),   { ssr: false })
+const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('he-IL', {
@@ -31,6 +36,18 @@ export default function ParentCard({ parentId, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<'details' | 'students' | 'finance'>('details')
+  const [showAddStudent, setShowAddStudent]   = useState(false)
+  const [showAddTx, setShowAddTx]             = useState(false)
+  const [showAddPlanned, setShowAddPlanned]   = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    fetch(`/api/parents/${parentId}`)
+      .then(r => r.json())
+      .then(data => { if (!data.error) setParent(data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -83,8 +100,8 @@ export default function ParentCard({ parentId, onClose }: Props) {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-5">
+        {/* Tabs + quick action buttons */}
+        <div className="flex items-center border-b border-gray-100 px-5 gap-1">
           {(['details', 'students', 'finance'] as const).map(tab => (
             <button
               key={tab}
@@ -95,9 +112,22 @@ export default function ParentCard({ parentId, onClose }: Props) {
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'details' ? 'פרטים אישיים' : tab === 'students' ? 'ילדים' : 'מצב כספי'}
+              {tab === 'details' ? 'פרטים' : tab === 'students' ? 'ילדים' : 'כספים'}
             </button>
           ))}
+          <div className="flex-1" />
+          <button onClick={() => setShowAddStudent(true)}
+            className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] text-white font-medium hover:bg-[#1a3a7a]/90 transition-colors">
+            + ילד
+          </button>
+          <button onClick={() => setShowAddTx(true)}
+            className="px-3 py-1.5 text-xs rounded-lg bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition-colors">
+            + תנועה
+          </button>
+          <button onClick={() => setShowAddPlanned(true)}
+            className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white font-medium hover:bg-amber-600 transition-colors">
+            + מתוכנן
+          </button>
         </div>
 
         {/* Body */}
@@ -262,6 +292,32 @@ export default function ParentCard({ parentId, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* Sub-modals */}
+      {showAddStudent && (
+        <AddStudentModal
+          parentId={parentId}
+          parentName={parent?.name}
+          onClose={() => setShowAddStudent(false)}
+          onSuccess={() => { setShowAddStudent(false); reload() }}
+        />
+      )}
+      {showAddTx && (
+        <AddTransactionModal
+          parentId={parentId}
+          parentName={parent?.name}
+          onClose={() => setShowAddTx(false)}
+          onSuccess={() => { setShowAddTx(false); reload() }}
+        />
+      )}
+      {showAddPlanned && (
+        <AddPlannedPaymentModal
+          parentId={parentId}
+          parentName={parent?.name}
+          onClose={() => setShowAddPlanned(false)}
+          onSuccess={() => { setShowAddPlanned(false); reload() }}
+        />
+      )}
     </div>
   )
 }

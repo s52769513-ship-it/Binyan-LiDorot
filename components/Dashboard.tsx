@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import ParentCard from './ParentCard'
+
+const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
+const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -95,7 +99,9 @@ export default function Dashboard() {
   const [data, setData]         = useState<DashboardData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId]   = useState<string | null>(null)
+  const [showAddParent, setShowAddParent]   = useState(false)
+  const [showAddTx, setShowAddTx]           = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -120,6 +126,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4" dir="rtl">
+      {/* Quick-add buttons */}
+      <div className="flex gap-2 justify-start">
+        <button onClick={() => setShowAddParent(true)}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium hover:bg-[#1a3a7a]/90 transition-colors">
+          <span className="text-base leading-none">+</span> הוספת משפחה
+        </button>
+        <button onClick={() => setShowAddTx(true)}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors">
+          <span className="text-base leading-none">+</span> הוספת תנועה
+        </button>
+      </div>
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
           <button onClick={load} className="text-red-600 underline text-xs">נסה שוב</button>
@@ -270,6 +288,12 @@ export default function Dashboard() {
 
       {selectedId && (
         <ParentCard parentId={selectedId} onClose={() => setSelectedId(null)} />
+      )}
+      {showAddParent && (
+        <AddParentModal onClose={() => setShowAddParent(false)} onSuccess={() => { setShowAddParent(false); load() }} />
+      )}
+      {showAddTx && (
+        <AddTransactionModal onClose={() => setShowAddTx(false)} onSuccess={() => { setShowAddTx(false); load() }} />
       )}
     </div>
   )

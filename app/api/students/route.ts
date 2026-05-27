@@ -74,6 +74,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
+function calcTransportCost(transport: string[]): number {
+  if (!transport.includes('הלוך')) return 0
+  const hasReturn = transport.includes('חזור שעה 1') || transport.includes('חזור שעה 4')
+  return hasReturn ? 130 : 65
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -81,47 +87,57 @@ export async function POST(req: NextRequest) {
       firstName, lastName, gender, className, status,
       birthDateGregorian, birthDateHebrew, idNumber,
       address, city, transportation, parentIds, notes,
-      healthFund, previousSchool,
+      healthFund, previousSchool, transportationCost,
     } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
     }
 
-    const insertData: Record<string, unknown> = {
+    const { createStudentInAirtable } = await import('@/lib/airtable-write')
+
+    const calcedAge = birthDateGregorian ? calcAge(birthDateGregorian) : ''
+    const tc = transportationCost ?? calcTransportCost(Array.isArray(transportation) ? transportation : [])
+
+    const airtableId = await createStudentInAirtable({
+      firstName, lastName,
+      gender: gender ?? '',
+      age: calcedAge || undefined,
+      className: className || undefined,
+      status: status ?? 'ממתין',
+      transportation: Array.isArray(transportation) ? transportation : [],
+      transportationCost: tc > 0 ? tc : undefined,
+      parentIds: Array.isArray(parentIds) ? parentIds : [],
+    })
+
+    let notesVal = notes || ''
+    if (address || city) {
+      notesVal = [notes, address ? `כתובת: ${address}` : null, city ? `עיר: ${city}` : null].filter(Boolean).join(' | ')
+    }
+
+    const row = {
+      id: airtableId,
       name: `${firstName} ${lastName}`.trim(),
       gender: gender ?? '',
+      age: calcedAge,
       class_name: className ?? '',
       status: status ?? 'ממתין',
       transportation: Array.isArray(transportation) ? transportation : [],
-      transportation_cost: 0,
+      transportation_cost: tc,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       birth_date_gregorian: birthDateGregorian ?? null,
       birth_date_hebrew: birthDateHebrew ?? null,
       id_number: idNumber ?? null,
       health_fund: healthFund ?? null,
       previous_school: previousSchool ?? null,
+      notes: notesVal || null,
       synced_at: new Date().toISOString(),
     }
 
-    if (address || city) {
-      insertData.notes = [
-        notes,
-        address ? `כתובת: ${address}` : null,
-        city ? `עיר: ${city}` : null,
-      ].filter(Boolean).join(' | ') || null
-    } else if (notes) {
-      insertData.notes = notes
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('students')
-      .insert(insertData)
-      .select('id')
-      .single()
-
+    const { error } = await supabaseAdmin.from('students').upsert(row, { onConflict: 'id' })
     if (error) throw error
-    return NextResponse.json({ success: true, id: data.id })
+
+    return NextResponse.json({ success: true, id: airtableId })
   } catch (err) {
     console.error('student insert error:', err)
     return NextResponse.json({ error: 'שגיאה בשמירת הרישום' }, { status: 500 })

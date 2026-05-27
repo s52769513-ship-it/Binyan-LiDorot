@@ -77,3 +77,52 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'שגיאה בטעינת הורים' }, { status: 500 })
   }
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { firstName, lastName, motherName, fatherPhone, motherPhone, email, address, building, city, status, notes } = body
+
+    if (!firstName || !lastName) {
+      return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
+    }
+
+    const { createParentInAirtable } = await import('@/lib/airtable-write')
+    const syncedAt = new Date().toISOString()
+
+    const airtableId = await createParentInAirtable({
+      firstName, lastName, motherName, fatherPhone, motherPhone,
+      email, address, building, city,
+      status: Array.isArray(status) ? status : (status ? [status] : ['פעיל']),
+      notes,
+    })
+
+    const row = {
+      id: airtableId,
+      name: [firstName, lastName].filter(Boolean).join(' '),
+      first_name: firstName || '',
+      last_name:  lastName  || '',
+      mother_name: motherName  || '',
+      father_phone: fatherPhone || '',
+      mother_phone: motherPhone || '',
+      email:       email   || '',
+      address:     address || '',
+      building:    building || '',
+      city:        city    || '',
+      status:      Array.isArray(status) ? status : (status ? [status] : ['פעיל']),
+      notes:       notes   || '',
+      children_count: 0,
+      tuition_total:  0,
+      tuition_balance: 0,
+      synced_at: syncedAt,
+    }
+    const { error } = await supabaseAdmin.from('parents').upsert(row, { onConflict: 'id' })
+    if (error) throw error
+
+    return NextResponse.json({ success: true, id: airtableId })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('parent POST error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
