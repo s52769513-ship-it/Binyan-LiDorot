@@ -24,6 +24,7 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
+  const [direction, setDirection] = useState<'הכנסה' | 'הוצאה'>('הכנסה')
   const [amount, setAmount]     = useState('')
   const [type, setType]         = useState('מזומן')
   const [date, setDate]         = useState(todayStr)
@@ -68,13 +69,15 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
   const handleSubmit = async () => {
     const amtNum = Number(amount)
     if (!amount || isNaN(amtNum) || amtNum === 0) { setError('יש להזין סכום תקין'); return }
+    // הוצאה = שלילי, הכנסה = חיובי
+    const finalAmount = direction === 'הוצאה' ? -Math.abs(amtNum) : Math.abs(amtNum)
     setSubmitting(true); setError('')
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: amtNum,
+          amount: finalAmount,
           type, date, monthYear, notes,
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
         }),
@@ -99,6 +102,26 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm">{error}</div>}
+
+          {/* Direction toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setDirection('הכנסה')}
+              className={`py-3 rounded-xl text-sm font-bold border-2 transition-colors ${
+                direction === 'הכנסה'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+              }`}>
+              ↙ הכנסה
+            </button>
+            <button type="button" onClick={() => setDirection('הוצאה')}
+              className={`py-3 rounded-xl text-sm font-bold border-2 transition-colors ${
+                direction === 'הוצאה'
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-red-400'
+              }`}>
+              ↗ הוצאה
+            </button>
+          </div>
 
           {/* Parent search (only if not pre-linked) */}
           {!parentId ? (
@@ -130,10 +153,14 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
           {/* Amount */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">סכום ₪ *</label>
-            <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-              placeholder="0" step="0.01"
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
-            <p className="text-xs text-gray-400 mt-1">חיובי = הכנסה, שלילי = הוצאה</p>
+            <div className="relative">
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${direction === 'הוצאה' ? 'text-red-500' : 'text-emerald-600'}`}>
+                {direction === 'הוצאה' ? '−' : '+'}
+              </span>
+              <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="0" step="0.01" min="0"
+                className="w-full pr-7 pl-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
+            </div>
           </div>
 
           {/* Type */}
@@ -180,8 +207,10 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
             ביטול
           </button>
           <button onClick={handleSubmit} disabled={submitting}
-            className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 disabled:opacity-60 transition-colors">
-            {submitting ? 'שומר...' : 'שמור תנועה'}
+            className={`flex-1 px-4 py-2.5 rounded-xl text-white text-sm font-medium disabled:opacity-60 transition-colors ${
+              direction === 'הוצאה' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-700 hover:bg-emerald-800'
+            }`}>
+            {submitting ? 'שומר...' : direction === 'הוצאה' ? 'שמור הוצאה' : 'שמור הכנסה'}
           </button>
         </div>
       </div>
