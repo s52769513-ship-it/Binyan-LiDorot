@@ -146,9 +146,10 @@ export async function POST() {
       name: String(r.fields[S.NAME] || ''),
       gender: selectName(r.fields[S.GENDER]),
       age: String(r.fields[S.AGE] || ''),
-      class_name: String(r.fields[S.CLASS_NAME_TEXT] || ''),
-      // formula field returns the combined "כיתה X – אגף Y" display string
-      class_department: String(r.fields[S.CLASS_DEPARTMENT] || ''),
+      // Use the formula field "כיתה + אגף" as the canonical class name (e.g. "כיתה א – תלמוד תורה")
+      // Fall back to plain כיתה1 text if the formula is empty
+      class_name: String(r.fields[S.CLASS_DEPARTMENT] || r.fields[S.CLASS_NAME_TEXT] || ''),
+      class_department: String(r.fields[S.CLASS_DEPARTMENT] || r.fields[S.CLASS_NAME_TEXT] || ''),
       department_ids: (r.fields[S.DEPARTMENT_LINKS] as string[]) || [],
       status: selectName(r.fields[S.STATUS]),
       transportation: selectNames(r.fields[S.TRANSPORTATION]),
