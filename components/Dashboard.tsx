@@ -16,9 +16,10 @@ const fmtDate = (d: string) => {
   return day ? `${day}/${m}` : d
 }
 
-interface DebtAlert   { id: string; name: string; balance: number; childrenCount: number }
-interface RecentTx    { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; parentName: string }
-interface MonthlyItem { month: string; planned: number; actual: number }
+interface DebtAlert    { id: string; name: string; balance: number; childrenCount: number }
+interface RecentTx     { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; parentName: string }
+interface MonthlyItem  { month: string; planned: number; actual: number }
+interface FrameworkRow { framework: string; studentCount: number; tuitionTotal: number; tuitionBalance: number; tuitionCollected: number; parentCount: number }
 
 interface DashboardData {
   plannedThisMonth: number
@@ -29,6 +30,7 @@ interface DashboardData {
   recentTransactions: RecentTx[]
   monthlyData: MonthlyItem[]
   lastSync: string | null
+  frameworkSplit?: FrameworkRow[]
 }
 
 function KpiCard({
@@ -90,6 +92,77 @@ function MonthChart({ data }: { data: MonthlyItem[] }) {
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-gray-200" />צפוי</span>
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-emerald-500" />נגבה</span>
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-[#1a3a7a]" />חודש פעיל</span>
+      </div>
+    </div>
+  )
+}
+
+const FW_COLORS: Record<string, { bg: string; border: string; dot: string; bar: string }> = {
+  'תלמוד תורה':       { bg: 'bg-blue-50',   border: 'border-blue-100',  dot: '#1a3a7a', bar: '#1a3a7a' },
+  'בית חינוך לבנות':  { bg: 'bg-rose-50',   border: 'border-rose-100',  dot: '#be185d', bar: '#be185d' },
+}
+
+function FrameworkPanel({ rows, loading }: { rows?: FrameworkRow[]; loading: boolean }) {
+  if (loading) return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {[0,1].map(i => <div key={i} className="h-48 bg-gray-100 rounded-xl animate-pulse" />)}
+    </div>
+  )
+  if (!rows?.length) return null
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">שכ״ל לפי מסגרת</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {rows.map(r => {
+          const c = FW_COLORS[r.framework] ?? { bg: 'bg-gray-50', border: 'border-gray-100', dot: '#6b7280', bar: '#6b7280' }
+          const collectedPct = r.tuitionTotal > 0 ? Math.min(100, Math.round((r.tuitionCollected / r.tuitionTotal) * 100)) : 0
+          const debtPct      = r.tuitionTotal > 0 ? Math.min(100, Math.round((Math.max(0, r.tuitionBalance) / r.tuitionTotal) * 100)) : 0
+          return (
+            <div key={r.framework} className={`rounded-xl border ${c.border} ${c.bg} p-5 space-y-4`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: c.dot }} />
+                  <span className="font-semibold text-gray-800">{r.framework}</span>
+                </div>
+                <div className="text-xs text-gray-500">{r.studentCount} תלמידים · {r.parentCount} משפחות</div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">שכ״ל לתשלום</div>
+                  <div className="text-base font-bold tabular-nums text-gray-900">₪{fmt(r.tuitionTotal)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">גבוי</div>
+                  <div className="text-base font-bold tabular-nums text-emerald-700">₪{fmt(r.tuitionCollected)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">חוב</div>
+                  <div className={`text-base font-bold tabular-nums ${r.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                    {r.tuitionBalance > 0 ? '+' : ''}₪{fmt(r.tuitionBalance)}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>אחוז גבייה</span><span className="font-medium text-gray-700">{collectedPct}%</span>
+                </div>
+                <div className="h-2 bg-white/70 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${collectedPct}%`, background: c.bar }} />
+                </div>
+                {debtPct > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>חוב מתוך סה״כ</span><span className="font-medium text-red-600">{debtPct}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/70 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all bg-red-400" style={{ width: `${debtPct}%` }} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -280,6 +353,11 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Framework split */}
+      {(loading || (d?.frameworkSplit && d.frameworkSplit.length > 0)) && (
+        <FrameworkPanel rows={d?.frameworkSplit} loading={loading} />
+      )}
 
       {/* Monthly chart */}
       {!loading && d && d.monthlyData.some(m => m.planned > 0 || m.actual > 0) && (
