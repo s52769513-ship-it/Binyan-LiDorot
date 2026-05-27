@@ -8,6 +8,18 @@ const FIELD_MAP: Record<string, string> = {
   address: 'address', building: 'building', city: 'city',
   notes: 'notes', status: 'status',
   tuitionTotal: 'tuition_total', tuitionBalance: 'tuition_balance',
+  // Salary fields
+  baseHourlyRate:        'base_hourly_rate',
+  seniorityBonusHourly:  'seniority_bonus_hourly',
+  monthlyHoursDecimal:   'monthly_hours_decimal',
+  fixedBonus:            'fixed_bonus',
+  exceptionalExpenses:   'exceptional_expenses',
+  transportReimbursement:'transport_reimbursement',
+  deductTuition:         'deduct_tuition',
+  showSpouseSalary:      'show_spouse_salary',
+  calculateWifeTuition:  'calculate_wife_tuition',
+  salaryGross:           'salary_gross',
+  salaryAfterTuition:    'salary_after_tuition',
 }
 
 export async function PATCH(
