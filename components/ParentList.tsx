@@ -21,6 +21,7 @@ interface Props {
   filterDebt: FilterDebt
   sortField: SortField
   sortDir: 'asc' | 'desc'
+  statusOptions: string[]
   onSelectParent: (id: string) => void
   onSearch: (v: string) => void
   onFilterStatus: (v: string) => void
@@ -32,49 +33,78 @@ interface Props {
 export default function ParentList({
   parents, total, page, totalPages, loading,
   search, filterStatus, filterDebt, sortField, sortDir,
+  statusOptions,
   onSelectParent, onSearch, onFilterStatus, onFilterDebt, onSort, onPageChange,
 }: Props) {
 
   function SortIcon({ field }: { field: SortField }) {
     if (sortField !== field) return <span className="text-gray-300 ml-1">↕</span>
-    return <span className="text-indigo-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
+    return <span className="text-[#1a3a7a] ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
   }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Filters */}
-      <div className="p-4 border-b border-gray-100 flex flex-wrap gap-3 items-center">
-        <div className="flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="חיפוש לפי שם, עיר, טלפון..."
-            value={search}
-            onChange={e => onSearch(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 placeholder:text-gray-400"
-          />
+      <div className="p-4 border-b border-gray-100 space-y-3">
+        {/* Search + debt filter row */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="חיפוש לפי שם, עיר, טלפון..."
+              value={search}
+              onChange={e => onSearch(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 placeholder:text-gray-400"
+            />
+          </div>
+
+          {/* Debt/credit buttons */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+            {(['all', 'debt', 'credit'] as const).map(d => (
+              <button key={d} onClick={() => onFilterDebt(d)}
+                className={`px-3 py-2 whitespace-nowrap transition-colors ${
+                  filterDebt === d
+                    ? d === 'debt' ? 'bg-red-600 text-white' : d === 'credit' ? 'bg-emerald-600 text-white' : 'bg-[#1a3a7a] text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}>
+                {d === 'all' ? 'הכל' : d === 'debt' ? 'חייבים' : 'זכאים'}
+              </button>
+            ))}
+          </div>
+
+          <span className="text-sm text-gray-400">{total} תוצאות</span>
         </div>
 
-        <select
-          value={filterStatus}
-          onChange={e => onFilterStatus(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600"
-        >
-          <option value="">כל הסטטוסים</option>
-          <option value="פעיל">פעיל</option>
-          <option value="לא פעיל">לא פעיל</option>
-        </select>
-
-        <select
-          value={filterDebt}
-          onChange={e => onFilterDebt(e.target.value as FilterDebt)}
-          className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 text-gray-600"
-        >
-          <option value="all">חוב/זכות – הכל</option>
-          <option value="debt">חייבים בלבד</option>
-          <option value="credit">זכאים בלבד</option>
-        </select>
-
-        <span className="text-sm text-gray-400 mr-auto">{total} תוצאות</span>
+        {/* Status filter chips */}
+        <div className="flex flex-wrap gap-2 items-center" dir="rtl">
+          <span className="text-xs text-gray-400 ml-1">סטטוס:</span>
+          <button
+            onClick={() => onFilterStatus('')}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !filterStatus
+                ? 'bg-[#1a3a7a] text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            הכל
+          </button>
+          {statusOptions.length === 0
+            ? <span className="text-xs text-gray-300 italic">טען סינכרון לטעינת סטטוסים</span>
+            : statusOptions.map(s => (
+              <button
+                key={s}
+                onClick={() => onFilterStatus(filterStatus === s ? '' : s)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  filterStatus === s
+                    ? 'bg-[#1a3a7a] text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {s}
+              </button>
+            ))
+          }
+        </div>
       </div>
 
       {/* Table */}
@@ -121,10 +151,10 @@ export default function ParentList({
                 <tr
                   key={p.id}
                   onClick={() => onSelectParent(p.id)}
-                  className="hover:bg-indigo-50/50 cursor-pointer transition-colors group"
+                  className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                    <p className="font-semibold text-gray-900 group-hover:text-[#1a3a7a] transition-colors">
                       {p.name || '—'}
                     </p>
                     {p.email && <p className="text-xs text-gray-400">{p.email}</p>}
@@ -143,8 +173,10 @@ export default function ParentList({
                   </td>
                   <td className="px-4 py-3 text-left tabular-nums">
                     {p.tuitionBalance !== 0 ? (
-                      <span className={`text-sm font-semibold ${p.tuitionBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {p.tuitionBalance >= 0 ? '+' : ''}{formatCurrency(p.tuitionBalance)}
+                      <span className={`text-sm font-semibold ${p.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {p.tuitionBalance > 0
+                          ? formatCurrency(p.tuitionBalance)
+                          : `זכות ${formatCurrency(Math.abs(p.tuitionBalance))}`}
                       </span>
                     ) : (
                       <span className="text-sm text-gray-400">—</span>
@@ -153,7 +185,7 @@ export default function ParentList({
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1 justify-end">
                       {(p.status ?? []).slice(0, 2).map(s => (
-                        <span key={s} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs">
+                        <span key={s} className="px-2 py-0.5 bg-[#1a3a7a]/8 text-[#1a3a7a] rounded-full text-xs">
                           {s}
                         </span>
                       ))}

@@ -43,10 +43,12 @@ export const S = {
   GENDER: 'fld2avAGb9rwWl0vO',
   AGE: 'fldtUE1ey7AEECMKY',
   PARENT: 'fldEhJttpVYxEx5hm',
-  CLASS_NAME_TEXT: 'fldEHRxiaPRzPdPun',
+  CLASS_NAME_TEXT: 'fldEHRxiaPRzPdPun',   // כיתה1 – plain text class name
   STATUS: 'fldiEerXKAj5LlYv0',
   TRANSPORTATION: 'fldK2JuPs7ynLgINU',
   TRANSPORTATION_COST: 'fldj8Ns4LXRpCGe8o',
+  DEPARTMENT_LINKS: 'fldqvDgz7fWVEQ52M',   // קישור לאגף – linked record IDs
+  CLASS_DEPARTMENT: 'fldqFXmJHxdGXVGbE',   // כיתה1 + קישור לאגף – formula result (display)
 } as const
 
 // Transaction field IDs (tblcBmmWAe15NQjc3)

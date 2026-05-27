@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { calcAge } from '../route'
+
+function detectFramework(className: string): string {
+  if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
+  if (className.includes('בית חינוך'))  return 'בית חינוך לבנות'
+  return ''
+}
 
 export async function GET(
   _req: NextRequest,
@@ -22,7 +29,6 @@ export async function GET(
     const toArray = (v: unknown): string[] =>
       Array.isArray(v) ? v : (v ? [String(v)] : [])
 
-    // Fetch parent names if any
     const parentIds = toArray(s.parent_ids)
     let parents: { id: string; name: string }[] = []
     if (parentIds.length > 0) {
@@ -31,27 +37,49 @@ export async function GET(
       parents = (data ?? []).map(p => ({ id: p.id, name: p.name ?? '' }))
     }
 
+    const cn = s.class_name ?? ''
+    const framework = frameMap[cn] || detectFramework(cn)
+    const birthGreg = s.birth_date_gregorian ?? ''
+
     return NextResponse.json({
       id: s.id,
       name: s.name ?? '',
       gender: s.gender ?? '',
-      age: s.age ?? '',
-      className: s.class_name ?? '',
-      framework: frameMap[s.class_name ?? ''] ?? '',
+      age: calcAge(birthGreg) || String(s.age ?? ''),
+      className: cn,
+      framework,
       status: s.status ?? '',
       transportation: toArray(s.transportation),
       transportationCost: s.transportation_cost ?? 0,
       notes: s.notes ?? '',
       parentIds,
       parents,
+      birthDateGregorian: birthGreg,
+      birthDateHebrew: s.birth_date_hebrew ?? '',
+      idNumber: s.id_number ?? '',
+      healthFund: s.health_fund ?? '',
+      previousSchool: s.previous_school ?? '',
     })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
 
-const ALLOWED = ['name', 'gender', 'age', 'class_name', 'status',
-  'transportation', 'transportation_cost', 'notes']
+const ALLOWED_FIELDS: Record<string, string> = {
+  name:               'name',
+  gender:             'gender',
+  class_name:         'class_name',
+  className:          'class_name',
+  status:             'status',
+  transportation:     'transportation',
+  transportationCost: 'transportation_cost',
+  notes:              'notes',
+  birthDateGregorian: 'birth_date_gregorian',
+  birthDateHebrew:    'birth_date_hebrew',
+  idNumber:           'id_number',
+  healthFund:         'health_fund',
+  previousSchool:     'previous_school',
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -61,11 +89,8 @@ export async function PATCH(
     const { id } = await params
     const body = await req.json()
     const update: Record<string, unknown> = {}
-    for (const key of ALLOWED) {
-      const clientKey = key === 'class_name' ? 'className'
-        : key === 'transportation_cost' ? 'transportationCost' : key
-      if (clientKey in body) update[key] = body[clientKey]
-      else if (key in body) update[key] = body[key]
+    for (const [clientKey, dbKey] of Object.entries(ALLOWED_FIELDS)) {
+      if (clientKey in body) update[dbKey] = body[clientKey]
     }
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })

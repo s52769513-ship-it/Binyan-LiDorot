@@ -13,6 +13,130 @@ function fmtDate(d: string) {
   return new Intl.DateTimeFormat('he-IL').format(new Date(d))
 }
 
+/* ─── FinancialBreakdown ────────────────────────────── */
+function FinancialBreakdown({
+  parent,
+  onClose,
+}: {
+  parent: ParentDetail
+  onClose: () => void
+}) {
+  const activeStudents = parent.students.filter(s => s.status === 'פעיל')
+  const activeCount = activeStudents.length
+  const tuitionPerChild = activeCount <= 3 ? 500 : 450
+  const calculatedTuition = activeCount * tuitionPerChild
+  const transportTotal = activeStudents.reduce((s, st) => s + (st.transportationCost ?? 0), 0)
+  const grandTotal = calculatedTuition + transportTotal
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
+        dir="rtl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 text-lg leading-none">✕</button>
+          <h2 className="text-lg font-bold text-gray-800">פירוט כספי — {parent.name}</h2>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {/* Children */}
+          <div className="bg-blue-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-lg">👨‍👩‍👧‍👦</span>
+              <span className="font-semibold text-gray-800">ילדים פעילים ({activeCount}{parent.childrenCount !== activeCount ? ` מתוך ${parent.childrenCount}` : ''})</span>
+            </div>
+            {parent.students.length > 0 ? (
+              <ul className="space-y-1 pr-2">
+                {parent.students.map(s => (
+                  <li key={s.id} className="text-sm text-gray-700 flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{s.className || ''}</span>
+                    <span>{s.name}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400 pr-2">אין מידע על ילדים</p>
+            )}
+          </div>
+
+          {/* Transport */}
+          <div className="bg-emerald-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-lg">🚌</span>
+              <span className="font-semibold text-gray-800">הסעות</span>
+            </div>
+            {parent.students.some(s => s.transportation.length > 0) ? (
+              <ul className="space-y-2 pr-2">
+                {parent.students.map(s => (
+                  <li key={s.id} className="text-sm text-gray-700">
+                    <span className="font-medium">{s.name}:</span>{' '}
+                    {s.transportation.length > 0 ? s.transportation.join(', ') : 'ללא הסעות'}
+                    {s.transportationCost > 0 && (
+                      <span className="text-gray-500 mr-1">({fmt(s.transportationCost)})</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400 pr-2">ללא הסעות</p>
+            )}
+            {transportTotal > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-emerald-100 text-sm font-semibold text-emerald-700 flex justify-between">
+                <span>{fmt(transportTotal)}</span>
+                <span>סה"כ הסעות</span>
+              </div>
+            )}
+          </div>
+
+          {/* Tuition calculation */}
+          <div className="bg-amber-50 rounded-xl p-4">
+            <div className="font-semibold text-gray-800 mb-2">חישוב שכר לימוד</div>
+            <div className="text-sm text-gray-700 font-mono bg-white/60 rounded-lg px-3 py-2 text-left" dir="ltr">
+              {activeCount} × {tuitionPerChild.toLocaleString('he-IL')} ₪ = {calculatedTuition.toLocaleString('he-IL')} ₪
+            </div>
+            <div className="text-xs text-gray-400 mt-1.5 text-right">
+              {activeCount <= 3 ? 'עד 3 ילדים פעילים: 500 ₪ לתלמיד' : 'מעל 3 ילדים פעילים: 450 ₪ לתלמיד'}
+            </div>
+          </div>
+
+          {/* Grand total */}
+          <div className="bg-indigo-50 rounded-xl p-4">
+            <div className="font-semibold text-gray-800 mb-2">סה"כ לתשלום</div>
+            <div className="text-sm text-gray-700 font-mono bg-white/60 rounded-lg px-3 py-2 text-left space-y-1" dir="ltr">
+              <div>{calculatedTuition.toLocaleString('he-IL')} ₪ (שכ"ל)</div>
+              {transportTotal > 0 && <div>+ {transportTotal.toLocaleString('he-IL')} ₪ (הסעות)</div>}
+              <div className="border-t border-indigo-100 pt-1 font-bold text-indigo-800">
+                = {grandTotal.toLocaleString('he-IL')} ₪
+              </div>
+            </div>
+          </div>
+
+          {/* Actual balance from DB */}
+          {parent.tuitionBalance !== 0 && (
+            <div className={`rounded-xl p-4 ${parent.tuitionBalance > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-xl font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {fmt(Math.abs(parent.tuitionBalance))}
+                </span>
+                <span className="text-sm font-medium text-gray-600">
+                  {parent.tuitionBalance > 0 ? 'חוב פתוח נוכחי' : 'זכות נוכחית'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function toHebrewDate(d: string) {
   if (!d) return ''
   try {
@@ -88,6 +212,8 @@ function InlineField({ label, value, onSave, type = 'text', dir = 'rtl', multili
 interface Props {
   parentId: string
   onClose: () => void
+  onOpenStudent?: (studentId: string) => void
+  onOpenPayment?: (paymentId: string) => void
 }
 
 /* ─── badge ─────────────────────────────────────────── */
@@ -109,7 +235,7 @@ type TabKey = 'details' | 'children' | 'payments'
 /* ═══════════════════════════════════════════════════════
    MAIN COMPONENT — side panel (not modal)
 ═══════════════════════════════════════════════════════ */
-export default function EmployeeCard({ parentId, onClose }: Props) {
+export default function EmployeeCard({ parentId, onClose, onOpenStudent, onOpenPayment }: Props) {
   const [parent, setParent] = useState<ParentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -117,6 +243,7 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
   const [monthFilter, setMonthFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -269,7 +396,9 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
         {parent && tab === 'children' && (
           <div className="p-4 space-y-3">
             {parent.students.map(s => (
-              <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-[#1a3a7a]/30 transition-colors">
+              <div key={s.id}
+                onClick={() => onOpenStudent?.(s.id)}
+                className={`bg-white border border-gray-200 rounded-xl p-4 transition-colors ${onOpenStudent ? 'cursor-pointer hover:border-[#1a3a7a] hover:bg-blue-50/30' : 'hover:border-[#1a3a7a]/30'}`}>
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-1.5">
                     {s.status && (
@@ -283,7 +412,10 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
                       }`}>{s.framework}</span>
                     )}
                   </div>
-                  <p className="font-bold text-gray-900">{s.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-gray-900">{s.name}</p>
+                    {onOpenStudent && <span className="text-[10px] text-[#1a3a7a]/50 group-hover:opacity-100">← פתח כרטיס</span>}
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
                   {s.className && (
@@ -313,6 +445,18 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
         {/* ── PAYMENTS TAB ── */}
         {parent && tab === 'payments' && (
           <div className="p-4 space-y-4">
+            {/* Breakdown button */}
+            <button
+              onClick={() => setShowBreakdown(true)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors text-right group"
+            >
+              <span className="text-xs text-indigo-400 group-hover:text-indigo-600">←</span>
+              <div>
+                <span className="text-sm font-semibold text-indigo-700">פירוט כספי מלא</span>
+                <span className="text-xs text-indigo-400 mr-2">ילדים · הסעות · שכ"ל · סה"כ</span>
+              </div>
+            </button>
+
             {/* 3 summary numbers */}
             <div className="grid grid-cols-3 gap-2">
               <SummaryNum label="חוב פתוח כולל" value={fmt(totalDebt)}       color="text-red-600"     bg="bg-red-50" />
@@ -354,7 +498,9 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
                       const remain = Math.max(0, pp.balance)
                       const status = remain <= 0 ? 'שולם' : paid > 0 ? 'חלקי' : 'פתוח'
                       return (
-                        <tr key={pp.id} className="hover:bg-gray-50">
+                        <tr key={pp.id}
+                          onClick={() => onOpenPayment?.(pp.id)}
+                          className={`hover:bg-gray-50 ${onOpenPayment ? 'cursor-pointer hover:bg-blue-50/40' : ''}`}>
                           <td className="px-3 py-2.5 font-medium text-right">{pp.monthYear || fmtDate(pp.date)}</td>
                           <td className="px-3 py-2.5 text-left tabular-nums text-gray-600">{fmt(pp.amount)}</td>
                           <td className="px-3 py-2.5 text-left tabular-nums text-emerald-700 font-medium">{fmt(paid)}</td>
@@ -407,6 +553,10 @@ export default function EmployeeCard({ parentId, onClose }: Props) {
         )}
       </div>
       </div>
+
+      {showBreakdown && parent && (
+        <FinancialBreakdown parent={parent} onClose={() => setShowBreakdown(false)} />
+      )}
     </div>
   )
 }

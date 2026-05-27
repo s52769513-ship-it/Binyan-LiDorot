@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+function detectFramework(className: string): string {
+  if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
+  if (className.includes('בית חינוך'))  return 'בית חינוך לבנות'
+  return ''
+}
+
 export async function GET() {
   const [classesRes, studentsRes] = await Promise.all([
     supabaseAdmin.from('classes').select('class_name, framework').order('class_name', { ascending: true }),
@@ -11,10 +17,11 @@ export async function GET() {
     (classesRes.data ?? []).map(c => [c.class_name, c.framework ?? ''])
   )
 
-  // Add class names from students that aren't in the classes table yet
+  // Add class names from students that aren't in the classes table yet,
+  // auto-detecting framework from the class name
   for (const s of studentsRes.data ?? []) {
     if (s.class_name && !defined.has(s.class_name)) {
-      defined.set(s.class_name, '')
+      defined.set(s.class_name, detectFramework(s.class_name))
     }
   }
 
@@ -29,9 +36,10 @@ export async function POST(req: NextRequest) {
   try {
     const { className, framework } = await req.json()
     if (!className) return NextResponse.json({ error: 'className required' }, { status: 400 })
+    const fw = framework ?? detectFramework(className)
     const { error } = await supabaseAdmin
       .from('classes')
-      .upsert({ class_name: className, framework: framework ?? '' }, { onConflict: 'class_name' })
+      .upsert({ class_name: className, framework: fw }, { onConflict: 'class_name' })
     if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err) {

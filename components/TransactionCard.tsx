@@ -9,6 +9,7 @@ export interface Transaction {
   date: string
   monthYear: string
   notes: string
+  projectNames: string[]
 }
 
 interface Props {

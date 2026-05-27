@@ -15,6 +15,11 @@ interface StudentData {
   notes: string
   parentIds: string[]
   parents: { id: string; name: string }[]
+  birthDateGregorian: string
+  birthDateHebrew: string
+  idNumber: string
+  healthFund: string
+  previousSchool: string
 }
 
 interface ClassOption { class_name: string; framework: string }
@@ -28,10 +33,16 @@ interface Props {
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
-const STATUS_OPTIONS = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין']
-const TRANSPORT_OPTIONS = ['בוקר', 'צהריים', 'ערב']
+const STATUS_OPTIONS    = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין', 'סיים לימודים']
+const TRANSPORT_OPTIONS = ['הלוך', 'חזור שעה 1', 'חזור שעה 4']
 
-/* ─── InlineField (free text) ────────────────────────── */
+function calcTransportCost(transport: string[]): number {
+  if (!transport.includes('הלוך')) return 0
+  const hasReturn = transport.includes('חזור שעה 1') || transport.includes('חזור שעה 4')
+  return hasReturn ? 130 : 65
+}
+
+/* ─── InlineField (free text / date) ────────────────── */
 function InlineField({
   label, value, onSave, type = 'text', dir = 'rtl', multiline = false,
 }: {
@@ -39,8 +50,8 @@ function InlineField({
   type?: string; dir?: 'rtl' | 'ltr'; multiline?: boolean
 }) {
   const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(value)
-  const [saving, setSaving] = useState(false)
+  const [val, setVal]         = useState(value)
+  const [saving, setSaving]   = useState(false)
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
 
   useEffect(() => { setVal(value) }, [value])
@@ -80,35 +91,40 @@ function InlineField({
   )
 }
 
-/* ─── InlineSelect (dropdown) ────────────────────────── */
+/* ─── ReadOnly ────────────────────────────────────────── */
+function ReadOnly({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
+      <div className="text-sm text-gray-500 bg-gray-50 px-2 py-1 rounded">
+        {value || <span className="italic text-gray-300 text-xs">—</span>}
+      </div>
+    </div>
+  )
+}
+
+/* ─── InlineSelect ────────────────────────────────────── */
 function InlineSelect({
   label, value, options, onSave,
 }: {
   label: string; value: string; options: string[]; onSave: (v: string) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
-
   const handle = async (v: string) => {
     if (v === value) return
     setSaving(true)
     try { await onSave(v) } finally { setSaving(false) }
   }
-
   return (
     <div>
       <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
-      {saving
-        ? <span className="text-xs text-gray-400">שומר...</span>
-        : (
-          <select
-            value={value}
-            onChange={e => handle(e.target.value)}
-            className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right"
-          >
-            <option value="">— בחר —</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        )}
+      {saving ? <span className="text-xs text-gray-400">שומר...</span> : (
+        <select value={value} onChange={e => handle(e.target.value)}
+          className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right">
+          <option value="">— בחר —</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      )}
     </div>
   )
 }
@@ -117,45 +133,48 @@ function InlineSelect({
 function InlineClassSelect({
   label, value, classes, onSave,
 }: {
-  label: string; value: string; classes: ClassOption[]; onSave: (v: string, framework: string) => Promise<void>
+  label: string; value: string; classes: ClassOption[];
+  onSave: (className: string, framework: string) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
-
   const handle = async (className: string) => {
     if (className === value) return
     const fw = classes.find(c => c.class_name === className)?.framework ?? ''
     setSaving(true)
     try { await onSave(className, fw) } finally { setSaving(false) }
   }
-
   return (
     <div>
       <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
-      {saving
-        ? <span className="text-xs text-gray-400">שומר...</span>
-        : (
-          <select
-            value={value}
-            onChange={e => handle(e.target.value)}
-            className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right"
-          >
-            <option value="">— בחר כיתה —</option>
-            {classes.map(c => (
-              <option key={c.class_name} value={c.class_name}>
-                {c.class_name} ({c.framework || 'לא מוגדר'})
-              </option>
-            ))}
-          </select>
-        )}
+      {saving ? <span className="text-xs text-gray-400">שומר...</span> : (
+        <select value={value} onChange={e => handle(e.target.value)}
+          className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right">
+          <option value="">— בחר כיתה —</option>
+          {classes.map(c => (
+            <option key={c.class_name} value={c.class_name}>{c.class_name}</option>
+          ))}
+        </select>
+      )}
     </div>
   )
 }
 
+/* ─── Section ─────────────────────────────────────────── */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">{children}</div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════ */
 export default function StudentCard({ studentId, onClose, onOpenParent }: Props) {
   const [student, setStudent] = useState<StudentData | null>(null)
   const [classes, setClasses] = useState<ClassOption[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -190,158 +209,148 @@ export default function StudentCard({ studentId, onClose, onOpenParent }: Props)
     const next = student.transportation.includes(t)
       ? student.transportation.filter(x => x !== t)
       : [...student.transportation, t]
-    await patch({ transportation: next })
+    const cost = calcTransportCost(next)
+    setStudent(prev => prev ? { ...prev, transportation: next, transportationCost: cost } : prev)
+    await patch({ transportation: next, transportationCost: cost })
   }
 
   const frameworkColor = student?.framework === 'בית חינוך לבנות'
     ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg overflow-hidden" style={{ height: '88vh', maxHeight: '88vh' }}>
-      {/* Header */}
-      <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
-        <div className="flex items-start justify-between mb-2">
-          <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
-          <div className="text-right flex-1 mr-2">
-            {loading
-              ? <div className="h-6 w-40 bg-white/20 rounded animate-pulse ml-auto" />
-              : <h2 className="text-xl font-bold text-white">{student?.name || '—'}</h2>
-            }
-            <div className="flex items-center gap-1.5 justify-end mt-1 flex-wrap">
-              {student?.framework && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${frameworkColor}`}>
-                  {student.framework}
-                </span>
-              )}
-              {student?.status && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  student.status === 'פעיל' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
-                }`}>{student.status}</span>
-              )}
-              {student?.gender && (
-                <span className="text-white/50 text-xs">{student.gender === 'נקבה' ? 'בת' : 'בן'}</span>
-              )}
+      <div className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg overflow-hidden"
+        style={{ height: '92vh', maxHeight: '92vh' }}>
+
+        {/* Header */}
+        <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+          <div className="flex items-start justify-between mb-2">
+            <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            <div className="text-right flex-1 mr-2">
+              {loading
+                ? <div className="h-6 w-40 bg-white/20 rounded animate-pulse ml-auto" />
+                : <h2 className="text-xl font-bold text-white">{student?.name || '—'}</h2>
+              }
+              <div className="flex items-center gap-1.5 justify-end mt-1 flex-wrap">
+                {student?.framework && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${frameworkColor}`}>
+                    {student.framework}
+                  </span>
+                )}
+                {student?.status && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    student.status === 'פעיל' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+                  }`}>{student.status}</span>
+                )}
+              </div>
             </div>
           </div>
+
+          {student && (
+            <div className="flex gap-px mt-2">
+              <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
+                <p className="text-sm font-bold text-white/90">{student.className || '—'}</p>
+                <p className="text-[10px] text-white/50">כיתה</p>
+              </div>
+              <div className="flex-1 bg-white/10 px-3 py-2 text-center">
+                <p className="text-sm font-bold text-white/90">{student.age || '—'}</p>
+                <p className="text-[10px] text-white/50">גיל</p>
+              </div>
+              <div className="flex-1 bg-white/10 px-3 py-2 text-center">
+                <p className="text-sm font-bold text-white/90">{student.birthDateHebrew || student.birthDateGregorian || '—'}</p>
+                <p className="text-[10px] text-white/50">ת. לידה</p>
+              </div>
+              <div className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center">
+                <p className="text-sm font-bold text-white/90">{student.transportation.length ? student.transportation.join(' + ') : '—'}</p>
+                <p className="text-[10px] text-white/50">הסעות</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Quick stats strip */}
-        {student && (
-          <div className="flex gap-px mt-2">
-            <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
-              <p className="text-base font-bold text-white/90">{student.className || '—'}</p>
-              <p className="text-[10px] text-white/50">כיתה</p>
-            </div>
-            <div className="flex-1 bg-white/10 px-3 py-2 text-center">
-              <p className="text-base font-bold text-white/90">{student.age || '—'}</p>
-              <p className="text-[10px] text-white/50">גיל</p>
-            </div>
-            <div className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center">
-              <p className="text-base font-bold text-white/90">{student.transportation.length || '—'}</p>
-              <p className="text-[10px] text-white/50">הסעות</p>
-            </div>
-          </div>
-        )}
-      </div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto bg-gray-50/50 p-4 space-y-4" dir="rtl">
+          {loading && <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>}
+          {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto bg-gray-50/50 p-4 space-y-4" dir="rtl">
-        {loading && <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>}
-        {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
-
-        {student && (
-          <>
-            {/* Details */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">פרטים</div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                <InlineField label="שם מלא" value={student.name} onSave={v => patch({ name: v })} />
-                <InlineField label="גיל"    value={String(student.age || '')} onSave={v => patch({ age: v })} />
+          {student && (
+            <>
+              {/* פרטים אישיים */}
+              <Section title="פרטים אישיים">
+                <InlineField label="שם מלא"   value={student.name}     onSave={v => patch({ name: v })} />
+                <InlineField label='ת"ז'      value={student.idNumber} onSave={v => patch({ idNumber: v })} dir="ltr" />
+                <InlineSelect label="מגדר"    value={student.gender}   options={['זכר', 'נקבה']} onSave={v => patch({ gender: v })} />
+                <InlineSelect label="סטטוס"   value={student.status}   options={STATUS_OPTIONS}   onSave={v => patch({ status: v })} />
                 <InlineClassSelect
-                  label="כיתה"
-                  value={student.className}
-                  classes={classes}
+                  label="כיתה" value={student.className} classes={classes}
                   onSave={(className, framework) => {
                     setStudent(prev => prev ? { ...prev, className, framework } : prev)
                     return patch({ className })
                   }}
                 />
-                <InlineSelect
-                  label="סטטוס"
-                  value={student.status}
-                  options={STATUS_OPTIONS}
-                  onSave={v => patch({ status: v })}
-                />
-                <InlineSelect
-                  label="מגדר"
-                  value={student.gender}
-                  options={['זכר', 'נקבה']}
-                  onSave={v => patch({ gender: v })}
-                />
-                {/* Framework read-only */}
-                <div>
-                  <div className="text-[10px] text-gray-400 mb-0.5 text-right">מסגרת</div>
-                  <div className="text-sm text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                    {student.framework || <span className="italic text-gray-300 text-xs">נקבע לפי הכיתה</span>}
+                <ReadOnly label="מסגרת" value={student.framework} />
+              </Section>
+
+              {/* תאריך לידה */}
+              <Section title="תאריך לידה">
+                <InlineField label="תאריך עברי"  value={student.birthDateHebrew}    onSave={v => patch({ birthDateHebrew: v })} />
+                <InlineField label="תאריך לועזי" value={student.birthDateGregorian} onSave={v => patch({ birthDateGregorian: v })} dir="ltr" />
+                <ReadOnly label="גיל (מחושב)" value={student.age} />
+              </Section>
+
+              {/* פרטים נוספים */}
+              <Section title="פרטים נוספים">
+                <InlineField label="קופת חולים"       value={student.healthFund}    onSave={v => patch({ healthFund: v })} />
+                <InlineField label="מקום לימודים קודם" value={student.previousSchool} onSave={v => patch({ previousSchool: v })} />
+              </Section>
+
+              {/* הסעות */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הסעות</div>
+                <div className="p-4 space-y-3">
+                  <div className="flex gap-4 flex-wrap">
+                    {TRANSPORT_OPTIONS.map(t => (
+                      <label key={t} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={student.transportation.includes(t)}
+                          onChange={() => toggleTransport(t)} className="accent-[#1a3a7a] w-4 h-4" />
+                        <span className="text-sm">{t}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {student.transportationCost > 0 && (
+                    <p className="text-sm text-gray-500">עלות: <span className="font-semibold">{fmt(student.transportationCost)}</span></p>
+                  )}
+                </div>
+              </div>
+
+              {/* הערות */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הערות</div>
+                <div className="p-4">
+                  <InlineField label="" value={student.notes} onSave={v => patch({ notes: v })} multiline />
+                </div>
+              </div>
+
+              {/* הורים */}
+              {student.parents.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הורים</div>
+                  <div className="divide-y divide-gray-100">
+                    {student.parents.map(p => (
+                      <button key={p.id} onClick={() => onOpenParent?.(p.id)}
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors text-right group">
+                        <span className="text-xs text-[#1a3a7a] opacity-0 group-hover:opacity-100">פתח כרטיס ←</span>
+                        <span className="font-medium text-gray-800">{p.name}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Transportation */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הסעות</div>
-              <div className="p-4 space-y-3">
-                <div className="flex gap-3 flex-wrap">
-                  {TRANSPORT_OPTIONS.map(t => (
-                    <label key={t} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={student.transportation.includes(t)}
-                        onChange={() => toggleTransport(t)}
-                        className="accent-[#1a3a7a] w-4 h-4"
-                      />
-                      <span className="text-sm">{t}</span>
-                    </label>
-                  ))}
-                </div>
-                {student.transportationCost > 0 && (
-                  <p className="text-sm text-gray-500">עלות: <span className="font-semibold text-gray-700">{fmt(student.transportationCost)}</span></p>
-                )}
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הערות</div>
-              <div className="p-4">
-                <InlineField label="" value={student.notes} onSave={v => patch({ notes: v })} multiline />
-              </div>
-            </div>
-
-            {/* Parents */}
-            {student.parents.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הורים</div>
-                <div className="divide-y divide-gray-100">
-                  {student.parents.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => onOpenParent?.(p.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors text-right group"
-                    >
-                      <span className="text-xs text-[#1a3a7a] opacity-0 group-hover:opacity-100">פתח כרטיס ←</span>
-                      <span className="font-medium text-gray-800">{p.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -19,6 +19,7 @@ export interface StudentDetail {
   gender: string
   age: string | number
   className: string
+  classDepartment: string   // formula: "כיתה X – אגף Y"
   framework: string
   status: string
   transportation: string[]
@@ -32,6 +33,7 @@ export interface TransactionItem {
   date: string
   monthYear: string
   notes: string
+  projectNames: string[]
 }
 
 export interface DebtItem {

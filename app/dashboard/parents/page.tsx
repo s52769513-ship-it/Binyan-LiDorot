@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { ParentSummary, SortField, FilterDebt } from '@/lib/types'
 import ParentList from '@/components/ParentList'
 import EmployeeCard from '@/components/EmployeeCard'
+import StudentCard from '@/components/StudentCard'
+import PaymentCard from '@/components/PaymentCard'
+import dynamic from 'next/dynamic'
+
+const AddParentModal = dynamic(() => import('@/components/AddParentModal'), { ssr: false })
 
 export default function ParentsPage() {
   const [parents, setParents]           = useState<ParentSummary[]>([])
@@ -14,9 +19,13 @@ export default function ParentsPage() {
   const [filterDebt, setFilterDebt]     = useState<FilterDebt>('all')
   const [sortField, setSortField]       = useState<SortField>('last_name')
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc')
-  const [selectedId, setSelectedId]     = useState<string | null>(null)
+  const [selectedId, setSelectedId]         = useState<string | null>(null)
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState('')
+  const [showAddParent, setShowAddParent] = useState(false)
 
   const [debouncedSearch, setDebouncedSearch] = useState('')
   useEffect(() => {
@@ -33,7 +42,12 @@ export default function ParentsPage() {
     })
     fetch(`/api/parents?${params}`)
       .then(r => r.json())
-      .then(d => { if (d.error) { setError(d.error); return }; setParents(d.data ?? []); setTotal(d.total ?? 0) })
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        setParents(d.data ?? [])
+        setTotal(d.total ?? 0)
+        if (d.statusOptions?.length) setStatusOptions(d.statusOptions)
+      })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
   }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir])
@@ -48,9 +62,15 @@ export default function ParentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-400">{loading ? 'טוען...' : `${total} אנ"ש`}</span>
+      <div className="flex items-center justify-between" dir="rtl">
         <h2 className="text-2xl font-bold text-gray-800">רשימת אנ&quot;ש</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{loading ? 'טוען...' : `${total} אנ"ש`}</span>
+          <button onClick={() => setShowAddParent(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium hover:bg-[#1a3a7a]/90 transition-colors">
+            <span className="text-base leading-none">+</span> הוספת משפחה
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -72,6 +92,7 @@ export default function ParentsPage() {
           totalPages={Math.ceil(total / 50)} loading={loading}
           search={search} filterStatus={filterStatus} filterDebt={filterDebt}
           sortField={sortField} sortDir={sortDir}
+          statusOptions={statusOptions}
           onSelectParent={setSelectedId}
           onSearch={v => { setSearch(v); setPage(0) }}
           onFilterStatus={v => { setFilterStatus(v); setPage(0) }}
@@ -81,7 +102,28 @@ export default function ParentsPage() {
         />
       )}
 
-      {selectedId && <EmployeeCard parentId={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && (
+        <EmployeeCard
+          parentId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
+          onOpenPayment={id => { setSelectedId(null); setSelectedPaymentId(id) }}
+        />
+      )}
+      {selectedStudentId && (
+        <StudentCard studentId={selectedStudentId} onClose={() => setSelectedStudentId(null)}
+          onOpenParent={id => { setSelectedStudentId(null); setSelectedId(id) }} />
+      )}
+      {selectedPaymentId && (
+        <PaymentCard paymentId={selectedPaymentId} onClose={() => setSelectedPaymentId(null)}
+          onOpenParent={id => { setSelectedPaymentId(null); setSelectedId(id) }} />
+      )}
+      {showAddParent && (
+        <AddParentModal
+          onClose={() => setShowAddParent(false)}
+          onSuccess={id => { setShowAddParent(false); loadParents(); setSelectedId(id) }}
+        />
+      )}
     </div>
   )
 }

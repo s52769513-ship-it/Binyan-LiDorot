@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import StudentCard from '@/components/StudentCard'
 import EmployeeCard from '@/components/EmployeeCard'
+import PaymentCard from '@/components/PaymentCard'
 
 interface Student {
   id: string; name: string; gender: string; age: string
@@ -19,6 +20,7 @@ export default function StudentsPage() {
   const [view, setView]           = useState<'class' | 'list'>('class')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -131,7 +133,14 @@ export default function StudentsPage() {
           onOpenParent={id => { setSelectedStudentId(null); setSelectedParentId(id) }} />
       )}
       {selectedParentId && (
-        <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)} />
+        <EmployeeCard parentId={selectedParentId} onClose={() => setSelectedParentId(null)}
+          onOpenStudent={id => { setSelectedParentId(null); setSelectedStudentId(id) }}
+          onOpenPayment={id => { setSelectedParentId(null); setSelectedPaymentId(id) }}
+        />
+      )}
+      {selectedPaymentId && (
+        <PaymentCard paymentId={selectedPaymentId} onClose={() => setSelectedPaymentId(null)}
+          onOpenParent={id => { setSelectedPaymentId(null); setSelectedParentId(id) }} />
       )}
     </div>
   )
