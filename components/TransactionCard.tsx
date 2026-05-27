@@ -18,12 +18,29 @@ interface Props {
   onDelete: (id: string) => void
 }
 
+function hebrewYearLetters(d: Date): string {
+  const raw = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { year: 'numeric' }).format(d)
+  const num = parseInt(raw) - 5000
+  if (isNaN(num) || num <= 0) return raw
+  const ONES    = ['','א','ב','ג','ד','ה','ו','ז','ח','ט']
+  const TENS    = ['','י','כ','ל','מ','נ','ס','ע','פ','צ']
+  const HUNDREDS = ['','ק','ר','ש','ת','תק','תר','תש','תת','תתק']
+  const h = Math.floor(num / 100), t = Math.floor((num % 100) / 10), o = num % 10
+  let s = HUNDREDS[h] ?? ''
+  if (t === 1 && o === 5) s += 'טו'
+  else if (t === 1 && o === 6) s += 'טז'
+  else s += (TENS[t] ?? '') + (ONES[o] ?? '')
+  return s.length === 1 ? s + "'" : s.slice(0, -1) + '"' + s.slice(-1)
+}
+
 function hebrewDate(iso: string): string {
   if (!iso) return ''
   try {
-    return new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
-      day: 'numeric', month: 'long', year: 'numeric',
-    }).format(new Date(iso))
+    const d = new Date(iso)
+    const dayMonth = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+      day: 'numeric', month: 'long',
+    }).format(d)
+    return `${dayMonth} ${hebrewYearLetters(d)}`
   } catch {
     return iso
   }
@@ -341,8 +358,15 @@ export function TransactionRow({ tx, onUpdate, onDelete }: Props) {
       <td className="px-3 py-2 text-sm font-semibold tabular-nums text-left">
         {fmt(local.amount)}
       </td>
-      <td className="px-3 py-2 text-sm text-gray-500 max-w-[200px] truncate">
+      <td className="px-3 py-2 text-xs text-gray-500 max-w-[140px] truncate">
         {local.notes}
+      </td>
+      <td className="px-3 py-2 text-xs max-w-[100px]">
+        {local.projectNames?.length > 0
+          ? local.projectNames.map(p => (
+              <span key={p} className="inline-block px-1.5 py-0.5 bg-[#1a3a7a]/10 text-[#1a3a7a] rounded text-[10px] font-medium mr-0.5">{p}</span>
+            ))
+          : <span className="text-gray-300">—</span>}
       </td>
       <td className="px-3 py-2 text-right">
         {!confirmDelete ? (

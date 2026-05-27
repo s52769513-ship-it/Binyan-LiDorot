@@ -15,8 +15,10 @@ export default function ParentsPage() {
   const [total, setTotal]               = useState(0)
   const [page, setPage]                 = useState(0)
   const [search, setSearch]             = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterDebt, setFilterDebt]     = useState<FilterDebt>('all')
+  const [filterStatus, setFilterStatus]   = useState('')
+  const [filterDebt, setFilterDebt]       = useState<FilterDebt>('all')
+  const [filterCity, setFilterCity]       = useState('')
+  const [filterHasChildren, setFilterHasChildren] = useState(false)
   const [sortField, setSortField]       = useState<SortField>('last_name')
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc')
   const [selectedId, setSelectedId]         = useState<string | null>(null)
@@ -39,6 +41,8 @@ export default function ParentsPage() {
       page: String(page), search: debouncedSearch,
       status: filterStatus, debt: filterDebt,
       sort: sortField, dir: sortDir,
+      ...(filterCity ? { city: filterCity } : {}),
+      ...(filterHasChildren ? { hasChildren: 'true' } : {}),
     })
     fetch(`/api/parents?${params}`)
       .then(r => r.json())
@@ -50,7 +54,7 @@ export default function ParentsPage() {
       })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
-  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir])
+  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren])
 
   useEffect(() => { loadParents() }, [loadParents])
 
@@ -71,6 +75,38 @@ export default function ParentsPage() {
             <span className="text-base leading-none">+</span> הוספת משפחה
           </button>
         </div>
+      </div>
+
+      {/* Quick filters */}
+      <div className="flex flex-wrap gap-2" dir="rtl">
+        <button
+          onClick={() => { setFilterHasChildren(v => !v); setPage(0) }}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            filterHasChildren
+              ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
+          }`}
+        >
+          הורים (עם ילדים פעילים)
+        </button>
+        <button
+          onClick={() => { setFilterCity(c => c === 'הר יונה' ? '' : 'הר יונה'); setPage(0) }}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            filterCity === 'הר יונה'
+              ? 'bg-emerald-700 text-white border-emerald-700'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-500'
+          }`}
+        >
+          הר יונה
+        </button>
+        {(filterHasChildren || filterCity) && (
+          <button
+            onClick={() => { setFilterHasChildren(false); setFilterCity(''); setPage(0) }}
+            className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
+          >
+            נקה פילטרים ✕
+          </button>
+        )}
       </div>
 
       {error && (

@@ -8,8 +8,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl
     const page   = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
     const search = searchParams.get('search') ?? ''
-    const status = searchParams.get('status') ?? ''
-    const debt   = searchParams.get('debt') ?? 'all'
+    const status      = searchParams.get('status') ?? ''
+    const debt        = searchParams.get('debt') ?? 'all'
+    const city        = searchParams.get('city') ?? ''
+    const hasChildren = searchParams.get('hasChildren') === 'true'
     const sort   = searchParams.get('sort') ?? 'last_name'
     const dir    = searchParams.get('dir') ?? 'asc'
 
@@ -35,6 +37,14 @@ export async function GET(req: NextRequest) {
       query = query.gt('tuition_balance', 0)
     } else if (debt === 'credit') {
       query = query.lt('tuition_balance', 0)
+    }
+
+    if (city) {
+      query = query.ilike('city', `%${city}%`)
+    }
+
+    if (hasChildren) {
+      query = query.gt('children_count', 0)
     }
 
     const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']

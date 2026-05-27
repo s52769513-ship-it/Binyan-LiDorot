@@ -451,6 +451,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         <th className="px-3 py-2">סוג</th>
                         <th className="px-3 py-2 text-left">סכום</th>
                         <th className="px-3 py-2">הערות</th>
+                        <th className="px-3 py-2">קטגוריה</th>
                         <th className="px-3 py-2" />
                       </tr>
                     </thead>
