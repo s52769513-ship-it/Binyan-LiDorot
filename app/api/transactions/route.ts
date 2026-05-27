@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, type, date, monthYear, notes, parentIds, projectNames } = body
+    const { amount, type, date, monthYear, notes, parentIds, projectNames, plannedPaymentId } = body
 
     if (!amount || isNaN(Number(amount))) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
@@ -121,10 +121,27 @@ export async function POST(req: NextRequest) {
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       project_ids: [],
       project_names: Array.isArray(projectNames) ? projectNames : [],
+      planned_payment_id: plannedPaymentId || null,
       synced_at: syncedAt,
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
+
+    // Update planned payment balance if linked
+    if (plannedPaymentId) {
+      const { data: pp } = await supabaseAdmin
+        .from('planned_payments')
+        .select('balance')
+        .eq('id', plannedPaymentId)
+        .single()
+      if (pp) {
+        const newBalance = Math.max(0, (pp.balance || 0) - Math.abs(Number(amount)))
+        await supabaseAdmin
+          .from('planned_payments')
+          .update({ balance: newBalance })
+          .eq('id', plannedPaymentId)
+      }
+    }
 
     return NextResponse.json({ success: true, id })
   } catch (err) {

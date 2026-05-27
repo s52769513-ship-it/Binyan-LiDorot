@@ -20,11 +20,12 @@ interface Props {
   prefilledAmount?: number
   prefilledNotes?: string
   sourceLabel?: string       // shows a "מקור" chip (e.g. the planned payment name)
+  plannedPaymentId?: string  // links this transaction to a planned payment (updates its balance)
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function AddTransactionModal({ parentId, parentName, fixedLabel, prefilledAmount, prefilledNotes, sourceLabel, onClose, onSuccess }: Props) {
+export default function AddTransactionModal({ parentId, parentName, fixedLabel, prefilledAmount, prefilledNotes, sourceLabel, plannedPaymentId, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
@@ -95,6 +96,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           type, date, monthYear, notes,
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
           projectNames: project ? [project] : [],
+          plannedPaymentId: plannedPaymentId || null,
         }),
       })
       const data = await res.json()

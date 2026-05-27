@@ -219,6 +219,30 @@ export async function POST() {
     // Upsert all tables (sequentially – parents first because others may reference them)
     const parentsCount       = await upsertAndPrune('parents', parents, syncedAt)
     const studentsCount      = await upsertAndPrune('students', students, syncedAt)
+
+    // Auto-upsert classes from student class_name + class_department (formula)
+    // This keeps the classes table up-to-date after each Airtable sync
+    {
+      const classMap = new Map<string, string>()
+      for (const st of students) {
+        if (!st.class_name) continue
+        let fw = ''
+        const dept = st.class_department || ''
+        if (dept.includes('תלמוד תורה')) fw = 'תלמוד תורה'
+        else if (dept.includes('בית חינוך')) fw = 'בית חינוך לבנות'
+        // Only upgrade framework (empty → value), never downgrade
+        if (!classMap.has(st.class_name) || fw) {
+          classMap.set(st.class_name, fw)
+        }
+      }
+      const classRows = Array.from(classMap.entries())
+        .filter(([name]) => !!name)
+        .map(([class_name, framework]) => ({ class_name, framework }))
+      if (classRows.length > 0) {
+        await supabaseAdmin.from('classes').upsert(classRows, { onConflict: 'class_name' })
+      }
+    }
+
     const transactionsCount  = await upsertAndPrune('transactions', transactions, syncedAt)
     const debtsCount         = await upsertAndPrune('debts', debts, syncedAt)
     const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
