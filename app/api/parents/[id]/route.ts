@@ -120,6 +120,7 @@ export async function GET(
         date: tx.date ?? '',
         monthYear: tx.month_year ?? '',
         notes: tx.notes ?? '',
+        projectNames: (tx.project_names as string[]) ?? [],
       })),
     })
   } catch (err) {

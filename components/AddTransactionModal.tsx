@@ -25,11 +25,13 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
   const [direction, setDirection] = useState<'הכנסה' | 'הוצאה'>('הכנסה')
-  const [amount, setAmount]     = useState('')
-  const [type, setType]         = useState('מזומן')
-  const [date, setDate]         = useState(todayStr)
+  const [amount, setAmount]       = useState('')
+  const [type, setType]           = useState('מזומן')
+  const [date, setDate]           = useState(todayStr)
   const [monthYear, setMonthYear] = useState(getMonthYear(todayStr))
-  const [notes, setNotes]       = useState('')
+  const [notes, setNotes]         = useState('')
+  const [project, setProject]     = useState('')
+  const [projects, setProjects]   = useState<string[]>([])
   const [parentSearch, setParentSearch] = useState(parentName ?? '')
   const [parentOptions, setParentOptions] = useState<ParentOption[]>([])
   const [selectedParent, setSelectedParent] = useState<ParentOption | null>(
@@ -40,6 +42,14 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
   const [error, setError] = useState('')
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
+
+  // Load project list
+  useEffect(() => {
+    fetch('/api/projects')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setProjects(d) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -80,6 +90,7 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
           amount: finalAmount,
           type, date, monthYear, notes,
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
+          projectNames: project ? [project] : [],
         }),
       })
       const data = await res.json()
@@ -161,6 +172,36 @@ export default function AddTransactionModal({ parentId, parentName, onClose, onS
                 placeholder="0" step="0.01" min="0"
                 className="w-full pr-7 pl-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
             </div>
+          </div>
+
+          {/* Project */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">קטגוריה / פרויקט</label>
+            {projects.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => setProject('')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    project === '' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                  }`}>
+                  ללא
+                </button>
+                {projects.map(p => (
+                  <button key={p} type="button" onClick={() => setProject(p)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                      project === p
+                        ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
+                    }`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <select value={project} onChange={e => setProject(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
+                <option value="">ללא קטגוריה</option>
+              </select>
+            )}
           </div>
 
           {/* Type */}

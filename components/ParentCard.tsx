@@ -275,15 +275,26 @@ export default function ParentCard({ parentId, onClose }: Props) {
               {/* Transactions */}
               {parent.transactions.length > 0 && (
                 <Section title={`תנועות אחרונות (${parent.transactions.length})`}>
-                  {parent.transactions.slice(0, 10).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                      <span className="text-sm font-semibold text-emerald-700">
-                        {formatCurrency(tx.amount)}
-                      </span>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-700">{tx.type || '—'}</p>
-                        <p className="text-xs text-gray-400">{formatDate(tx.date)}</p>
+                  {parent.transactions.slice(0, 15).map(tx => (
+                    <div key={tx.id} className="py-2.5 border-b border-gray-100 last:border-0">
+                      <div className="flex justify-between items-start">
+                        <span className={`text-sm font-bold tabular-nums ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                          {tx.amount < 0 ? '−' : '+'}
+                          {formatCurrency(Math.abs(tx.amount))}
+                        </span>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-700">{tx.type || '—'}</p>
+                          <p className="text-xs text-gray-400">{formatDate(tx.date)}{tx.monthYear ? ` · ${tx.monthYear}` : ''}</p>
+                        </div>
                       </div>
+                      {(tx.projectNames?.length > 0 || tx.notes) && (
+                        <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
+                          {tx.notes && <span className="text-xs text-gray-400 truncate max-w-[140px]">{tx.notes}</span>}
+                          {tx.projectNames?.map(p => (
+                            <span key={p} className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">{p}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </Section>
