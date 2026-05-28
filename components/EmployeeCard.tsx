@@ -27,6 +27,10 @@ const HEBREW_MONTH_NAMES: Record<string, string> = {
   '05': 'סיון',  '06': 'תמוז',   '07': 'אב',    '08': 'אלול',
   '09': 'תשרי',  '10': 'חשון',   '11': 'כסלו',  '12': 'טבת',
 }
+function hebrewMonth(my: string): string {
+  const [m] = my.split('/')
+  return HEBREW_MONTH_NAMES[m] || ''
+}
 function fmtMonthYear(my: string): string {
   const [m, y] = my.split('/')
   const greg   = MONTH_NAMES[m] || m
@@ -705,7 +709,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
                               {fmt(pp.balance)}
                             </span>
-                            <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                              )}
+                            </div>
                           </div>
                           {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
                           {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
@@ -725,7 +734,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
                           <div className="flex justify-between items-center">
                             <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
-                            <span className="text-xs text-gray-500">{pp.monthYear || pp.date}</span>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                              )}
+                            </div>
                           </div>
                           {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
                         </button>
