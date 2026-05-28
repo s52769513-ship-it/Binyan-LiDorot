@@ -17,6 +17,16 @@ function fmtDate(d: string) {
   return new Intl.DateTimeFormat('he-IL').format(new Date(d))
 }
 
+const MONTH_NAMES: Record<string, string> = {
+  '01': 'ינואר', '02': 'פברואר', '03': 'מרץ',    '04': 'אפריל',
+  '05': 'מאי',   '06': 'יוני',   '07': 'יולי',   '08': 'אוגוסט',
+  '09': 'ספטמבר','10': 'אוקטובר','11': 'נובמבר', '12': 'דצמבר',
+}
+function fmtMonthYear(my: string): string {
+  const [m, y] = my.split('/')
+  return `${MONTH_NAMES[m] || m} ${y}`
+}
+
 function computeAge(birthDate: string): string {
   if (!birthDate) return ''
   const birth = new Date(birthDate)
@@ -250,6 +260,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Salary detail modal
   const [showSalaryDetail, setShowSalaryDetail] = useState(false)
+  // Generate year planned payments
+  const [generatingYear, setGeneratingYear]     = useState(false)
+  const [yearGenResult, setYearGenResult]       = useState<{ created: string[]; skipped: string[] } | null>(null)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -422,6 +435,32 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 onClick={() => setShowAddPlanned(true)}
                 className="px-2.5 py-1 text-xs rounded-lg bg-amber-500/80 hover:bg-amber-400 text-white font-medium transition-colors whitespace-nowrap"
               >+ מתוכנן</button>
+              <button
+                disabled={generatingYear || !parent}
+                onClick={async () => {
+                  if (!parent) return
+                  const amount = parent.tuitionTotal
+                  if (!amount || amount <= 0) {
+                    alert('לא מוגדר שכ"ל להורה זה')
+                    return
+                  }
+                  setGeneratingYear(true)
+                  try {
+                    const res = await fetch('/api/planned-payments/generate-year', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ parentId, amount }),
+                    })
+                    const data = await res.json()
+                    if (data.error) { alert(data.error); return }
+                    setYearGenResult(data)
+                    load()
+                  } finally {
+                    setGeneratingYear(false)
+                  }
+                }}
+                className="px-2.5 py-1 text-xs rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white font-medium transition-colors whitespace-nowrap disabled:opacity-40"
+              >{generatingYear ? '...' : '⚡ שנה'}</button>
             </div>
           </div>
         </div>
@@ -1258,6 +1297,59 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 + הוסף תשלום
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Generate-year result modal ── */}
+      {yearGenResult && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setYearGenResult(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setYearGenResult(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800">יצירת תשלומים לשנה</h3>
+            </div>
+
+            {yearGenResult.created.length > 0 && (
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-emerald-700 mb-2">
+                  ✅ נוצרו {yearGenResult.created.length} תשלומים חדשים
+                </p>
+                <div className="space-y-1">
+                  {yearGenResult.created.map(my => (
+                    <div key={my} className="text-xs text-gray-600 bg-emerald-50 rounded px-2 py-1">
+                      {fmtMonthYear(my)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {yearGenResult.skipped.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-gray-500 mb-2">
+                  ⏭️ {yearGenResult.skipped.length} קיימים כבר
+                </p>
+                <div className="space-y-1">
+                  {yearGenResult.skipped.map(my => (
+                    <div key={my} className="text-xs text-gray-400 bg-gray-50 rounded px-2 py-1">
+                      {fmtMonthYear(my)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {yearGenResult.created.length === 0 && yearGenResult.skipped.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-2">אין חודשים ליצירה</p>
+            )}
+
+            <button
+              onClick={() => setYearGenResult(null)}
+              className="mt-4 w-full py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors"
+            >סגור</button>
           </div>
         </div>
       )}
