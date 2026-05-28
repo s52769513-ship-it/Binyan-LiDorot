@@ -103,6 +103,7 @@ export interface ParentDetail extends ParentSummary {
   calculateWifeTuition: boolean
   salaryGross: number
   salaryNet: number
+  ppCredit: number
   women: WomanDetail[]
 }
 

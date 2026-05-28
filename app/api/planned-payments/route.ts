@@ -92,6 +92,27 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
+    // Apply any existing credit from parent
+    const parentIdsList = Array.isArray(parentIds) ? parentIds : []
+    for (const parentId of parentIdsList) {
+      const { data: par } = await supabaseAdmin
+        .from('parents')
+        .select('pp_credit')
+        .eq('id', parentId)
+        .single()
+      const credit = par?.pp_credit || 0
+      if (credit > 0) {
+        const applied    = Math.min(credit, Number(amount))
+        const newBalance = Number(amount) - applied
+        const newCredit  = credit - applied
+        await Promise.all([
+          supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', id),
+          supabaseAdmin.from('parents').update({ pp_credit: newCredit }).eq('id', parentId),
+        ])
+        break
+      }
+    }
+
     return NextResponse.json({ success: true, id })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

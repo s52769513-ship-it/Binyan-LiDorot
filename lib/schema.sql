@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS parents (
   children_count  INTEGER  DEFAULT 0,
   tuition_total   NUMERIC  DEFAULT 0,         -- סה"כ שכ"ל לתשלום
   tuition_balance NUMERIC  DEFAULT 0,         -- חוב / זכות שכ"ל
+  pp_credit       NUMERIC  DEFAULT 0,         -- זיכוי עודף תשלומים מתוכננים
   notes           TEXT,
   synced_at       TIMESTAMPTZ DEFAULT NOW()
 );

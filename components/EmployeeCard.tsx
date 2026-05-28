@@ -572,6 +572,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               )}
 
+              {/* Credit badge */}
+              {(parent.ppCredit ?? 0) > 0 && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+                  <span className="text-emerald-600 text-lg">💚</span>
+                  <div>
+                    <p className="text-xs text-emerald-500">זיכוי שמור</p>
+                    <p className="text-sm font-bold text-emerald-700">{fmt(parent.ppCredit)} יוחלו על התשלום הבא</p>
+                  </div>
+                </div>
+              )}
+
               {/* Two-panel: pending | paid */}
               {parent.plannedPayments.length === 0 ? (
                 <p className="text-center text-gray-400 text-sm py-6">אין תשלומים מתוכננים</p>

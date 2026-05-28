@@ -167,6 +167,7 @@ export async function GET(
       calculateWifeTuition: p.calculate_wife_tuition ?? false,
       salaryGross: p.salary_gross ?? 0,
       salaryNet: p.salary_after_tuition ?? 0,
+      ppCredit: p.pp_credit ?? 0,
 
       women: (womenRes.data ?? []).map(w => ({
         id: w.id,

@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
 
-    // Update planned payment balance if linked
+    // Update planned payment balance if linked; store surplus as credit on parent
     if (plannedPaymentId) {
       const { data: pp } = await supabaseAdmin
         .from('planned_payments')
@@ -135,11 +135,27 @@ export async function POST(req: NextRequest) {
         .eq('id', plannedPaymentId)
         .single()
       if (pp) {
-        const newBalance = Math.max(0, (pp.balance || 0) - Math.abs(Number(amount)))
+        const paid    = Math.abs(Number(amount))
+        const oldBal  = pp.balance || 0
+        const surplus = Math.max(0, paid - oldBal)
         await supabaseAdmin
           .from('planned_payments')
-          .update({ balance: newBalance })
+          .update({ balance: Math.max(0, oldBal - paid) })
           .eq('id', plannedPaymentId)
+
+        if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
+          const parentId = parentIds[0]
+          const { data: par } = await supabaseAdmin
+            .from('parents')
+            .select('pp_credit')
+            .eq('id', parentId)
+            .single()
+          const newCredit = (par?.pp_credit || 0) + surplus
+          await supabaseAdmin
+            .from('parents')
+            .update({ pp_credit: newCredit })
+            .eq('id', parentId)
+        }
       }
     }
 
