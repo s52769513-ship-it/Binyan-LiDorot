@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-/** Returns months from today through end of current Hebrew year (Tishrei–Elul ≈ Sep–Aug) */
-function getRemainingHebrewYearMonths(): { monthYear: string; date: string }[] {
+/** Returns all months of the current Hebrew year (Tishrei–Elul ≈ Sep–Aug) */
+function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
   const curMonth = today.getMonth() + 1  // 1-12
   const curYear  = today.getFullYear()
 
-  // Hebrew year ends in August (8). If we're past August, end year is next year.
-  const endYear = curMonth >= 9 ? curYear + 1 : curYear
+  // Hebrew year starts in September (9).
+  // If current month >= 9, the Hebrew year started this September.
+  // If current month < 9, the Hebrew year started last September.
+  const startYear = curMonth >= 9 ? curYear : curYear - 1
+  const endYear   = startYear + 1
 
   const months: { monthYear: string; date: string }[] = []
-  let m = curMonth, y = curYear
+  let m = 9, y = startYear
 
   while (true) {
     const mm = String(m).padStart(2, '0')
@@ -29,7 +32,7 @@ export async function POST(req: NextRequest) {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
 
-    const months       = getRemainingHebrewYearMonths()
+    const months       = getFullHebrewYearMonths()
     const monthYears   = months.map(m => m.monthYear)
 
     // Find which months already have a planned payment for this parent

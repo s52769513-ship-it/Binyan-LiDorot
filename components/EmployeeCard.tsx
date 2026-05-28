@@ -22,9 +22,16 @@ const MONTH_NAMES: Record<string, string> = {
   '05': 'מאי',   '06': 'יוני',   '07': 'יולי',   '08': 'אוגוסט',
   '09': 'ספטמבר','10': 'אוקטובר','11': 'נובמבר', '12': 'דצמבר',
 }
+const HEBREW_MONTH_NAMES: Record<string, string> = {
+  '01': 'שבט',   '02': 'אדר',    '03': 'ניסן',  '04': 'אייר',
+  '05': 'סיון',  '06': 'תמוז',   '07': 'אב',    '08': 'אלול',
+  '09': 'תשרי',  '10': 'חשון',   '11': 'כסלו',  '12': 'טבת',
+}
 function fmtMonthYear(my: string): string {
   const [m, y] = my.split('/')
-  return `${MONTH_NAMES[m] || m} ${y}`
+  const greg   = MONTH_NAMES[m] || m
+  const heb    = HEBREW_MONTH_NAMES[m] || ''
+  return `${greg} ${y}${heb ? ` · ${heb}` : ''}`
 }
 
 function computeAge(birthDate: string): string {
