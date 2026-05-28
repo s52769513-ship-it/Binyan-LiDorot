@@ -268,6 +268,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
+  // Keep selectedPP in sync with fresh parent data after load()
+  useEffect(() => {
+    if (!selectedPP || !parent) return
+    const updated = parent.plannedPayments.find(pp => pp.id === selectedPP.id)
+    if (updated) setSelectedPP(updated)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parent?.plannedPayments])
+
   // Load transactions linked to the selected planned payment
   useEffect(() => {
     if (!selectedPP) { setPpTxList([]); return }
@@ -1185,7 +1193,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           <button
                             onClick={() => {
                               if (!confirm('למחוק תשלום זה?')) return
-                              fetch(`/api/transactions/${tx.id}`, { method: 'DELETE' })
+                              const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
+                              fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
                                 .then(() => {
                                   setPpTxList(prev => prev.filter(t => t.id !== tx.id))
                                   load()

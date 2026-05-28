@@ -60,31 +60,36 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    // plannedPaymentId can be passed as fallback query param for older transactions
+    // that were created before planned_payment_id was stored on the row
+    const fallbackPPId = req.nextUrl.searchParams.get('plannedPaymentId') ?? ''
 
-    // Restore planned payment balance before deleting
     const { data: tx } = await supabaseAdmin
       .from('transactions')
       .select('amount, planned_payment_id')
       .eq('id', id)
       .single()
 
-    if (tx?.planned_payment_id) {
+    const ppId     = tx?.planned_payment_id || fallbackPPId || null
+    const txAmount = Math.abs(Number(tx?.amount ?? 0))
+
+    if (ppId && txAmount > 0) {
       const { data: pp } = await supabaseAdmin
         .from('planned_payments')
         .select('balance, amount')
-        .eq('id', tx.planned_payment_id)
+        .eq('id', ppId)
         .single()
       if (pp) {
-        const restored = Math.min(pp.amount, (pp.balance ?? 0) + Math.abs(Number(tx.amount)))
+        const restored = Math.min(pp.amount, (pp.balance ?? 0) + txAmount)
         await supabaseAdmin
           .from('planned_payments')
           .update({ balance: restored })
-          .eq('id', tx.planned_payment_id)
+          .eq('id', ppId)
       }
     }
 
