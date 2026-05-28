@@ -13,6 +13,8 @@ function getMonthYear(dateStr: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
+interface OpenPayment { id: string; name: string; amount: number; balance: number; monthYear: string }
+
 interface Props {
   parentId?: string
   parentName?: string
@@ -46,6 +48,9 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [showParentDrop, setShowParentDrop] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [openPayments, setOpenPayments]         = useState<OpenPayment[]>([])
+  const [linkedPayment, setLinkedPayment]       = useState<OpenPayment | null>(null)
+  const [loadingPayments, setLoadingPayments]   = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -64,6 +69,19 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // When a parent is selected (and no pre-linked plannedPaymentId), fetch their open payments
+  const effectiveParentId = selectedParent?.id ?? parentId
+  useEffect(() => {
+    if (plannedPaymentId) return  // already linked from outside
+    if (!effectiveParentId) { setOpenPayments([]); setLinkedPayment(null); return }
+    setLoadingPayments(true)
+    fetch(`/api/planned-payments?parentId=${encodeURIComponent(effectiveParentId)}&open=true`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setOpenPayments(d); else setOpenPayments([]) })
+      .catch(() => setOpenPayments([]))
+      .finally(() => setLoadingPayments(false))
+  }, [effectiveParentId, plannedPaymentId])
 
   useEffect(() => {
     if (parentId) return  // pre-linked
@@ -97,7 +115,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           type, date, monthYear, notes,
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
           projectNames: project ? [project] : [],
-          plannedPaymentId: plannedPaymentId || null,
+          plannedPaymentId: plannedPaymentId || linkedPayment?.id || null,
         }),
       })
       const data = await res.json()
@@ -186,6 +204,58 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm flex items-center justify-between">
                   <span className="text-xs text-amber-600">מקור תשלום</span>
                   <span className="font-medium text-amber-800">{sourceLabel}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Open planned payments selector — shown when a parent is selected and no pre-linked payment */}
+          {!plannedPaymentId && effectiveParentId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                קישור לתשלום מתוכנן
+                {loadingPayments && <span className="text-xs text-gray-400 mr-2">טוען...</span>}
+              </label>
+              {!loadingPayments && openPayments.length === 0 ? (
+                <p className="text-xs text-gray-400 py-1">אין תשלומים פתוחים להורה זה</p>
+              ) : (
+                <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setLinkedPayment(null)}
+                    className={`w-full text-right px-3 py-2 rounded-lg border text-sm transition-colors ${
+                      !linkedPayment
+                        ? 'border-gray-300 bg-gray-50 text-gray-500'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-400'
+                    }`}
+                  >
+                    ללא קישור
+                  </button>
+                  {openPayments.map(pp => (
+                    <button
+                      key={pp.id}
+                      type="button"
+                      onClick={() => {
+                        setLinkedPayment(pp)
+                        setAmount(String(Math.round(pp.balance)))
+                      }}
+                      className={`w-full text-right px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        linkedPayment?.id === pp.id
+                          ? 'border-amber-400 bg-amber-50 text-amber-800'
+                          : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/50 text-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-amber-700 tabular-nums text-xs">
+                          יתרה: ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(pp.balance)}
+                        </span>
+                        <span className="truncate">{pp.name || pp.monthYear || '—'}</span>
+                      </div>
+                      {pp.monthYear && pp.name && (
+                        <div className="text-[11px] text-gray-400 text-right">{pp.monthYear}</div>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

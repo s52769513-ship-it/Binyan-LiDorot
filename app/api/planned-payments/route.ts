@@ -3,7 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   try {
-    const nameFilter = req.nextUrl.searchParams.get('name') ?? ''
+    const nameFilter   = req.nextUrl.searchParams.get('name') ?? ''
+    const parentId     = req.nextUrl.searchParams.get('parentId') ?? ''
+    const openOnly     = req.nextUrl.searchParams.get('open') === 'true'
     let query = supabaseAdmin
       .from('planned_payments')
       .select('id, name, amount, balance, date, month_year, parent_ids')
@@ -11,6 +13,8 @@ export async function GET(req: NextRequest) {
       .limit(200)
 
     if (nameFilter) query = query.ilike('name', `%${nameFilter}%`)
+    if (parentId)   query = query.contains('parent_ids', [parentId])
+    if (openOnly)   query = query.gt('balance', 0)
 
     const { data, error } = await query
     if (error) throw error
