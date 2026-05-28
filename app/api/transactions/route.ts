@@ -129,39 +129,44 @@ export async function POST(req: NextRequest) {
 
     // Update planned payment balance if linked; store surplus as credit on parent
     if (plannedPaymentId) {
-      const { data: pp } = await supabaseAdmin
-        .from('planned_payments')
-        .select('balance')
-        .eq('id', plannedPaymentId)
-        .single()
-      if (pp) {
-        const paid    = Math.abs(Number(amount))
-        const oldBal  = pp.balance || 0
-        const surplus = Math.max(0, paid - oldBal)
-        await supabaseAdmin
+      try {
+        const { data: pp } = await supabaseAdmin
           .from('planned_payments')
-          .update({ balance: Math.max(0, oldBal - paid) })
+          .select('balance')
           .eq('id', plannedPaymentId)
-
-        if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
-          const parentId = parentIds[0]
-          const { data: par } = await supabaseAdmin
-            .from('parents')
-            .select('pp_credit')
-            .eq('id', parentId)
-            .single()
-          const newCredit = (par?.pp_credit || 0) + surplus
+          .single()
+        if (pp) {
+          const paid    = Math.abs(Number(amount))
+          const oldBal  = pp.balance || 0
+          const surplus = Math.max(0, paid - oldBal)
           await supabaseAdmin
-            .from('parents')
-            .update({ pp_credit: newCredit })
-            .eq('id', parentId)
+            .from('planned_payments')
+            .update({ balance: Math.max(0, oldBal - paid) })
+            .eq('id', plannedPaymentId)
+
+          if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
+            const pid = parentIds[0]
+            const { data: par } = await supabaseAdmin
+              .from('parents')
+              .select('pp_credit')
+              .eq('id', pid)
+              .single()
+            const newCredit = (par?.pp_credit || 0) + surplus
+            await supabaseAdmin
+              .from('parents')
+              .update({ pp_credit: newCredit })
+              .eq('id', pid)
+          }
         }
+      } catch (ppErr) {
+        console.error('planned payment balance update error:', ppErr)
+        // Do not fail the transaction — it was already saved
       }
     }
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = (err as { message?: string })?.message ?? String(err)
     console.error('transaction POST error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
