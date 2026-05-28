@@ -24,11 +24,38 @@ export async function PATCH(
     for (const key of allowed) {
       if (key in body) update[key] = body[key]
     }
+
+    // If amount is changing, adjust the linked planned payment's balance
+    if ('amount' in body) {
+      const { data: oldTx } = await supabaseAdmin
+        .from('transactions')
+        .select('amount, planned_payment_id')
+        .eq('id', id)
+        .single()
+      if (oldTx?.planned_payment_id) {
+        const oldAmt = Math.abs(Number(oldTx.amount))
+        const newAmt = Math.abs(Number(body.amount))
+        const diff   = newAmt - oldAmt   // positive = paid more → balance drops more
+        const { data: pp } = await supabaseAdmin
+          .from('planned_payments')
+          .select('balance, amount')
+          .eq('id', oldTx.planned_payment_id)
+          .single()
+        if (pp) {
+          const newBal = Math.min(pp.amount, Math.max(0, (pp.balance ?? 0) - diff))
+          await supabaseAdmin
+            .from('planned_payments')
+            .update({ balance: newBal })
+            .eq('id', oldTx.planned_payment_id)
+        }
+      }
+    }
+
     const { error } = await supabaseAdmin.from('transactions').update(update).eq('id', id)
     if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
   }
 }
 
@@ -38,10 +65,33 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+
+    // Restore planned payment balance before deleting
+    const { data: tx } = await supabaseAdmin
+      .from('transactions')
+      .select('amount, planned_payment_id')
+      .eq('id', id)
+      .single()
+
+    if (tx?.planned_payment_id) {
+      const { data: pp } = await supabaseAdmin
+        .from('planned_payments')
+        .select('balance, amount')
+        .eq('id', tx.planned_payment_id)
+        .single()
+      if (pp) {
+        const restored = Math.min(pp.amount, (pp.balance ?? 0) + Math.abs(Number(tx.amount)))
+        await supabaseAdmin
+          .from('planned_payments')
+          .update({ balance: restored })
+          .eq('id', tx.planned_payment_id)
+      }
+    }
+
     const { error } = await supabaseAdmin.from('transactions').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
   }
 }

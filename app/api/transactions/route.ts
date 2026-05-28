@@ -6,6 +6,26 @@ const PAGE_SIZE = 50
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
+    const plannedPaymentId = searchParams.get('plannedPaymentId') ?? ''
+
+    // Simple path: fetch transactions linked to a specific planned payment
+    if (plannedPaymentId) {
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('id, amount, type, date, month_year, notes')
+        .eq('planned_payment_id', plannedPaymentId)
+        .order('date', { ascending: false })
+      if (error) throw error
+      return NextResponse.json((data ?? []).map(t => ({
+        id: t.id as string,
+        amount: Number(t.amount) || 0,
+        type: String(t.type || ''),
+        date: String(t.date || ''),
+        monthYear: String(t.month_year || ''),
+        notes: String(t.notes || ''),
+      })))
+    }
+
     const page    = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
     const search  = searchParams.get('search') ?? ''   // parent name search
     const month   = searchParams.get('month') ?? ''
@@ -146,16 +166,27 @@ export async function POST(req: NextRequest) {
 
           if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
             const pid = parentIds[0]
-            const { data: par } = await supabaseAdmin
-              .from('parents')
-              .select('pp_credit')
-              .eq('id', pid)
-              .single()
-            const newCredit = (par?.pp_credit || 0) + surplus
-            await supabaseAdmin
-              .from('parents')
-              .update({ pp_credit: newCredit })
-              .eq('id', pid)
+            // First try to apply surplus to existing open planned payments (oldest first)
+            const { data: openPPs } = await supabaseAdmin
+              .from('planned_payments')
+              .select('id, balance')
+              .contains('parent_ids', [pid])
+              .gt('balance', 0)
+              .neq('id', plannedPaymentId)
+              .order('date', { ascending: true })
+            let remaining = surplus
+            for (const openPP of openPPs ?? []) {
+              if (remaining <= 0) break
+              const applied    = Math.min(remaining, openPP.balance)
+              const newPPBal   = openPP.balance - applied
+              await supabaseAdmin.from('planned_payments').update({ balance: newPPBal }).eq('id', openPP.id)
+              remaining -= applied
+            }
+            // Store any leftover as credit for future payments
+            if (remaining > 0) {
+              const { data: par } = await supabaseAdmin.from('parents').select('pp_credit').eq('id', pid).single()
+              await supabaseAdmin.from('parents').update({ pp_credit: (par?.pp_credit || 0) + remaining }).eq('id', pid)
+            }
           }
         }
       } catch (ppErr) {

@@ -230,6 +230,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [editingPPAmount, setEditingPPAmount] = useState(false)
   const [ppAmountDraft, setPPAmountDraft]     = useState('')
   const [savingPPAmount, setSavingPPAmount]   = useState(false)
+  // Linked transactions in PP modal
+  const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;type:string}[]>([])
+  const [loadingPpTx, setLoadingPpTx]         = useState(false)
+  const [editingPpTxId, setEditingPpTxId]     = useState<string|null>(null)
+  const [editingPpTxAmt, setEditingPpTxAmt]   = useState('')
+  const [savingPpTx, setSavingPpTx]           = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -261,6 +267,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
+
+  // Load transactions linked to the selected planned payment
+  useEffect(() => {
+    if (!selectedPP) { setPpTxList([]); return }
+    setLoadingPpTx(true)
+    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPpTxList(d); else setPpTxList([]) })
+      .catch(() => setPpTxList([]))
+      .finally(() => setLoadingPpTx(false))
+  }, [selectedPP?.id])
 
   const patch = useCallback(async (fields: Record<string, unknown>) => {
     await fetch(`/api/parents/${parentId}`, {
@@ -1082,6 +1099,109 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               )}
             </div>
+
+            {/* ── Linked transactions ── */}
+            <div className="border-t border-gray-100 pt-3 mb-4">
+              <p className="text-xs font-semibold text-gray-500 mb-2">
+                תשלומים ששולמו
+                {loadingPpTx && <span className="text-gray-300 mr-1">...</span>}
+              </p>
+              {!loadingPpTx && ppTxList.length === 0 ? (
+                <p className="text-xs text-gray-300 text-center py-1">אין תשלומים עדיין</p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                  {ppTxList.map(tx => (
+                    <div key={tx.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      {editingPpTxId === tx.id ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <input
+                            type="number"
+                            className="w-24 border border-emerald-400 rounded px-1.5 py-0.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                            value={editingPpTxAmt}
+                            onChange={e => setEditingPpTxAmt(e.target.value)}
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Escape') { setEditingPpTxId(null) }
+                              if (e.key === 'Enter') {
+                                const newAmt = Number(editingPpTxAmt)
+                                if (!newAmt || newAmt <= 0) return
+                                setSavingPpTx(true)
+                                fetch(`/api/transactions/${tx.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ amount: newAmt }),
+                                })
+                                  .then(() => {
+                                    setEditingPpTxId(null)
+                                    if (selectedPP) {
+                                      fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
+                                        .then(r => r.json()).then(d => { if (Array.isArray(d)) setPpTxList(d) })
+                                    }
+                                    load()
+                                  })
+                                  .finally(() => setSavingPpTx(false))
+                              }
+                            }}
+                          />
+                          <button
+                            disabled={savingPpTx}
+                            onClick={() => {
+                              const newAmt = Number(editingPpTxAmt)
+                              if (!newAmt || newAmt <= 0) return
+                              setSavingPpTx(true)
+                              fetch(`/api/transactions/${tx.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ amount: newAmt }),
+                              })
+                                .then(() => {
+                                  setEditingPpTxId(null)
+                                  if (selectedPP) {
+                                    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
+                                      .then(r => r.json()).then(d => { if (Array.isArray(d)) setPpTxList(d) })
+                                  }
+                                  load()
+                                })
+                                .finally(() => setSavingPpTx(false))
+                            }}
+                            className="text-emerald-600 font-bold text-xs disabled:opacity-40"
+                          >✓</button>
+                          <button onClick={() => setEditingPpTxId(null)} className="text-gray-400 text-xs">✕</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-sm font-bold text-emerald-700">{fmt(Math.abs(tx.amount))}</span>
+                          {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
+                          {tx.type && <span className="text-xs text-gray-400">{tx.type}</span>}
+                        </div>
+                      )}
+                      {editingPpTxId !== tx.id && (
+                        <div className="flex gap-1 mr-1">
+                          <button
+                            onClick={() => { setEditingPpTxId(tx.id); setEditingPpTxAmt(String(Math.abs(tx.amount))) }}
+                            className="p-1 text-gray-400 hover:text-blue-500 text-xs"
+                            title="עריכה"
+                          >✏️</button>
+                          <button
+                            onClick={() => {
+                              if (!confirm('למחוק תשלום זה?')) return
+                              fetch(`/api/transactions/${tx.id}`, { method: 'DELETE' })
+                                .then(() => {
+                                  setPpTxList(prev => prev.filter(t => t.id !== tx.id))
+                                  load()
+                                })
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 text-xs"
+                            title="מחיקה"
+                          >🗑️</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {selectedPP.balance > 0 && (
               <button
                 onClick={() => {
