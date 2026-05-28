@@ -109,6 +109,20 @@ export async function POST(req: NextRequest) {
           await Promise.all([
             supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', id),
             supabaseAdmin.from('parents').update({ pp_credit: newCredit }).eq('id', parentId),
+            // Create a visible credit transaction so the balance reduction is explained
+            supabaseAdmin.from('transactions').insert({
+              id:                 crypto.randomUUID(),
+              amount:             applied,
+              planned_payment_id: id,
+              parent_ids:         [parentId],
+              date:               new Date().toISOString().split('T')[0],
+              month_year:         monthYear || '',
+              notes:              'זיכוי עודף שמור',
+              type:               '',
+              project_ids:        [],
+              project_names:      [],
+              synced_at:          '2099-12-31T23:59:59.999Z',
+            }),
           ])
           break
         }

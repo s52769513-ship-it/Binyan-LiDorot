@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
         date:      String(t.date || ''),
         monthYear: String(t.month_year || ''),
         notes:     String(t.notes || ''),
-        isCredit:  String(t.notes || '').startsWith('זיכוי מעודף תשלום מ-'),
+        isCredit:  String(t.notes || '').startsWith('זיכוי'),
       })))
     }
 
@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
     if (month)   query = query.eq('month_year', month)
     if (type)    query = query.eq('type', type)
     if (project) query = query.contains('project_names', [project])
-    // Exclude internal credit-transfer rows from the general list
-    query = query.not('notes', 'like', 'זיכוי מעודף תשלום מ-%')
+    // Exclude internal credit rows from the general list
+    query = query.not('notes', 'like', 'זיכוי%')
 
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
