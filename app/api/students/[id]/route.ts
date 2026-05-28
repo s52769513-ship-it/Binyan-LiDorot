@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcAge } from '../route'
+import { recalcTuitionForParent } from '@/lib/recalcTuition'
 
 function detectFramework(className: string): string {
   if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
@@ -96,6 +97,21 @@ export async function PATCH(
       return NextResponse.json({ error: 'no fields' }, { status: 400 })
     const { error } = await supabaseAdmin.from('students').update(update).eq('id', id)
     if (error) throw error
+
+    // If status or transportation changed, recalculate parent tuition + open planned payments
+    const TUITION_FIELDS = new Set(['status', 'transportationCost'])
+    if (Object.keys(body).some(k => TUITION_FIELDS.has(k))) {
+      try {
+        const { data: st } = await supabaseAdmin
+          .from('students').select('parent_ids').eq('id', id).single()
+        for (const pid of ((st?.parent_ids as string[]) ?? [])) {
+          await recalcTuitionForParent(pid)
+        }
+      } catch (rcErr) {
+        console.error('recalcTuition error after student PATCH:', rcErr)
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

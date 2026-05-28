@@ -2,6 +2,170 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+/* ─── Hebrew month names ──────────────────────────────── */
+const MONTH_NAMES: Record<string, string> = {
+  '01': 'ינואר', '02': 'פברואר', '03': 'מרץ',    '04': 'אפריל',
+  '05': 'מאי',   '06': 'יוני',   '07': 'יולי',   '08': 'אוגוסט',
+  '09': 'ספטמבר','10': 'אוקטובר','11': 'נובמבר', '12': 'דצמבר',
+}
+const HEBREW_MONTH: Record<string, string> = {
+  '01': 'שבט', '02': 'אדר',  '03': 'ניסן', '04': 'אייר',
+  '05': 'סיון','06': 'תמוז', '07': 'אב',   '08': 'אלול',
+  '09': 'תשרי','10': 'חשון', '11': 'כסלו', '12': 'טבת',
+}
+function fmtMY(my: string) {
+  const [m, y] = my.split('/')
+  return `${MONTH_NAMES[m] || m} ${y} · ${HEBREW_MONTH[m] || ''}`
+}
+
+/* ─── GenerateYearSection ─────────────────────────────── */
+interface ParentPreview {
+  id: string; name: string; amount: number; toCreate: string[]; toSkip: string[]
+}
+interface PreviewData {
+  parents: ParentPreview[]; totalToCreate: number; months: string[]
+}
+
+function GenerateYearSection() {
+  const [loading, setLoading]       = useState(false)
+  const [preview, setPreview]       = useState<PreviewData | null>(null)
+  const [executing, setExecuting]   = useState(false)
+  const [result, setResult]         = useState<{ created: number; skipped: number } | null>(null)
+  const [error, setError]           = useState('')
+  const [showPreview, setShowPreview] = useState(false)
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+
+  const loadPreview = async () => {
+    setLoading(true); setError(''); setPreview(null); setResult(null)
+    try {
+      const res  = await fetch('/api/planned-payments/generate-year-all')
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
+      setPreview(data)
+      setShowPreview(true)
+    } catch { setError('שגיאת רשת') }
+    finally { setLoading(false) }
+  }
+
+  const execute = async () => {
+    setExecuting(true); setError('')
+    try {
+      const res  = await fetch('/api/planned-payments/generate-year-all', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
+      setResult(data)
+      setShowPreview(false)
+      setPreview(null)
+    } catch { setError('שגיאת רשת') }
+    finally { setExecuting(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">יצירת תשלומים מתוכננים — כל ההורים</h3>
+        <p className="text-xs text-gray-400 mt-1">
+          יוצר תשלומי שכ&quot;ל לכל החודשים הנותרים בשנה העברית (מהחודש הנוכחי ועד אוגוסט) עבור כל הורה שיש לו ילדים פעילים.
+          חודשים שכבר קיים להם תשלום — ידולגו אוטומטית.
+        </p>
+      </div>
+
+      {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+
+      {result && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-right space-y-1">
+          <p className="font-semibold text-emerald-800">✅ הושלם בהצלחה</p>
+          <p className="text-sm text-emerald-700">נוצרו: <strong>{result.created}</strong> תשלומים</p>
+          <p className="text-sm text-emerald-600">דולגו (קיימים): <strong>{result.skipped}</strong></p>
+          <button onClick={() => setResult(null)} className="text-xs text-emerald-500 underline mt-1">סגור</button>
+        </div>
+      )}
+
+      {!result && (
+        <button
+          onClick={loadPreview}
+          disabled={loading}
+          className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+        >
+          {loading ? <><span className="animate-spin inline-block">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
+        </button>
+      )}
+
+      {/* Preview / confirmation modal */}
+      {showPreview && preview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPreview(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800 text-base">אישור יצירת תשלומים</h3>
+            </div>
+
+            {/* Summary */}
+            <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex-shrink-0">
+              {preview.totalToCreate === 0 ? (
+                <p className="text-sm text-gray-500 text-center">כל התשלומים לשנה הנוכחית כבר קיימים — אין מה ליצור.</p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-800">
+                    עומד לייצר <strong>{preview.totalToCreate}</strong> תשלומים עבור <strong>{preview.parents.length}</strong> הורים
+                  </p>
+                  <p className="text-xs text-amber-600">חודשים: {fmtMY(preview.months[0])} עד {fmtMY(preview.months[preview.months.length - 1])}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Parents list */}
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+              {preview.parents.map(p => (
+                <div key={p.id} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-emerald-600 font-medium">+{p.toCreate.length} חדשים</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-800">{p.name}</p>
+                      <p className="text-xs text-gray-400">{fmt(p.amount)} לחודש</p>
+                    </div>
+                  </div>
+                  {p.toSkip.length > 0 && (
+                    <p className="text-[10px] text-gray-400">{p.toSkip.length} חודשים קיימים ידולגו</p>
+                  )}
+                </div>
+              ))}
+              {preview.parents.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">אין הורים הזקוקים לתשלומים חדשים</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowPreview(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              {preview.totalToCreate > 0 && (
+                <button
+                  onClick={execute}
+                  disabled={executing}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+                >
+                  {executing ? 'יוצר...' : `✓ אשר ויצור ${preview.totalToCreate} תשלומים`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface Settings {
   institution_name?: string
   address?: string
@@ -384,6 +548,9 @@ export default function SettingsPage() {
       </div>
 
       {saving && <p className="text-center text-sm text-gray-400 animate-pulse">שומר...</p>}
+
+      {/* Generate year payments for all parents */}
+      <GenerateYearSection />
 
       {/* Sync */}
       <SyncSection />

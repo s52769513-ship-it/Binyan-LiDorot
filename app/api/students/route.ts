@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcTuitionForParent } from '@/lib/recalcTuition'
 
 async function classFrameworkMap(): Promise<Record<string, string>> {
   const { data } = await supabaseAdmin.from('classes').select('class_name, framework')
@@ -128,6 +129,15 @@ export async function POST(req: NextRequest) {
 
     const { error } = await supabaseAdmin.from('students').insert(row)
     if (error) throw error
+
+    // Recalculate tuition for each linked parent
+    try {
+      for (const pid of (Array.isArray(parentIds) ? parentIds : [])) {
+        await recalcTuitionForParent(pid)
+      }
+    } catch (rcErr) {
+      console.error('recalcTuition error after student POST:', rcErr)
+    }
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
