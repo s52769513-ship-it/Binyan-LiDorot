@@ -231,7 +231,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [ppAmountDraft, setPPAmountDraft]     = useState('')
   const [savingPPAmount, setSavingPPAmount]   = useState(false)
   // Linked transactions in PP modal
-  const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;type:string}[]>([])
+  const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;type:string;notes:string;isCredit:boolean}[]>([])
   const [loadingPpTx, setLoadingPpTx]         = useState(false)
   const [editingPpTxId, setEditingPpTxId]     = useState<string|null>(null)
   const [editingPpTxAmt, setEditingPpTxAmt]   = useState('')
@@ -1119,8 +1119,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               ) : (
                 <div className="space-y-1.5 max-h-44 overflow-y-auto">
                   {ppTxList.map(tx => (
-                    <div key={tx.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                      {editingPpTxId === tx.id ? (
+                    <div key={tx.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${tx.isCredit ? 'bg-emerald-50' : 'bg-gray-50'}`}>
+                      {tx.isCredit ? (
+                        /* Credit-transfer row — display only, no edit */
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-sm font-bold text-emerald-600">{fmt(Math.abs(tx.amount))}</span>
+                          <span className="text-xs text-emerald-500">{tx.notes}</span>
+                        </div>
+                      ) : editingPpTxId === tx.id ? (
                         <div className="flex items-center gap-1.5 flex-1">
                           <input
                             type="number"
@@ -1183,7 +1189,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           {tx.type && <span className="text-xs text-gray-400">{tx.type}</span>}
                         </div>
                       )}
-                      {editingPpTxId !== tx.id && (
+                      {!tx.isCredit && editingPpTxId !== tx.id && (
                         <div className="flex gap-1 mr-1">
                           <button
                             onClick={() => { setEditingPpTxId(tx.id); setEditingPpTxAmt(String(Math.abs(tx.amount))) }}

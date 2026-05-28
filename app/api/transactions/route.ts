@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
         .order('date', { ascending: false })
       if (error) throw error
       return NextResponse.json((data ?? []).map(t => ({
-        id: t.id as string,
-        amount: Number(t.amount) || 0,
-        type: String(t.type || ''),
-        date: String(t.date || ''),
+        id:        t.id as string,
+        amount:    Number(t.amount) || 0,
+        type:      String(t.type || ''),
+        date:      String(t.date || ''),
         monthYear: String(t.month_year || ''),
-        notes: String(t.notes || ''),
+        notes:     String(t.notes || ''),
+        isCredit:  String(t.notes || '').startsWith('זיכוי מעודף תשלום מ-'),
       })))
     }
 
@@ -60,6 +61,8 @@ export async function GET(req: NextRequest) {
     if (month)   query = query.eq('month_year', month)
     if (type)    query = query.eq('type', type)
     if (project) query = query.contains('project_names', [project])
+    // Exclude internal credit-transfer rows from the general list
+    query = query.not('notes', 'like', 'זיכוי מעודף תשלום מ-%')
 
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
@@ -198,7 +201,7 @@ export async function POST(req: NextRequest) {
                 project_names:      Array.isArray(projectNames) ? projectNames : [],
                 date:               date || null,
                 month_year:         monthYear || '',
-                notes:              'זיכוי מעודף תשלום',
+                notes:              `זיכוי מעודף תשלום מ-${monthYear || ''}`,
                 type:               type || '',
                 synced_at:          '2099-12-31T23:59:59.999Z',
               })
