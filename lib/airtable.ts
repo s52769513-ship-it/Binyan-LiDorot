@@ -76,7 +76,9 @@ export const T = {
   DATE: 'fldsYlOVDOqFZLaLr',
   MONTH_YEAR: 'fldlGKB8pxQAG6p80',
   NOTES: 'fldQI8U3awTKD2sq6',
-  PROJECT: 'fldZz08GumXFewrKa',  // קשור לפרוייקט (multipleRecordLinks → PROJECTS)
+  PROJECT: 'fldZz08GumXFewrKa',          // קשור לפרוייקט (multipleRecordLinks → PROJECTS)
+  BANK_CLASSIFICATION: 'fldbdiFd34v1S1xyh', // סיווג בנק (singleSelect)
+  PAYMENT_METHOD: 'fldeEhSMgGR2c7vcU',     // אמצעי תשלום (singleSelect)
 } as const
 
 // Project field IDs (tblZXTI3fMyW8C7Kj)

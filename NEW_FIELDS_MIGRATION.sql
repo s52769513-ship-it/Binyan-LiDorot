@@ -1,3 +1,9 @@
+-- Transactions: new fields
+ALTER TABLE transactions
+  ADD COLUMN IF NOT EXISTS bank_classification text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS payment_method      text DEFAULT '';
+
+-- Parents: new fields
 ALTER TABLE parents
   ADD COLUMN IF NOT EXISTS id_number           text        DEFAULT '',
   ADD COLUMN IF NOT EXISTS nickname            text        DEFAULT '',

@@ -60,7 +60,7 @@ export async function POST() {
         }),
 
         fetchAirtableRecords(TABLES.TRANSACTIONS, {
-          fields: [T.AMOUNT, T.TYPE, T.DATE, T.MONTH_YEAR, T.NOTES, T.PARENT, T.PROJECT],
+          fields: [T.AMOUNT, T.TYPE, T.DATE, T.MONTH_YEAR, T.NOTES, T.PARENT, T.PROJECT, T.BANK_CLASSIFICATION, T.PAYMENT_METHOD],
         }),
 
         fetchAirtableRecords(TABLES.DEBTS, {
@@ -198,6 +198,8 @@ export async function POST() {
         notes: String(r.fields[T.NOTES] || ''),
         project_ids: projectIds,
         project_names: projectIds.map(pid => projectNameMap[pid]).filter(Boolean),
+        bank_classification: selectName(r.fields[T.BANK_CLASSIFICATION]),
+        payment_method: selectName(r.fields[T.PAYMENT_METHOD]),
         synced_at: syncedAt,
       }
     })
