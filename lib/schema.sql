@@ -48,14 +48,17 @@ CREATE TABLE IF NOT EXISTS transactions (
   date          DATE,
   month_year    TEXT,
   notes         TEXT,
-  project_ids   TEXT[]  DEFAULT '{}',   -- מזהי פרוייקטים מ-Airtable
-  project_names TEXT[]  DEFAULT '{}',   -- שמות פרוייקטים (כגון "בנין לדורות")
-  synced_at     TIMESTAMPTZ DEFAULT NOW()
+  project_ids        TEXT[]  DEFAULT '{}',   -- מזהי פרוייקטים מ-Airtable
+  project_names      TEXT[]  DEFAULT '{}',   -- שמות פרוייקטים (כגון "בנין לדורות")
+  planned_payment_id TEXT,                   -- קישור לתשלום מתוכנן
+  synced_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Migration (run if table already exists):
--- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_ids   TEXT[] DEFAULT '{}';
--- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_names TEXT[] DEFAULT '{}';
+-- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_ids        TEXT[] DEFAULT '{}';
+-- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_names      TEXT[] DEFAULT '{}';
+-- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS planned_payment_id TEXT;
+-- ALTER TABLE parents      ADD COLUMN IF NOT EXISTS pp_credit          NUMERIC DEFAULT 0;
 
 -- 4. חובות
 CREATE TABLE IF NOT EXISTS debts (
