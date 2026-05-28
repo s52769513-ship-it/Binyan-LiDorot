@@ -8,6 +8,7 @@ const FIELD_MAP: Record<string, string> = {
   address: 'address', building: 'building', city: 'city',
   notes: 'notes', status: 'status',
   tuitionTotal: 'tuition_total', tuitionBalance: 'tuition_balance',
+  birthDate: 'birth_date',
   // Personal fields
   idNumber:          'id_number',
   nickname:          'nickname',
@@ -168,6 +169,7 @@ export async function GET(
       salaryGross: p.salary_gross ?? 0,
       salaryNet: p.salary_after_tuition ?? 0,
       ppCredit: p.pp_credit ?? 0,
+      birthDate: p.birth_date ?? '',
 
       women: (womenRes.data ?? []).map(w => ({
         id: w.id,

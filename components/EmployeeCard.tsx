@@ -17,12 +17,23 @@ function fmtDate(d: string) {
   return new Intl.DateTimeFormat('he-IL').format(new Date(d))
 }
 
+function computeAge(birthDate: string): string {
+  if (!birthDate) return ''
+  const birth = new Date(birthDate)
+  if (isNaN(birth.getTime())) return ''
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return age >= 0 ? String(age) : ''
+}
+
 /* ─── InlineField ───────────────────────────────────── */
 interface IFProps {
   label: string
   value: string
   onSave: (v: string) => Promise<void>
-  type?: 'text' | 'email' | 'tel' | 'number'
+  type?: 'text' | 'email' | 'tel' | 'number' | 'date'
   multiline?: boolean
 }
 function InlineField({ label, value, onSave, type = 'text', multiline }: IFProps) {
@@ -237,6 +248,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [editingPpTxAmt, setEditingPpTxAmt]   = useState('')
   const [savingPpTx, setSavingPpTx]           = useState(false)
 
+  // Salary detail modal
+  const [showSalaryDetail, setShowSalaryDetail] = useState(false)
+
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
 
@@ -369,12 +383,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <p className="text-base font-bold text-white/80 tabular-nums">{fmt(parent.tuitionTotal)}</p>
                 <p className="text-[10px] text-white/50">שכ"ל</p>
               </div>
-              {parent.salaryGross > 0 && (
-                <div className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center">
-                  <p className="text-base font-bold text-purple-300 tabular-nums">{fmt(parent.salaryGross)}</p>
-                  <p className="text-[10px] text-white/50">משכורת</p>
-                </div>
-              )}
+              {parent.salaryGross > 0 && (() => {
+                const totalSal = parent.salaryGross + (parent.women ?? []).reduce((s, w) => s + (w.salaryGross ?? 0), 0)
+                return (
+                <button
+                  onClick={() => setShowSalaryDetail(true)}
+                  className="flex-1 bg-white/10 rounded-tr-xl px-3 py-2 text-center hover:bg-white/20 transition-colors"
+                >
+                  <p className="text-base font-bold text-purple-300 tabular-nums">{fmt(totalSal)}</p>
+                  <p className="text-[10px] text-white/50">משכורת משפחתי</p>
+                </button>
+                )
+              })()}
               {parent.salaryGross === 0 && <div className="flex-1 bg-white/10 rounded-tr-xl" />}
             </div>
           )}
@@ -429,6 +449,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   <FieldPair>
                     <InlineField label="שם האמא"    value={parent.motherName}  onSave={v => patch({ motherName: v })} />
                     <InlineField label='ת"ז'         value={parent.idNumber}    onSave={v => patch({ idNumber: v })} />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="תאריך לידה" value={parent.birthDate ?? ''} onSave={v => patch({ birthDate: v })} type="date" />
+                    <div className="flex flex-col gap-0.5 py-2 px-3">
+                      <span className="text-[10px] text-gray-400 uppercase tracking-wide">גיל</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        {computeAge(parent.birthDate ?? '') || '—'}
+                      </span>
+                    </div>
                   </FieldPair>
                   <FieldPair>
                     <InlineField label="טלפון אבא"  value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" />
@@ -1229,6 +1258,38 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 + הוסף תשלום
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Salary detail modal ── */}
+      {showSalaryDetail && parent && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowSalaryDetail(false) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setShowSalaryDetail(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800">פירוט משכורת משפחתי</h3>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-sm py-1">
+                <span className="font-semibold text-gray-800">{fmt(parent.salaryGross)}</span>
+                <span className="text-gray-500">בעל</span>
+              </div>
+              {(parent.women ?? []).map(w => (
+                <div key={w.id} className="flex justify-between items-center text-sm py-1">
+                  <span className="font-semibold text-gray-800">{fmt(w.salaryGross)}</span>
+                  <span className="text-gray-500">{w.name}</span>
+                </div>
+              ))}
+              <div className="border-t border-gray-200 pt-3 mt-2 flex justify-between items-center">
+                <span className="text-lg font-bold text-purple-800">
+                  {fmt(parent.salaryGross + (parent.women ?? []).reduce((s, w) => s + (w.salaryGross ?? 0), 0))}
+                </span>
+                <span className="text-sm text-purple-600 font-semibold">סה&quot;כ</span>
+              </div>
+            </div>
           </div>
         </div>
       )}

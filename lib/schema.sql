@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS parents (
   tuition_total   NUMERIC  DEFAULT 0,         -- סה"כ שכ"ל לתשלום
   tuition_balance NUMERIC  DEFAULT 0,         -- חוב / זכות שכ"ל
   pp_credit       NUMERIC  DEFAULT 0,         -- זיכוי עודף תשלומים מתוכננים
+  birth_date      DATE,                       -- תאריך לידה (לחישוב גיל אוטומטי)
   notes           TEXT,
   synced_at       TIMESTAMPTZ DEFAULT NOW()
 );
