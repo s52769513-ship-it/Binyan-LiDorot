@@ -8,6 +8,22 @@ const FIELD_MAP: Record<string, string> = {
   address: 'address', building: 'building', city: 'city',
   notes: 'notes', status: 'status',
   tuitionTotal: 'tuition_total', tuitionBalance: 'tuition_balance',
+  // Personal fields
+  idNumber:          'id_number',
+  nickname:          'nickname',
+  titleAfter:        'title_after',
+  benReb:            'ben_reb',
+  beneficiaryName:   'beneficiary_name',
+  homePhone:         'home_phone',
+  synagogue:         'synagogue',
+  extraPhone:        'extra_phone',
+  // Bank fields
+  bankName:          'bank_name',
+  bankBranch:        'bank_branch',
+  bankAccount:       'bank_account',
+  chargeDay:         'charge_day',
+  standingOrderType: 'standing_order_type',
+  standingOrderId:   'standing_order_id',
   // Salary fields
   baseHourlyRate:        'base_hourly_rate',
   seniorityBonusHourly:  'seniority_bonus_hourly',

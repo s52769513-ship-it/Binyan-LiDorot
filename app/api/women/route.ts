@@ -1,15 +1,19 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-export async function GET() {
-  const { data, error } = await supabaseAdmin
+export async function GET(req: NextRequest) {
+  const search = req.nextUrl.searchParams.get('search') ?? ''
+
+  let query = supabaseAdmin
     .from('women')
     .select('id, name, parent_ids, base_hourly_rate, monthly_hours_decimal, fixed_bonus, exceptional_expenses, salary_gross, is_fixed_salary, status, role, notes')
     .order('name', { ascending: true })
 
+  if (search) query = query.ilike('name', `%${search}%`)
+
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Fetch parent names for display
   const allParentIds = [...new Set((data ?? []).flatMap(w => (w.parent_ids as string[]) ?? []))]
   const parentsRes = allParentIds.length > 0
     ? await supabaseAdmin.from('parents').select('id, name').in('id', allParentIds)
@@ -21,6 +25,7 @@ export async function GET() {
     (data ?? []).map(w => ({
       id: w.id,
       name: w.name,
+      parentIds: (w.parent_ids as string[]) ?? [],
       parentName: ((w.parent_ids as string[]) ?? []).map((pid: string) => parentNameMap[pid]).filter(Boolean).join(', '),
       baseHourlyRate:      Number(w.base_hourly_rate) || 0,
       monthlyHoursDecimal: Number(w.monthly_hours_decimal) || 0,

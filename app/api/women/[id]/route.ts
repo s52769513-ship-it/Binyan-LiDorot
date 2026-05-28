@@ -23,6 +23,20 @@ export async function PATCH(
     const { id } = await params
     const body = await req.json()
     const update: Record<string, unknown> = {}
+
+    // Special handling: add / remove a single parent ID from parent_ids array
+    if ('addParentId' in body || 'removeParentId' in body) {
+      const { data: row } = await supabaseAdmin.from('women').select('parent_ids').eq('id', id).single()
+      const current: string[] = (row?.parent_ids as string[]) ?? []
+      if ('addParentId' in body) {
+        const pid = String(body.addParentId)
+        if (!current.includes(pid)) update['parent_ids'] = [...current, pid]
+      } else {
+        const pid = String(body.removeParentId)
+        update['parent_ids'] = current.filter(p => p !== pid)
+      }
+    }
+
     for (const [key, dbKey] of Object.entries(FIELD_MAP)) {
       if (key in body) update[dbKey] = body[key]
     }

@@ -22,11 +22,10 @@ interface IFProps {
   label: string
   value: string
   onSave: (v: string) => Promise<void>
-  type?: 'text' | 'email' | 'tel'
-  dir?: 'rtl' | 'ltr'
+  type?: 'text' | 'email' | 'tel' | 'number'
   multiline?: boolean
 }
-function InlineField({ label, value, onSave, type = 'text', dir = 'rtl', multiline }: IFProps) {
+function InlineField({ label, value, onSave, type = 'text', multiline }: IFProps) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -35,6 +34,8 @@ function InlineField({ label, value, onSave, type = 'text', dir = 'rtl', multili
   useEffect(() => { setVal(value) }, [value])
   useEffect(() => { if (editing) ref.current?.focus() }, [editing])
 
+  const inputDir = (type === 'tel' || type === 'email' || type === 'number') ? 'ltr' : 'rtl'
+
   const save = async () => {
     setEditing(false)
     if (val.trim() === (value ?? '').trim()) return
@@ -42,38 +43,146 @@ function InlineField({ label, value, onSave, type = 'text', dir = 'rtl', multili
     try { await onSave(val.trim()) } finally { setSaving(false) }
   }
 
-  const sharedProps = {
-    ref,
-    value: val,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setVal(e.target.value),
-    onBlur: save,
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !multiline) save()
-      if (e.key === 'Escape') { setVal(value); setEditing(false) }
-    },
-    dir,
-    className: 'w-full px-2 py-1 text-sm border-b-2 border-[#1a3a7a] bg-transparent outline-none text-right',
+  return (
+    <div className="group">
+      <div className="text-[10px] font-medium text-gray-400 mb-0.5">{label}</div>
+      {editing ? (
+        multiline ? (
+          <textarea
+            ref={ref as React.RefObject<HTMLTextAreaElement>}
+            rows={3}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onBlur={save}
+            onKeyDown={e => { if (e.key === 'Escape') { setVal(value); setEditing(false) } }}
+            className="w-full px-0 py-0.5 text-sm border-b-2 border-[#1a3a7a] bg-transparent outline-none text-right resize-none"
+          />
+        ) : (
+          <input
+            ref={ref as React.RefObject<HTMLInputElement>}
+            type={type}
+            value={val}
+            dir={inputDir}
+            onChange={e => setVal(e.target.value)}
+            onBlur={save}
+            onKeyDown={e => {
+              if (e.key === 'Enter') save()
+              if (e.key === 'Escape') { setVal(value); setEditing(false) }
+            }}
+            className="w-full px-0 py-0.5 text-sm border-b-2 border-[#1a3a7a] bg-transparent outline-none text-right"
+          />
+        )
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="w-full text-right block hover:text-[#1a3a7a] transition-colors"
+        >
+          {saving ? (
+            <span className="text-xs text-gray-400">שומר...</span>
+          ) : (
+            <span className="text-sm text-gray-800">
+              {val || <span className="text-gray-300 italic text-xs">לחץ למילוי</span>}
+            </span>
+          )}
+          <span className="opacity-0 group-hover:opacity-40 text-gray-300 text-xs mr-1"> ✏</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ─── WomanLinkField ─────────────────────────────────── */
+function WomanLinkField({ women, parentId, onUpdate }: {
+  women: WomanDetail[]
+  parentId: string
+  onUpdate: () => void
+}) {
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<{ id: string; name: string }[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const search = async (q: string) => {
+    setQuery(q)
+    if (!q.trim()) { setResults([]); return }
+    const r = await fetch(`/api/women?search=${encodeURIComponent(q)}`)
+    const data = await r.json()
+    setResults((data ?? []).filter((w: { id: string }) => !women.some(lw => lw.id === w.id)))
+  }
+
+  const link = async (w: { id: string; name: string }) => {
+    setBusy(true)
+    await fetch(`/api/women/${w.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addParentId: parentId }),
+    })
+    setBusy(false)
+    setSearching(false)
+    setQuery('')
+    setResults([])
+    onUpdate()
+  }
+
+  const unlink = async (womanId: string) => {
+    setBusy(true)
+    await fetch(`/api/women/${womanId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removeParentId: parentId }),
+    })
+    setBusy(false)
+    onUpdate()
   }
 
   return (
     <div className="group">
-      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
-      {editing ? (
-        multiline
-          ? <textarea rows={3} {...sharedProps} />
-          : <input type={type} {...sharedProps} />
-      ) : (
-        <button
-          onClick={() => setEditing(true)}
-          className="text-sm text-gray-800 hover:text-[#1a3a7a] text-right w-full flex items-center gap-1 justify-end"
-          title="לחץ לעריכה"
-        >
-          <span className="opacity-0 group-hover:opacity-60 text-gray-300 text-xs">✏</span>
-          {saving
-            ? <span className="text-xs text-gray-400">שומר...</span>
-            : <span>{val || <span className="text-gray-300 italic text-xs">לא הוזן</span>}</span>
-          }
-        </button>
+      <div className="text-[10px] font-medium text-gray-400 mb-1">אשה / קישור זוגי</div>
+      <div className="flex flex-wrap gap-1 mb-1">
+        {women.map(w => (
+          <span key={w.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">
+            {w.name}
+            <button
+              onClick={() => unlink(w.id)}
+              disabled={busy}
+              className="text-purple-300 hover:text-red-500 leading-none disabled:opacity-40"
+            >✕</button>
+          </span>
+        ))}
+        {!searching && (
+          <button
+            onClick={() => setSearching(true)}
+            className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-200 transition-colors"
+          >
+            + קישור
+          </button>
+        )}
+        {busy && <span className="text-[10px] text-gray-400">שומר...</span>}
+      </div>
+      {searching && (
+        <div className="relative">
+          <input
+            autoFocus
+            value={query}
+            onChange={e => search(e.target.value)}
+            onBlur={() => setTimeout(() => { setSearching(false); setQuery(''); setResults([]) }, 200)}
+            placeholder="חפש שם אשה..."
+            className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg text-right focus:outline-none focus:border-purple-400"
+          />
+          {results.length > 0 && (
+            <div className="absolute right-0 top-full mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
+              {results.map(w => (
+                <button
+                  key={w.id}
+                  onMouseDown={() => link(w)}
+                  className="w-full px-3 py-2 text-sm text-right hover:bg-purple-50 text-gray-800 block border-b border-gray-50 last:border-0"
+                >
+                  {w.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -280,95 +389,100 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
           {/* ── DETAILS TAB ── */}
           {parent && tab === 'details' && (
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-3">
+
+              {/* ── פרטי קשר ── */}
               <SectionCard title="פרטי קשר">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                  <InlineField label="שם פרטי (אבא)" value={parent.firstName}   onSave={v => patch({ firstName: v })} />
-                  <InlineField label="שם משפחה"       value={parent.lastName}    onSave={v => patch({ lastName: v })} />
-                  <InlineField label="שם האמא"         value={parent.motherName}  onSave={v => patch({ motherName: v })} />
-                  <InlineField label="מייל"             value={parent.email}       onSave={v => patch({ email: v })} type="email" dir="ltr" />
-                  <InlineField label="טלפון אבא"       value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" dir="ltr" />
-                  <InlineField label="טלפון אמא"       value={parent.motherPhone} onSave={v => patch({ motherPhone: v })} type="tel" dir="ltr" />
-                  {parent.homePhone && (
-                    <InlineField label="טלפון בית" value={parent.homePhone} onSave={v => patch({ homePhone: v })} type="tel" dir="ltr" />
-                  )}
-                  {parent.extraPhone && (
-                    <InlineField label="טלפון נוסף" value={parent.extraPhone} onSave={v => patch({ extraPhone: v })} type="tel" dir="ltr" />
-                  )}
+                <div className="divide-y divide-gray-50">
+                  <FieldPair>
+                    <InlineField label="שם פרטי (אבא)" value={parent.firstName}   onSave={v => patch({ firstName: v })} />
+                    <InlineField label="שם משפחה"       value={parent.lastName}    onSave={v => patch({ lastName: v })} />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="שם האמא"    value={parent.motherName}  onSave={v => patch({ motherName: v })} />
+                    <InlineField label='ת"ז'         value={parent.idNumber}    onSave={v => patch({ idNumber: v })} />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="טלפון אבא"  value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" />
+                    <InlineField label="טלפון אמא"  value={parent.motherPhone} onSave={v => patch({ motherPhone: v })} type="tel" />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="טלפון בית"  value={parent.homePhone}   onSave={v => patch({ homePhone: v })} type="tel" />
+                    <InlineField label="טלפון נוסף" value={parent.extraPhone}  onSave={v => patch({ extraPhone: v })} type="tel" />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="מייל" value={parent.email} onSave={v => patch({ email: v })} type="email" />
+                    <InlineField label="כינוי" value={parent.nickname} onSave={v => patch({ nickname: v })} />
+                  </FieldPair>
                 </div>
               </SectionCard>
 
+              {/* ── פרטים אישיים ── */}
               <SectionCard title="פרטים אישיים">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                  {parent.idNumber && (
-                    <ReadOnlyField label='ת"ז' value={parent.idNumber} />
-                  )}
-                  {parent.nickname && (
-                    <ReadOnlyField label="כינוי" value={parent.nickname} />
-                  )}
-                  {parent.titleAfter && (
-                    <ReadOnlyField label="תואר אחרי" value={parent.titleAfter} />
-                  )}
-                  {parent.benReb && (
-                    <ReadOnlyField label='ב"ר' value={parent.benReb} />
-                  )}
-                  {parent.beneficiaryName && (
-                    <ReadOnlyField label="שם מוטב" value={parent.beneficiaryName} />
-                  )}
-                  {parent.synagogue && (
-                    <ReadOnlyField label="מתפלל" value={parent.synagogue} />
-                  )}
-                  {parent.women && parent.women.length > 0 && (
-                    <ReadOnlyField label="אשה" value={parent.women.map(w => w.name).join(', ')} />
-                  )}
-                  {parent.role && parent.role.length > 0 && (
-                    <div className="col-span-2">
-                      <div className="text-[10px] text-gray-400 mb-1 text-right">תפקיד</div>
-                      <div className="flex flex-wrap gap-1 justify-end">
-                        {parent.role.map(r => (
+                <div className="divide-y divide-gray-50">
+                  <FieldPair>
+                    <InlineField label="תואר אחרי"   value={parent.titleAfter}      onSave={v => patch({ titleAfter: v })} />
+                    <InlineField label='ב"ר'          value={parent.benReb}          onSave={v => patch({ benReb: v })} />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="שם מוטב"     value={parent.beneficiaryName} onSave={v => patch({ beneficiaryName: v })} />
+                    <InlineField label="מתפלל"        value={parent.synagogue}       onSave={v => patch({ synagogue: v })} />
+                  </FieldPair>
+                  {/* Wife link */}
+                  <div className="px-4 py-2.5">
+                    <WomanLinkField women={parent.women} parentId={parentId} onUpdate={load} />
+                  </div>
+                  {/* Role chips — read-only (managed in Airtable) */}
+                  <div className="px-4 py-2.5">
+                    <div className="text-[10px] font-medium text-gray-400 mb-1">תפקיד</div>
+                    <div className="flex flex-wrap gap-1">
+                      {parent.role.length > 0
+                        ? parent.role.map(r => (
                           <span key={r} className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">{r}</span>
-                        ))}
-                      </div>
+                        ))
+                        : <span className="text-gray-300 italic text-xs">לא הוזן</span>
+                      }
+                    </div>
+                  </div>
+                  {parent.teacherClassIds.length > 0 && (
+                    <div className="px-4 py-2.5">
+                      <div className="text-[10px] font-medium text-gray-400 mb-0.5">מלמד/מורה</div>
+                      <div className="text-sm text-gray-700">{parent.teacherClassIds.length} כיתות</div>
                     </div>
                   )}
-                  {parent.teacherClassIds && parent.teacherClassIds.length > 0 && (
-                    <ReadOnlyField label="מלמד בכיתות" value={`${parent.teacherClassIds.length} כיתות`} />
-                  )}
                 </div>
               </SectionCard>
 
+              {/* ── כתובת ── */}
               <SectionCard title="כתובת">
-                <div className="grid grid-cols-3 gap-x-4 gap-y-3 p-4">
-                  <InlineField label="עיר"        value={parent.city}     onSave={v => patch({ city: v })} />
-                  <InlineField label="רחוב"       value={parent.address}  onSave={v => patch({ address: v })} />
-                  <InlineField label="בניין/דירה" value={parent.building} onSave={v => patch({ building: v })} />
+                <div className="divide-y divide-gray-50">
+                  <FieldPair>
+                    <InlineField label="עיר"        value={parent.city}     onSave={v => patch({ city: v })} />
+                    <InlineField label="רחוב"       value={parent.address}  onSave={v => patch({ address: v })} />
+                  </FieldPair>
+                  <div className="px-4 py-2.5">
+                    <InlineField label="בניין/דירה" value={parent.building} onSave={v => patch({ building: v })} />
+                  </div>
                 </div>
               </SectionCard>
 
-              {(parent.bankName || parent.bankBranch || parent.bankAccount || parent.standingOrderType || parent.standingOrderId || parent.chargeDay) && (
-                <SectionCard title='פרטי בנק / הו"ק'>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
-                    {parent.bankName && (
-                      <ReadOnlyField label="בנק" value={parent.bankName} />
-                    )}
-                    {parent.bankBranch != null && (
-                      <ReadOnlyField label="סניף" value={String(parent.bankBranch)} />
-                    )}
-                    {parent.bankAccount != null && (
-                      <ReadOnlyField label="מספר חשבון" value={String(parent.bankAccount)} />
-                    )}
-                    {parent.standingOrderType && (
-                      <ReadOnlyField label='סוג הו"ק' value={parent.standingOrderType} />
-                    )}
-                    {parent.standingOrderId != null && (
-                      <ReadOnlyField label='מזהה הו"ק' value={String(parent.standingOrderId)} />
-                    )}
-                    {parent.chargeDay != null && (
-                      <ReadOnlyField label="תאריך חיוב" value={`יום ${parent.chargeDay} בחודש`} />
-                    )}
-                  </div>
-                </SectionCard>
-              )}
+              {/* ── פרטי בנק / הו"ק ── */}
+              <SectionCard title='פרטי בנק / הו"ק'>
+                <div className="divide-y divide-gray-50">
+                  <FieldPair>
+                    <InlineField label="בנק"          value={parent.bankName ?? ''}         onSave={v => patch({ bankName: v })} />
+                    <InlineField label="סניף"         value={parent.bankBranch != null ? String(parent.bankBranch) : ''} onSave={v => patch({ bankBranch: v ? Number(v) : null })} type="number" />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label="מספר חשבון"  value={parent.bankAccount != null ? String(parent.bankAccount) : ''} onSave={v => patch({ bankAccount: v ? Number(v) : null })} type="number" />
+                    <InlineField label="תאריך חיוב"  value={parent.chargeDay != null ? String(parent.chargeDay) : ''}    onSave={v => patch({ chargeDay: v ? Number(v) : null })} type="number" />
+                  </FieldPair>
+                  <FieldPair>
+                    <InlineField label='סוג הו"ק'    value={parent.standingOrderType ?? ''}  onSave={v => patch({ standingOrderType: v })} />
+                    <InlineField label='מזהה הו"ק'   value={parent.standingOrderId != null ? String(parent.standingOrderId) : ''} onSave={v => patch({ standingOrderId: v ? Number(v) : null })} type="number" />
+                  </FieldPair>
+                </div>
+              </SectionCard>
 
               <SectionCard title="הערות">
                 <div className="p-4">
@@ -951,11 +1065,11 @@ function SectionCard({ title, children }: { title: string; children: React.React
   )
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+/* Two-column pair inside a section, each col right-aligned */
+function FieldPair({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
-      <div className="text-sm text-gray-800 text-right">{value || <span className="text-gray-300 italic text-xs">לא הוזן</span>}</div>
+    <div className="grid grid-cols-2 gap-x-4 px-4 py-2.5">
+      {children}
     </div>
   )
 }
