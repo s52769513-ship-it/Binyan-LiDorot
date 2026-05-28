@@ -35,6 +35,37 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function PATCH(req: NextRequest) {
+  try {
+    const { id, amount } = await req.json()
+    if (!id) return NextResponse.json({ error: 'חסר מזהה' }, { status: 400 })
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
+    }
+
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from('planned_payments')
+      .select('amount, balance')
+      .eq('id', id)
+      .single()
+    if (fetchErr || !existing) throw fetchErr ?? new Error('לא נמצא')
+
+    const newAmount = Number(amount)
+    const delta = newAmount - (existing.amount ?? 0)
+    const newBalance = Math.max(0, (existing.balance ?? 0) + delta)
+
+    const { error } = await supabaseAdmin
+      .from('planned_payments')
+      .update({ amount: newAmount, balance: newBalance })
+      .eq('id', id)
+    if (error) throw error
+
+    return NextResponse.json({ success: true, amount: newAmount, balance: newBalance })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()

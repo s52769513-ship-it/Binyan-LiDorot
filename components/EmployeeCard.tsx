@@ -227,6 +227,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [showAddTx, setShowAddTx]           = useState(false)
   const [showAddPlanned, setShowAddPlanned] = useState(false)
   const [showAddTxForPP, setShowAddTxForPP] = useState(false)
+  const [editingPPAmount, setEditingPPAmount] = useState(false)
+  const [ppAmountDraft, setPPAmountDraft]     = useState('')
+  const [savingPPAmount, setSavingPPAmount]   = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -975,13 +978,75 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
             <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setSelectedPP(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <button onClick={() => { setSelectedPP(null); setEditingPPAmount(false) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
               <h3 className="font-bold text-gray-800 text-base">{selectedPP.name || 'תשלום מתוכנן'}</h3>
             </div>
             <div className="space-y-3 mb-5">
               <div className="flex justify-between items-center">
-                <span className="text-2xl font-bold text-gray-800">{fmt(selectedPP.amount)}</span>
-                <span className="text-xs text-gray-400">סכום מתוכנן</span>
+                {editingPPAmount ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="number"
+                      className="w-28 border border-emerald-400 rounded-lg px-2 py-1 text-xl font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      value={ppAmountDraft}
+                      onChange={e => setPPAmountDraft(e.target.value)}
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const newAmt = Number(ppAmountDraft)
+                          if (!newAmt || newAmt <= 0) return
+                          setSavingPPAmount(true)
+                          fetch('/api/planned-payments', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: selectedPP.id, amount: newAmt }),
+                          })
+                            .then(r => r.json())
+                            .then(d => {
+                              if (d.success) {
+                                setSelectedPP(prev => prev ? { ...prev, amount: d.amount, balance: d.balance } : prev)
+                                load()
+                              }
+                            })
+                            .finally(() => { setSavingPPAmount(false); setEditingPPAmount(false) })
+                        }
+                        if (e.key === 'Escape') setEditingPPAmount(false)
+                      }}
+                    />
+                    <button
+                      disabled={savingPPAmount}
+                      onClick={() => {
+                        const newAmt = Number(ppAmountDraft)
+                        if (!newAmt || newAmt <= 0) return
+                        setSavingPPAmount(true)
+                        fetch('/api/planned-payments', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: selectedPP.id, amount: newAmt }),
+                        })
+                          .then(r => r.json())
+                          .then(d => {
+                            if (d.success) {
+                              setSelectedPP(prev => prev ? { ...prev, amount: d.amount, balance: d.balance } : prev)
+                              load()
+                            }
+                          })
+                          .finally(() => { setSavingPPAmount(false); setEditingPPAmount(false) })
+                      }}
+                      className="text-emerald-600 hover:text-emerald-800 font-bold text-sm disabled:opacity-40"
+                    >✓</button>
+                    <button onClick={() => setEditingPPAmount(false)} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setPPAmountDraft(String(selectedPP.amount)); setEditingPPAmount(true) }}
+                    className="text-2xl font-bold text-gray-800 hover:text-emerald-700 transition-colors text-right"
+                    title="לחץ לעריכה"
+                  >
+                    {fmt(selectedPP.amount)}
+                  </button>
+                )}
+                <span className="text-xs text-gray-400 mr-2">סכום מתוכנן</span>
               </div>
               {selectedPP.balance > 0 ? (
                 <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
