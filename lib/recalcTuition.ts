@@ -41,9 +41,12 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
       .gte('date', currentMonthDate)
 
     for (const pp of openPPs ?? []) {
+      // alreadyPaid = what was paid toward this PP so far
+      const alreadyPaid = Math.max(0, Number(pp.amount) - Number(pp.balance))
+      const newBalance  = Math.max(0, newTuition - alreadyPaid)
       await supabaseAdmin.from('planned_payments').update({
         amount:  newTuition,
-        balance: Math.max(0, Number(pp.balance) + delta),
+        balance: newBalance,
       }).eq('id', pp.id)
     }
   }
