@@ -1113,6 +1113,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           sourceLabel={txForPP.name}
           prefilledAmount={txForPP.balance}
           plannedPaymentId={txForPP.id}
+          parentId={parentId}
           onClose={() => { setShowAddTxForPP(false); setTxForPP(null) }}
           onSuccess={() => { setShowAddTxForPP(false); setTxForPP(null); load() }}
         />
