@@ -35,6 +35,23 @@ export const P = {
   PLANNED_PAYMENTS: 'fldnhdSjF4vJAX7GA',
   TRANSACTIONS: 'fldFJTh2tejd873up',
   NOTES: 'fldU4U061RDOmHJCJ',
+  // Additional fields
+  ID_NUMBER:           'fldsbvKmp2XZBh265',   // ת"ז
+  NICKNAME:            'fld3JOjwAYxzXkEd2',   // כינוי (singleSelect)
+  TITLE_AFTER:         'fldiae49DXv4l4fCG',   // תואר אחרי (singleSelect)
+  BEN_REB:             'fldwby67t9eUafcDk',   // ב"ר
+  BENEFICIARY_NAME:    'fldo4T1GYoXY941Z9',   // שם מוטב
+  HOME_PHONE:          'fld8XXJyHmFPmZLVx',   // טלפון בית
+  ROLE:                'fldGEne3Nhbk89nDl',   // תפקיד (multipleSelects)
+  SYNAGOGUE:           'fldJAppatOpugETH1',   // מתפלל (singleSelect)
+  BANK_NAME:           'fldMCffcwDBMdAEpU',   // בנק
+  BANK_BRANCH:         'fldWDyAPsjlIPF4zU',   // סניף
+  BANK_ACCOUNT:        'fldwoNNSKAlyJnOBH',   // מספר חשבון
+  CHARGE_DAY:          'fld6179bthbCprzsf',   // תאריך חיוב (number = day of month)
+  STANDING_ORDER_TYPE: 'fldUah8wiAlAoOGjY',   // סוג הו"ק (singleSelect)
+  STANDING_ORDER_ID:   'fldhdKFNzR2eDilV3',   // מזהה הו"ק (number)
+  TEACHER_CLASS_IDS:   'flduKK6pFJ1WM6Emh',   // מלמד/מורה (multipleRecordLinks to classes)
+  EXTRA_PHONE:         'fldhkPu5PMjSLYgOG',   // מספר טלפון נוסף
 } as const
 
 // Student field IDs (tblgMvJzj8N9K8HRY)

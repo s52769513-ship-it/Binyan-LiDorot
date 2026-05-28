@@ -121,6 +121,24 @@ export async function GET(
       tuitionBalance: computedBalance,
       notes: p.notes ?? '',
 
+      // New fields
+      idNumber:          p.id_number ?? '',
+      nickname:          p.nickname ?? '',
+      titleAfter:        p.title_after ?? '',
+      benReb:            p.ben_reb ?? '',
+      beneficiaryName:   p.beneficiary_name ?? '',
+      homePhone:         p.home_phone ?? '',
+      role:              Array.isArray(p.role) ? p.role : [],
+      synagogue:         p.synagogue ?? '',
+      bankName:          p.bank_name ?? '',
+      bankBranch:        p.bank_branch ?? null,
+      bankAccount:       p.bank_account ?? null,
+      chargeDay:         p.charge_day ?? null,
+      standingOrderType: p.standing_order_type ?? '',
+      standingOrderId:   p.standing_order_id ?? null,
+      teacherClassIds:   (p.teacher_class_ids as string[]) ?? [],
+      extraPhone:        p.extra_phone ?? '',
+
       // Salary fields
       baseHourlyRate: p.base_hourly_rate ?? 0,
       seniorityBonusHourly: p.seniority_bonus_hourly ?? 0,

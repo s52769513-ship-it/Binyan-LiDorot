@@ -1,0 +1,17 @@
+ALTER TABLE parents
+  ADD COLUMN IF NOT EXISTS id_number           text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS nickname            text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS title_after         text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS ben_reb             text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS beneficiary_name    text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS home_phone          text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS role                text[]      DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS synagogue           text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS bank_name           text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS bank_branch         integer,
+  ADD COLUMN IF NOT EXISTS bank_account        bigint,
+  ADD COLUMN IF NOT EXISTS charge_day          integer,
+  ADD COLUMN IF NOT EXISTS standing_order_type text        DEFAULT '',
+  ADD COLUMN IF NOT EXISTS standing_order_id   bigint,
+  ADD COLUMN IF NOT EXISTS teacher_class_ids   text[]      DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS extra_phone         text        DEFAULT '';

@@ -289,6 +289,51 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   <InlineField label="מייל"             value={parent.email}       onSave={v => patch({ email: v })} type="email" dir="ltr" />
                   <InlineField label="טלפון אבא"       value={parent.fatherPhone} onSave={v => patch({ fatherPhone: v })} type="tel" dir="ltr" />
                   <InlineField label="טלפון אמא"       value={parent.motherPhone} onSave={v => patch({ motherPhone: v })} type="tel" dir="ltr" />
+                  {parent.homePhone && (
+                    <InlineField label="טלפון בית" value={parent.homePhone} onSave={v => patch({ homePhone: v })} type="tel" dir="ltr" />
+                  )}
+                  {parent.extraPhone && (
+                    <InlineField label="טלפון נוסף" value={parent.extraPhone} onSave={v => patch({ extraPhone: v })} type="tel" dir="ltr" />
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="פרטים אישיים">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
+                  {parent.idNumber && (
+                    <ReadOnlyField label='ת"ז' value={parent.idNumber} />
+                  )}
+                  {parent.nickname && (
+                    <ReadOnlyField label="כינוי" value={parent.nickname} />
+                  )}
+                  {parent.titleAfter && (
+                    <ReadOnlyField label="תואר אחרי" value={parent.titleAfter} />
+                  )}
+                  {parent.benReb && (
+                    <ReadOnlyField label='ב"ר' value={parent.benReb} />
+                  )}
+                  {parent.beneficiaryName && (
+                    <ReadOnlyField label="שם מוטב" value={parent.beneficiaryName} />
+                  )}
+                  {parent.synagogue && (
+                    <ReadOnlyField label="מתפלל" value={parent.synagogue} />
+                  )}
+                  {parent.women && parent.women.length > 0 && (
+                    <ReadOnlyField label="אשה" value={parent.women.map(w => w.name).join(', ')} />
+                  )}
+                  {parent.role && parent.role.length > 0 && (
+                    <div className="col-span-2">
+                      <div className="text-[10px] text-gray-400 mb-1 text-right">תפקיד</div>
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {parent.role.map(r => (
+                          <span key={r} className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">{r}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {parent.teacherClassIds && parent.teacherClassIds.length > 0 && (
+                    <ReadOnlyField label="מלמד בכיתות" value={`${parent.teacherClassIds.length} כיתות`} />
+                  )}
                 </div>
               </SectionCard>
 
@@ -299,6 +344,31 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   <InlineField label="בניין/דירה" value={parent.building} onSave={v => patch({ building: v })} />
                 </div>
               </SectionCard>
+
+              {(parent.bankName || parent.bankBranch || parent.bankAccount || parent.standingOrderType || parent.standingOrderId || parent.chargeDay) && (
+                <SectionCard title='פרטי בנק / הו"ק'>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
+                    {parent.bankName && (
+                      <ReadOnlyField label="בנק" value={parent.bankName} />
+                    )}
+                    {parent.bankBranch != null && (
+                      <ReadOnlyField label="סניף" value={String(parent.bankBranch)} />
+                    )}
+                    {parent.bankAccount != null && (
+                      <ReadOnlyField label="מספר חשבון" value={String(parent.bankAccount)} />
+                    )}
+                    {parent.standingOrderType && (
+                      <ReadOnlyField label='סוג הו"ק' value={parent.standingOrderType} />
+                    )}
+                    {parent.standingOrderId != null && (
+                      <ReadOnlyField label='מזהה הו"ק' value={String(parent.standingOrderId)} />
+                    )}
+                    {parent.chargeDay != null && (
+                      <ReadOnlyField label="תאריך חיוב" value={`יום ${parent.chargeDay} בחודש`} />
+                    )}
+                  </div>
+                </SectionCard>
+              )}
 
               <SectionCard title="הערות">
                 <div className="p-4">
@@ -877,6 +947,15 @@ function SectionCard({ title, children }: { title: string; children: React.React
         {title}
       </div>
       {children}
+    </div>
+  )
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] text-gray-400 mb-0.5 text-right">{label}</div>
+      <div className="text-sm text-gray-800 text-right">{value || <span className="text-gray-300 italic text-xs">לא הוזן</span>}</div>
     </div>
   )
 }

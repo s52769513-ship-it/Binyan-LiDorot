@@ -74,6 +74,23 @@ export interface ParentDetail extends ParentSummary {
   debts: DebtItem[]
   plannedPayments: PlannedPaymentItem[]
   transactions: TransactionItem[]
+  // New personal/banking fields
+  idNumber: string
+  nickname: string
+  titleAfter: string
+  benReb: string
+  beneficiaryName: string
+  homePhone: string
+  role: string[]
+  synagogue: string
+  bankName: string
+  bankBranch: number | null
+  bankAccount: number | null
+  chargeDay: number | null
+  standingOrderType: string
+  standingOrderId: number | null
+  teacherClassIds: string[]
+  extraPhone: string
   // Salary fields
   baseHourlyRate: number
   seniorityBonusHourly: number
