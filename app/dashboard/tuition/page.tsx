@@ -5,11 +5,28 @@ import EmployeeCard from '@/components/EmployeeCard'
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+const fmtCur = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
 const STATUS_STYLE: Record<string, string> = {
   'שולם':  'bg-emerald-50 text-emerald-700 border-emerald-200',
   'חלקי':  'bg-amber-50  text-amber-700  border-amber-200',
   'ממתין': 'bg-red-50    text-red-700    border-red-200',
+}
+
+const MONTH_NAMES: Record<string, string> = {
+  '01': 'ינואר', '02': 'פברואר', '03': 'מרץ',    '04': 'אפריל',
+  '05': 'מאי',   '06': 'יוני',   '07': 'יולי',   '08': 'אוגוסט',
+  '09': 'ספטמבר','10': 'אוקטובר','11': 'נובמבר', '12': 'דצמבר',
+}
+const HEBREW_MONTH: Record<string, string> = {
+  '01': 'שבט', '02': 'אדר',  '03': 'ניסן', '04': 'אייר',
+  '05': 'סיון','06': 'תמוז', '07': 'אב',   '08': 'אלול',
+  '09': 'תשרי','10': 'חשון', '11': 'כסלו', '12': 'טבת',
+}
+function fmtMY(my: string) {
+  const [m, y] = my.split('/')
+  return `${MONTH_NAMES[m] || m} ${y} · ${HEBREW_MONTH[m] || ''}`
 }
 
 interface KidRow {
@@ -26,6 +43,13 @@ interface KidsData {
   summary: { totalExpected: number; totalPaid: number; totalBalance: number; totalKids: number }
 }
 
+interface ParentPreview {
+  id: string; name: string; amount: number; toCreate: string[]; toSkip: string[]
+}
+interface PreviewData {
+  parents: ParentPreview[]; totalToCreate: number; months: string[]
+}
+
 export default function TuitionPage() {
   const [data, setData]         = useState<KidsData | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -35,6 +59,36 @@ export default function TuitionPage() {
   const [statusFilter, setStatus] = useState('')
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  // Generate-year-all state
+  const [genLoading, setGenLoading]   = useState(false)
+  const [genPreview, setGenPreview]   = useState<PreviewData | null>(null)
+  const [genExecuting, setGenExecuting] = useState(false)
+  const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
+  const [genError, setGenError]       = useState('')
+
+  const loadPreview = async () => {
+    setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
+    try {
+      const res  = await fetch('/api/planned-payments/generate-year-all')
+      const data = await res.json()
+      if (data.error) { setGenError(data.error); return }
+      setGenPreview(data)
+    } catch { setGenError('שגיאת רשת') }
+    finally { setGenLoading(false) }
+  }
+
+  const executeGen = async () => {
+    setGenExecuting(true); setGenError('')
+    try {
+      const res  = await fetch('/api/planned-payments/generate-year-all', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setGenError(data.error); return }
+      setGenResult(data)
+      setGenPreview(null)
+    } catch { setGenError('שגיאת רשת') }
+    finally { setGenExecuting(false) }
+  }
 
   const load = (m?: string) => {
     setLoading(true)
@@ -82,11 +136,25 @@ export default function TuitionPage() {
 
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadPreview}
+            disabled={genLoading}
+            className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
+            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+          >
+            {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
+          </button>
+          {genResult && (
+            <span className="text-sm text-emerald-700 font-medium">
+              ✅ נוצרו {genResult.created} תשלומים
+              <button onClick={() => setGenResult(null)} className="mr-2 text-xs text-gray-400 underline">סגור</button>
+            </span>
+          )}
+          {genError && <span className="text-sm text-red-600">{genError}</span>}
+        </div>
         <h2 className="text-2xl font-bold text-gray-800">שכר לימוד</h2>
-        {summary && !loading && (
-          <span className="text-sm text-gray-400">{summary.totalKids} ילדים</span>
-        )}
       </div>
 
       {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
@@ -246,6 +314,73 @@ export default function TuitionPage() {
 
       {selectedParent && (
         <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
+      )}
+
+      {/* Generate-year preview modal */}
+      {genPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setGenPreview(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <button onClick={() => setGenPreview(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800 text-base">אישור יצירת תשלומים</h3>
+            </div>
+
+            <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex-shrink-0">
+              {genPreview.totalToCreate === 0 ? (
+                <p className="text-sm text-gray-500 text-center">כל התשלומים לשנה הנוכחית כבר קיימים — אין מה ליצור.</p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-800">
+                    עומד לייצר <strong>{genPreview.totalToCreate}</strong> תשלומים עבור <strong>{genPreview.parents.length}</strong> הורים
+                  </p>
+                  <p className="text-xs text-amber-600">
+                    {fmtMY(genPreview.months[0])} עד {fmtMY(genPreview.months[genPreview.months.length - 1])}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+              {genPreview.parents.map(p => (
+                <div key={p.id} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <span className="text-xs text-emerald-600 font-medium">+{p.toCreate.length} חדשים</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-800">{p.name}</p>
+                      <p className="text-xs text-gray-400">{fmtCur(p.amount)} לחודש</p>
+                    </div>
+                  </div>
+                  {p.toSkip.length > 0 && (
+                    <p className="text-[10px] text-gray-400">{p.toSkip.length} חודשים קיימים ידולגו</p>
+                  )}
+                </div>
+              ))}
+              {genPreview.parents.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">אין הורים הזקוקים לתשלומים חדשים</p>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setGenPreview(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              {genPreview.totalToCreate > 0 && (
+                <button
+                  onClick={executeGen}
+                  disabled={genExecuting}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+                >
+                  {genExecuting ? 'יוצר...' : `✓ אשר ויצור ${genPreview.totalToCreate} תשלומים`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
