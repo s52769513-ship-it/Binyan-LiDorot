@@ -165,24 +165,47 @@ export async function POST(req: NextRequest) {
             .eq('id', plannedPaymentId)
 
           if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
-            const pid = parentIds[0]
-            // First try to apply surplus to existing open planned payments (oldest first)
+            const pid   = parentIds[0]
+            const today = new Date().toISOString().split('T')[0]
+
+            // Find ONE target PP: most overdue first, then closest to today
             const { data: openPPs } = await supabaseAdmin
               .from('planned_payments')
-              .select('id, balance')
+              .select('id, balance, date')
               .contains('parent_ids', [pid])
               .gt('balance', 0)
               .neq('id', plannedPaymentId)
               .order('date', { ascending: true })
+
+            const overdue  = (openPPs ?? []).filter(pp => pp.date && pp.date < today)
+            const upcoming = (openPPs ?? []).filter(pp => !pp.date || pp.date >= today)
+            const targetPP = overdue[0] ?? upcoming[0] ?? null
+
             let remaining = surplus
-            for (const openPP of openPPs ?? []) {
-              if (remaining <= 0) break
-              const applied    = Math.min(remaining, openPP.balance)
-              const newPPBal   = openPP.balance - applied
-              await supabaseAdmin.from('planned_payments').update({ balance: newPPBal }).eq('id', openPP.id)
+            if (targetPP) {
+              const applied = Math.min(remaining, targetPP.balance)
+              await supabaseAdmin
+                .from('planned_payments')
+                .update({ balance: targetPP.balance - applied })
+                .eq('id', targetPP.id)
+
+              // Create a linked transaction so the target PP shows the payment
+              await supabaseAdmin.from('transactions').insert({
+                id:                 crypto.randomUUID(),
+                amount:             applied,
+                planned_payment_id: targetPP.id,
+                parent_ids:         Array.isArray(parentIds) ? parentIds : [],
+                project_names:      Array.isArray(projectNames) ? projectNames : [],
+                date:               date || null,
+                month_year:         monthYear || '',
+                notes:              'זיכוי מעודף תשלום',
+                type:               type || '',
+                synced_at:          '2099-12-31T23:59:59.999Z',
+              })
               remaining -= applied
             }
-            // Store any leftover as credit for future payments
+
+            // Store any leftover as pp_credit for future payments
             if (remaining > 0) {
               const { data: par } = await supabaseAdmin.from('parents').select('pp_credit').eq('id', pid).single()
               await supabaseAdmin.from('parents').update({ pp_credit: (par?.pp_credit || 0) + remaining }).eq('id', pid)
