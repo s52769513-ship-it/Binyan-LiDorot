@@ -15,6 +15,11 @@ const fmtN    = (n: number)  => new Intl.NumberFormat('he-IL',{maximumFractionDi
 function currentMY() {
   const d=new Date(); return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
 }
+function nextRunLabel(): string {
+  const d = new Date()
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+  return `1 ל${HM[String(next.getMonth()+1).padStart(2,'0')]} ${next.getFullYear()}`
+}
 function prevMY() {
   const d=new Date(); d.setMonth(d.getMonth()-1)
   return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
@@ -448,6 +453,12 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             <h4 className={`font-bold text-base ${enabled ? 'text-gray-800' : 'text-gray-400'}`}>{def.name}</h4>
           </div>
           <p className={`text-xs mt-1 mr-7 ${enabled ? 'text-gray-500' : 'text-gray-400'}`}>{def.desc}</p>
+          {enabled && (
+            <p className="text-xs mt-1.5 mr-7 flex items-center gap-1 text-indigo-500 font-medium">
+              <span>🕐</span>
+              <span>ריצה אוטומטית הבאה: {nextRunLabel()}</span>
+            </p>
+          )}
         </div>
         {/* ON/OFF toggle */}
         <button
