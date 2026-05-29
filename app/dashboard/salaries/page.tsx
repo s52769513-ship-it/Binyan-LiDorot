@@ -418,6 +418,7 @@ function ActualTab() {
       {openCard && <EmployeeCard parentId={openCard} onClose={() => setOpenCard(null)} />}
       {showAdd && (
         <AddTransactionModal
+          preselectedProject="משכורת"
           onClose={() => setShowAdd(false)}
           onSuccess={() => { setShowAdd(false); load() }}
         />

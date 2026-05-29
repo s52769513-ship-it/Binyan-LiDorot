@@ -1423,6 +1423,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           prefilledAmount={txForPP.balance}
           plannedPaymentId={txForPP.id}
           parentId={parentId}
+          preselectedProject="בניין לדורות"
           onClose={() => { setShowAddTxForPP(false); setTxForPP(null) }}
           onSuccess={() => { setShowAddTxForPP(false); setTxForPP(null); load() }}
         />
