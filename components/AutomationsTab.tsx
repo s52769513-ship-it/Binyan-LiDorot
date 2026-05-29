@@ -79,14 +79,14 @@ CREATE POLICY "service_role_all" ON automation_logs
   FOR ALL TO service_role USING (true) WITH CHECK (true);`,
   },
   {
-    id: 'salary-pp', name: 'יצירת PP משכורת', icon: '💼',
+    id: 'salary-pp', name: 'יצירת תשלום מתוכנן למשכורת', icon: '💼',
     desc: 'יוצר תשלום מתוכנן למשכורת של חודש קודם ומקשר קיזוזי שכ"ל שנמצאו',
     defaultMonth: prevMY,
     endpoint: '/api/automations/salary-pp',
     steps: [
       { icon:'⏰', label:'הפעלה',          desc:'ידני / מתוזמן',        bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
       { icon:'👥', label:'שאילתת הורים',   desc:'הורים עם משכורת',      bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
-      { icon:'📋', label:'יצירת PP',        desc:'PP משכורת לחודש',      bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'📋', label:'יצירת תשלום',     desc:'תשלום מתוכנן לחודש',   bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
       { icon:'🔗', label:'קיזוז שכ"ל',     desc:'קישור תנועות קיזוז',   bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
     ],
     sql: `-- טבלת היסטוריית קיזוזים
@@ -201,7 +201,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                 <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>
                 {def.id === 'tuition-offset'
                   ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
-                  : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} PP</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
+                  : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
                 }
                 <span className="text-gray-400">דולגו: {result.skipped}</span>
               </div>
@@ -220,7 +220,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                     <th className="px-4 py-2 text-left">קיזוז</th>
                   </> : <>
                     <th className="px-4 py-2 text-left">משכורת</th>
-                    <th className="px-4 py-2 text-center">PP</th>
+                    <th className="px-4 py-2 text-center">תשלום מתוכנן</th>
                     <th className="px-4 py-2 text-left">קיזוז שנמצא</th>
                   </>}
                   <th className="px-4 py-2 text-center">סטטוס</th>
@@ -412,7 +412,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               addLine('done',
                 def.id==='tuition-offset'
                   ? `✅ הושלם — ${ev.applied} הורים · ₪${fmtN(ev.totalOffset)} קוזז`
-                  : `✅ הושלם — ${ev.totalCreated??ev.applied} PP נוצרו · ₪${fmtN(ev.totalOffset)} קוזז`
+                  : `✅ הושלם — ${ev.totalCreated??ev.applied} תשלומים מתוכננים נוצרו · ₪${fmtN(ev.totalOffset)} קוזז`
               )
               setResult({ ...ev, actions })
               setPhase('results')
