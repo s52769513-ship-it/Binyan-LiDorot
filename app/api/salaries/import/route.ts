@@ -90,17 +90,38 @@ export async function POST(req: NextRequest) {
         totalCreated++
       }
 
+      const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
       results.push({
         parentId,
         parentName,
         payments,
-        ppId:    pp?.id ?? null,
-        ppFound: !!pp,
+        totalPaid,
+        ppId:       pp?.id ?? null,
+        ppFound:    !!pp,
+        ppBalance:  pp ? Math.max(0, Number(pp.balance) - totalPaid) : null,
         txIds,
       })
     }
 
-    return NextResponse.json({ success: true, dryRun, totalCreated, results })
+    if (!dryRun) {
+      const totalPaidAll = (results as { totalPaid: number }[]).reduce((s, r) => s + r.totalPaid, 0)
+      try {
+        await supabaseAdmin.from('automation_logs').insert({
+          id:            crypto.randomUUID(),
+          automation_id: 'salary-excel-import',
+          run_at:        new Date().toISOString(),
+          dry_run:       false,
+          parent_id:     null,
+          parent_name:   null,
+          actions_count: totalCreated,
+          status:        'success',
+          summary:       `ייבוא אקסל: ${totalCreated} תנועות עבור ${results.length} עובדים · ₪${totalPaidAll} (${monthYear})`,
+          details:       results,
+        })
+      } catch { /* table may not exist */ }
+    }
+
+    return NextResponse.json({ success: true, dryRun, totalCreated, monthYear, results })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

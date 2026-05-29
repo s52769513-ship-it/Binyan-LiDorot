@@ -307,19 +307,37 @@ function SettingsTab() {
   )
 }
 
+interface ImportRow { parentName: string; payments: { method: string; amount: number }[]; totalPaid: number; ppFound: boolean; ppBalance: number | null }
+interface ImportLog  { id: string; run_at: string; summary: string; actions_count: number; details: ImportRow[] }
+
 /* ─── תשלומים מתוכננים Tab ─────────────────────────── */
 function PlannedTab() {
   const today     = new Date()
   const initMY    = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
   const initInput = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
 
-  const [monthInput, setMonthInput] = useState(initInput)
-  const [monthYear,  setMonthYear]  = useState(initMY)
-  const [file,       setFile]       = useState<File | null>(null)
-  const [dryRun,     setDryRun]     = useState(false)
-  const [importing,  setImporting]  = useState(false)
-  const [importRes,  setImportRes]  = useState<{ success: boolean; dryRun: boolean; totalCreated: number; results: { parentName: string; payments: { method: string; amount: number }[]; ppFound: boolean }[] } | null>(null)
-  const [importErr,  setImportErr]  = useState('')
+  const [monthInput,  setMonthInput]  = useState(initInput)
+  const [monthYear,   setMonthYear]   = useState(initMY)
+  const [file,        setFile]        = useState<File | null>(null)
+  const [dryRun,      setDryRun]      = useState(false)
+  const [importing,   setImporting]   = useState(false)
+  const [importRes,   setImportRes]   = useState<{ success: boolean; dryRun: boolean; totalCreated: number; results: ImportRow[] } | null>(null)
+  const [importErr,   setImportErr]   = useState('')
+  const [logs,        setLogs]        = useState<ImportLog[]>([])
+  const [logsLoading, setLogsLoading] = useState(true)
+  const [expandedLog, setExpandedLog] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/automations/logs?automationId=salary-excel-import')
+      .then(r => r.json())
+      .then(d => setLogs(d.logs ?? []))
+      .catch(() => {})
+      .finally(() => setLogsLoading(false))
+  }, [])
+
+  const reloadLogs = () =>
+    fetch('/api/automations/logs?automationId=salary-excel-import')
+      .then(r => r.json()).then(d => setLogs(d.logs ?? [])).catch(() => {})
 
   const handleMonthChange = (v: string) => {
     setMonthInput(v)
@@ -343,6 +361,7 @@ function PlannedTab() {
       const data = await res.json()
       if (data.error) { setImportErr(data.error); return }
       setImportRes(data)
+      if (!dryRun) reloadLogs()
     } catch (e) { setImportErr(String(e)) }
     finally { setImporting(false) }
   }
@@ -398,35 +417,106 @@ function PlannedTab() {
       </div>
 
       {/* Results */}
-      {importRes && (
-        <div className={`rounded-2xl border shadow-sm overflow-hidden ${importRes.dryRun ? 'border-amber-200' : 'border-emerald-200'}`}>
-          <div className={`px-5 py-3 flex items-center justify-between ${importRes.dryRun ? 'bg-amber-50' : 'bg-emerald-50'}`}>
-            <span className={`text-sm font-bold ${importRes.dryRun ? 'text-amber-800' : 'text-emerald-800'}`}>
-              {importRes.dryRun ? '🧪 תוצאות בדיקה' : '✅ ייבוא הושלם'}
-            </span>
-            <span className="text-xs text-gray-500">{importRes.totalCreated} תנועות {importRes.dryRun ? 'שהיו נוצרות' : 'נוצרו'}</span>
-          </div>
-          <div className="bg-white divide-y divide-gray-50">
-            {importRes.results.map((r, i) => (
-              <div key={i} className="px-5 py-3 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {r.ppFound ? 'PP ✓' : 'ללא PP'}
-                  </span>
-                  <span className="font-medium text-gray-800">{r.parentName}</span>
-                </div>
-                <div className="flex gap-2 text-xs text-gray-500">
-                  {r.payments.map((p, j) => (
-                    <span key={j} className="bg-gray-50 border border-gray-100 rounded px-2 py-0.5">
-                      {p.method} ₪{new Intl.NumberFormat('he-IL').format(p.amount)}
+      {importRes && <ImportResultsTable res={importRes} />}
+
+      {/* Log history */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-700">היסטוריית ייבואים</p>
+        </div>
+        {logsLoading ? (
+          <div className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}</div>
+        ) : logs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">אין ייבואים עדיין</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {logs.map(l => (
+              <div key={l.id}>
+                <button onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}
+                  className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-right">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-gray-400 text-xs tabular-nums">
+                      {new Date(l.run_at).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
                     </span>
-                  ))}
-                </div>
+                    <span className="text-gray-700">{l.summary}</span>
+                  </div>
+                  <span className="text-xs text-gray-400">{expandedLog === l.id ? '▲' : '▼'}</span>
+                </button>
+                {expandedLog === l.id && l.details?.length > 0 && (
+                  <ImportResultsTable res={{ dryRun: false, totalCreated: l.actions_count, results: l.details }} compact />
+                )}
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ImportResultsTable({ res, compact }: {
+  res: { dryRun?: boolean; totalCreated: number; results: ImportRow[] }
+  compact?: boolean
+}) {
+  const fmtN = (n: number) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(n)
+  const totalPaid = res.results.reduce((s, r) => s + r.totalPaid, 0)
+  return (
+    <div className={`border shadow-sm overflow-hidden rounded-2xl ${res.dryRun ? 'border-amber-200' : 'border-emerald-100'}`}>
+      {!compact && (
+        <div className={`px-5 py-3 flex items-center justify-between ${res.dryRun ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+          <span className={`text-sm font-bold ${res.dryRun ? 'text-amber-800' : 'text-emerald-800'}`}>
+            {res.dryRun ? '🧪 תוצאות בדיקה' : '✅ ייבוא הושלם'}
+          </span>
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span>{res.totalCreated} תנועות {res.dryRun ? 'שהיו נוצרות' : 'נוצרו'}</span>
+            <span className="font-semibold text-emerald-700">₪{fmtN(totalPaid)} סה&quot;כ</span>
+          </div>
         </div>
       )}
+      <table className="w-full text-sm bg-white">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-400 text-right">
+            <th className="px-4 py-2">שם</th>
+            <th className="px-4 py-2">אמצעי תשלום</th>
+            <th className="px-4 py-2 text-left">שולם</th>
+            <th className="px-4 py-2 text-left">יתרת PP</th>
+            <th className="px-4 py-2 text-center">PP</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {res.results.map((r, i) => (
+            <tr key={i} className="hover:bg-gray-50">
+              <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex flex-wrap gap-1">
+                  {r.payments.map((p, j) => (
+                    <span key={j} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded px-2 py-0.5">
+                      {p.method} ₪{fmtN(p.amount)}
+                    </span>
+                  ))}
+                </div>
+              </td>
+              <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">₪{fmtN(r.totalPaid)}</td>
+              <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500">
+                {r.ppBalance != null ? (r.ppBalance > 0 ? <span className="text-amber-600">₪{fmtN(r.ppBalance)}</span> : <span className="text-emerald-600">✓ סגור</span>) : '—'}
+              </td>
+              <td className="px-4 py-2.5 text-center">
+                <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                  {r.ppFound ? '✓' : '—'}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-gray-50 border-t-2 border-gray-200 text-sm font-bold">
+            <td className="px-4 py-2.5 text-gray-600">סה&quot;כ ({res.results.length})</td>
+            <td />
+            <td className="px-4 py-2.5 text-left tabular-nums text-emerald-700">₪{fmtN(totalPaid)}</td>
+            <td /><td />
+          </tr>
+        </tfoot>
+      </table>
     </div>
   )
 }
