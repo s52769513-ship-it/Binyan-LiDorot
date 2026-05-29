@@ -90,9 +90,24 @@ function SettingsTab() {
   const setEdit = (id: string, field: keyof Employee, value: unknown) =>
     setEdits(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), [field]: value } }))
 
+  const calcGross = (emp: Employee, ed: Partial<Employee>): number => {
+    const hourly   = Number(ed.baseHourlyRate          ?? emp.baseHourlyRate)         || 0
+    const seniority= Number(ed.seniorityBonusHourly    ?? emp.seniorityBonusHourly)   || 0
+    const hours    = Number(ed.monthlyHoursDecimal      ?? emp.monthlyHoursDecimal)    || 0
+    const fixed    = Number(ed.fixedBonus              ?? emp.fixedBonus)             || 0
+    const transport= Number(ed.transportReimbursement  ?? emp.transportReimbursement) || 0
+    const extra    = Number(ed.exceptionalExpenses      ?? emp.exceptionalExpenses)    || 0
+    const fromHours= (hourly + seniority) * hours
+    return fromHours + fixed + transport + extra
+  }
+
   const save = async (emp: Employee) => {
     const patch = edits[emp.id]
     if (!patch || Object.keys(patch).length === 0) { setOpenId(null); return }
+    // Auto-include recalculated salary_gross whenever hourly/bonus fields change
+    const salaryFields: (keyof Employee)[] = ['baseHourlyRate','seniorityBonusHourly','monthlyHoursDecimal','fixedBonus','transportReimbursement','exceptionalExpenses']
+    const touchesSalary = salaryFields.some(f => f in patch)
+    if (touchesSalary) patch.salaryGross = calcGross(emp, patch)
     setSaving(emp.id)
     setSaveErr(prev => { const n = {...prev}; delete n[emp.id]; return n })
     try {
@@ -272,6 +287,23 @@ function SettingsTab() {
                           {saveErr[emp.id] && (
                             <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2 py-1.5 mb-1">{saveErr[emp.id]}</p>
                           )}
+                          {/* Live salary preview */}
+                          {(() => {
+                            const ed = getEdit(emp.id)
+                            const gross = calcGross(emp, ed)
+                            const hourly = Number(ed.baseHourlyRate ?? emp.baseHourlyRate) || 0
+                            const hours  = Number(ed.monthlyHoursDecimal ?? emp.monthlyHoursDecimal) || 0
+                            if (gross === 0) return null
+                            return (
+                              <div className="mb-2 px-3 py-2 bg-indigo-50 rounded-lg border border-indigo-100 text-xs text-indigo-800 flex items-center gap-2">
+                                <span className="text-gray-400">{hourly > 0 && hours > 0 ? `${hourly}×${hours}שע` : ''}</span>
+                                <span className="font-bold text-sm text-indigo-700">ברוטו: {fmt(gross)}</span>
+                                {emp.deductTuition && emp.effectiveOffset > 0 && (
+                                  <span className="text-red-500">− {fmt(emp.effectiveOffset)} קיזוז = <strong>{fmt(gross - emp.effectiveOffset)}</strong></span>
+                                )}
+                              </div>
+                            )
+                          })()}
                           <div className="flex gap-2 justify-start">
                             <button
                               onClick={e => { e.stopPropagation(); save(emp) }}
