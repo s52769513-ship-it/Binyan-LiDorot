@@ -28,3 +28,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Automation beam animation */
+@keyframes beam {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.animate-beam {
+  animation: beam 1s linear infinite;
+}
