@@ -479,8 +479,8 @@ function ImportResultsTable({ res, compact }: {
             <th className="px-4 py-2">שם</th>
             <th className="px-4 py-2">אמצעי תשלום</th>
             <th className="px-4 py-2 text-left">שולם</th>
-            <th className="px-4 py-2 text-left">יתרת PP</th>
-            <th className="px-4 py-2 text-center">PP</th>
+            <th className="px-4 py-2 text-left">יתרת משכורת</th>
+            <th className="px-4 py-2 text-center">תשלום מתוכנן</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
@@ -502,7 +502,7 @@ function ImportResultsTable({ res, compact }: {
               </td>
               <td className="px-4 py-2.5 text-center">
                 <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
-                  {r.ppFound ? '✓' : '—'}
+                  {r.ppFound ? 'מקושר ✓' : 'לא נמצא'}
                 </span>
               </td>
             </tr>
