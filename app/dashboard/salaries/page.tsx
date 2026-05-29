@@ -36,15 +36,6 @@ interface Employee {
   women: Woman[]
 }
 
-interface PlannedSalary {
-  id: string
-  name: string
-  amount: number
-  balance: number
-  date: string
-  monthYear: string
-  parentIds: string[]
-}
 
 interface Transaction {
   id: string
@@ -311,130 +302,11 @@ function SettingsTab() {
 
 /* ─── תשלומים מתוכננים Tab ─────────────────────────── */
 function PlannedTab() {
-  const [planned, setPlanned]   = useState<PlannedSalary[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [monthFilter, setMonth] = useState('')
-  const [openCard, setOpenCard] = useState<string | null>(null)
-  const [showAddTx, setShowAddTx] = useState<PlannedSalary | null>(null)
-
-  useEffect(() => {
-    // Load planned payments categorized under 'משכורת'
-    fetch('/api/planned-payments?project=משכורת')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setPlanned(d) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  const months = [...new Set(planned.map(p => p.monthYear).filter(Boolean))].sort()
-  const rows   = monthFilter ? planned.filter(p => p.monthYear === monthFilter) : planned
-  const today  = new Date(); today.setHours(0,0,0,0)
-  const totalBalance = rows.reduce((s, p) => s + Math.max(0, p.balance), 0)
-  const totalPaid    = rows.reduce((s, p) => s + Math.max(0, p.amount - p.balance), 0)
-
   return (
-    <div className="space-y-4">
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-amber-50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500">ממתין לתשלום</p>
-          <p className="text-lg font-bold text-amber-700">{fmt(totalBalance)}</p>
-        </div>
-        <div className="bg-emerald-50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500">שולם</p>
-          <p className="text-lg font-bold text-emerald-700">{fmt(totalPaid)}</p>
-        </div>
-        <div className="bg-indigo-50 rounded-xl p-3 text-center">
-          <p className="text-xs text-gray-500">סה&quot;כ תשלומים</p>
-          <p className="text-lg font-bold text-indigo-700">{rows.length}</p>
-        </div>
-      </div>
-
-      {/* Month filter */}
-      {months.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setMonth('')}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${!monthFilter ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'}`}>
-            כל החודשים
-          </button>
-          {months.map(m => (
-            <button key={m} onClick={() => setMonth(m)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${monthFilter === m ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'}`}>
-              {m}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-3xl mb-2">📋</p>
-          <p>אין תשלומים מתוכננים — הם נוצרים אוטומטית מהגדרות המשכורת</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 text-right">
-                <th className="px-4 py-2.5">שם</th>
-                <th className="px-4 py-2.5">חודש</th>
-                <th className="px-4 py-2.5 text-center">סכום</th>
-                <th className="px-4 py-2.5 text-center">שולם</th>
-                <th className="px-4 py-2.5 text-center">יתרה</th>
-                <th className="px-4 py-2.5 text-center">סטטוס</th>
-                <th className="px-2 py-2.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map(p => {
-                const paid   = Math.max(0, p.amount - p.balance)
-                const remain = Math.max(0, p.balance)
-                const isOverdue = remain > 0 && !!p.date && new Date(p.date) < today
-                const status = remain <= 0 ? 'שולם' : isOverdue ? 'באיחור' : 'פתוח'
-                return (
-                  <tr key={p.id} className={`hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{p.monthYear || fmtDate(p.date)}</td>
-                    <td className="px-4 py-2.5 text-center tabular-nums">{fmt(p.amount)}</td>
-                    <td className="px-4 py-2.5 text-center tabular-nums text-emerald-700 font-medium">{paid > 0 ? fmt(paid) : '—'}</td>
-                    <td className="px-4 py-2.5 text-center tabular-nums font-semibold">
-                      {remain > 0 ? <span className={isOverdue ? 'text-red-600' : 'text-amber-600'}>{fmt(remain)}</span> : <span className="text-emerald-600">✓</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        status === 'שולם' ? 'bg-emerald-50 text-emerald-700'
-                        : status === 'באיחור' ? 'bg-red-50 text-red-700'
-                        : 'bg-amber-50 text-amber-700'}`}>{status}</span>
-                    </td>
-                    <td className="px-2 py-2.5 text-center">
-                      {remain > 0 && (
-                        <button onClick={() => setShowAddTx(p)}
-                          className="text-xs px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-                          + שלם
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {openCard && <EmployeeCard parentId={openCard} onClose={() => setOpenCard(null)} />}
-      {showAddTx && (
-        <AddTransactionModal
-          fixedLabel="בנין לדורות"
-          sourceLabel={showAddTx.name}
-          prefilledAmount={showAddTx.balance}
-          plannedPaymentId={showAddTx.id}
-          onClose={() => setShowAddTx(null)}
-          onSuccess={() => { setShowAddTx(null); setLoading(true); fetch('/api/planned-payments?project=משכורת').then(r=>r.json()).then(d=>{if(Array.isArray(d))setPlanned(d)}).finally(()=>setLoading(false)) }}
-        />
-      )}
+    <div className="text-center py-16 text-gray-400">
+      <p className="text-4xl mb-3">📋</p>
+      <p className="text-base font-medium text-gray-500">תשלומים מתוכננים למשכורות</p>
+      <p className="text-sm mt-1">בקרוב — יצירה אוטומטית של תשלומים מתוכננים על בסיס הגדרות המשכורת</p>
     </div>
   )
 }
