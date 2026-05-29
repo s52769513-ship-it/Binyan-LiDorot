@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+type SettingsTab = 'general' | 'automations'
+
 interface Settings {
   institution_name?: string
   address?: string
@@ -258,6 +260,7 @@ function SyncSection() {
 
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
@@ -314,8 +317,28 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6" dir="rtl">
-      <h2 className="text-2xl font-bold text-gray-800 text-right">הגדרות מוסד</h2>
+      <h2 className="text-2xl font-bold text-gray-800 text-right">הגדרות</h2>
 
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { key: 'general',     label: 'הגדרות מוסד' },
+          { key: 'automations', label: '🤖 אוטומציות' },
+        ] as { key: SettingsTab; label: string }[]).map(t => (
+          <button key={t.key} onClick={() => setSettingsTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              settingsTab === t.key
+                ? 'border-[#1a3a7a] text-[#1a3a7a]'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {settingsTab === 'automations' && <AutomationsTab />}
+
+      {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
       {error   && <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-right text-sm">{error}</div>}
 
@@ -411,9 +434,431 @@ CREATE POLICY "service_role_all" ON institution_settings
   FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
         <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
+      </>}
     </div>
   )
 }
+
+/* ═══════════════════════════ AUTOMATIONS TAB ═══════════════════════════ */
+
+const HMONTHS: Record<string, string> = {
+  '01':'ינואר','02':'פברואר','03':'מרץ','04':'אפריל',
+  '05':'מאי','06':'יוני','07':'יולי','08':'אוגוסט',
+  '09':'ספטמבר','10':'אוקטובר','11':'נובמבר','12':'דצמבר',
+}
+function fmtMY(my: string) { const [m, y] = my.split('/'); return `${HMONTHS[m] || m} ${y}` }
+function currentMY() {
+  const d = new Date()
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+function myToInput(my: string) { const [m, y] = my.split('/'); return `${y}-${m}` }
+function inputToMY(v: string) { const [y, m] = v.split('-'); return `${m}/${y}` }
+const fmtNum = (n: number) =>
+  new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(n)
+
+interface RunAction {
+  parentId: string; parentName: string; ppId?: string
+  salary?: number; tuitionBalance?: number; offset?: number
+  skipped: boolean; reason?: string
+}
+interface RunResult {
+  actions: RunAction[]; applied: number; skipped: number
+  totalOffset: number; dryRun: boolean; monthYear: string; error?: string
+}
+interface LogEntry {
+  id: string; automation_id: string; run_at: string; dry_run: boolean
+  parent_name: string | null; actions_count: number; status: string; summary: string
+}
+interface ParentOption { id: string; name: string; salary_gross: number }
+
+const FLOW_STEPS = [
+  { icon: '⏰', label: 'הפעלה', desc: 'ידני / מתוזמן', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' },
+  { icon: '👥', label: 'הורים עם שכ"ל', desc: 'תשלום פתוח לחודש', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' },
+  { icon: '🧮', label: 'חישוב קיזוז', desc: 'min(משכורת, שכ"ל)', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' },
+  { icon: '✅', label: 'יצירת תנועה', desc: 'קיזוז ממשכורת', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' },
+]
+
+const AUTOMATION_LOGS_SQL = `CREATE TABLE IF NOT EXISTS automation_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  automation_id TEXT NOT NULL,
+  run_at TIMESTAMPTZ DEFAULT NOW(),
+  dry_run BOOLEAN DEFAULT false,
+  parent_id UUID REFERENCES parents(id) ON DELETE SET NULL,
+  parent_name TEXT,
+  actions_count INT DEFAULT 0,
+  status TEXT DEFAULT 'success',
+  summary TEXT,
+  details JSONB DEFAULT '[]'
+);
+ALTER TABLE automation_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON automation_logs
+  FOR ALL TO service_role USING (true) WITH CHECK (true);`
+
+function AutomationsTab() {
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-gray-500">כל האוטומציות הפעילות — הרצה ידנית, בדיקות ולוג פעולות</p>
+      <TuitionOffsetCard />
+    </div>
+  )
+}
+
+function TuitionOffsetCard() {
+  const [monthYear, setMonthYear]         = useState(currentMY())
+  const [phase, setPhase]                 = useState<'idle'|'parent-pick'|'running'|'results'>('idle')
+  const [dryRun, setDryRun]               = useState(false)
+  const [pickedParent, setPickedParent]   = useState<ParentOption | null>(null)
+  const [parentSearch, setParentSearch]   = useState('')
+  const [parentOptions, setParentOptions] = useState<ParentOption[]>([])
+  const [parentsLoading, setParentsLoading] = useState(false)
+  const [result, setResult]               = useState<RunResult | null>(null)
+  const [logs, setLogs]                   = useState<LogEntry[]>([])
+  const [logsLoading, setLogsLoading]     = useState(true)
+  const [needsMigration, setNeedsMigration] = useState(false)
+  const [showMigration, setShowMigration] = useState(false)
+
+  const loadLogs = async () => {
+    try {
+      const r = await fetch('/api/automations/logs?automationId=tuition-offset')
+      const d = await r.json()
+      setLogs(d.logs ?? [])
+      setNeedsMigration(d.needsMigration ?? false)
+    } catch {} finally { setLogsLoading(false) }
+  }
+  useEffect(() => { loadLogs() }, [])
+
+  const loadParents = async () => {
+    setParentsLoading(true)
+    try {
+      const r = await fetch('/api/automations/tuition-offset')
+      const d = await r.json()
+      setParentOptions(Array.isArray(d) ? d : [])
+    } catch {} finally { setParentsLoading(false) }
+  }
+
+  const openSinglePick = (isDry: boolean) => {
+    setDryRun(isDry); setPhase('parent-pick')
+    setPickedParent(null); setParentSearch('')
+    loadParents()
+  }
+
+  const runAutomation = async (isDry: boolean, parentId?: string) => {
+    setPhase('running')
+    try {
+      const r = await fetch('/api/automations/tuition-offset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: isDry, parentId, monthYear }),
+      })
+      const d: RunResult = await r.json()
+      setResult(d); setPhase('results')
+      if (!isDry) loadLogs()
+    } catch { setPhase('idle') }
+  }
+
+  const filteredParents = parentOptions.filter(p =>
+    !parentSearch.trim() || (p.name ?? '').includes(parentSearch.trim())
+  )
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-gray-200 flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🔄</span>
+            <h4 className="font-bold text-gray-800">קיזוז שכ&quot;ל ממשכורת</h4>
+          </div>
+          <p className="text-xs text-gray-500 mt-1 mr-7">
+            מזין תנועת קיזוז בתשלום שכ&quot;ל החודשי — הנמוך מבין המשכורת לשכ&quot;ל הפתוח
+          </p>
+        </div>
+        <span className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold border border-purple-200 whitespace-nowrap">
+          ⏰ ידני
+        </span>
+      </div>
+
+      {/* Visual flow */}
+      <div className="px-6 py-5 border-b border-gray-100 overflow-x-auto" dir="ltr">
+        <div className="flex items-stretch gap-0 min-w-max">
+          {FLOW_STEPS.map((step, i) => (
+            <div key={i} className="flex items-center">
+              <div className={`flex flex-col items-center px-4 py-3 rounded-2xl border-2 ${step.bg} ${step.border} min-w-[108px]`}>
+                <span className="text-2xl leading-none">{step.icon}</span>
+                <span className={`text-xs font-bold mt-1.5 ${step.text}`}>{step.label}</span>
+                <span className="text-[10px] text-gray-400 mt-0.5 text-center leading-tight">{step.desc}</span>
+              </div>
+              {i < FLOW_STEPS.length - 1 && (
+                <div className="flex items-center px-1.5">
+                  <div className="w-5 h-0.5 bg-gray-300" />
+                  <div className="w-0 h-0 border-t-[5px] border-b-[5px] border-l-[7px] border-t-transparent border-b-transparent border-l-gray-300" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Params */}
+      <div className="px-6 py-4 border-b border-gray-100" dir="rtl">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">פרמטרים</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש לקיזוז:</label>
+          <input
+            type="month"
+            value={myToInput(monthYear)}
+            onChange={e => setMonthYear(inputToMY(e.target.value))}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white"
+            dir="ltr"
+          />
+          <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
+        </div>
+      </div>
+
+      {/* Run buttons */}
+      <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2" dir="rtl">
+        <button
+          onClick={() => runAutomation(true)}
+          className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+        >
+          🧪 בדיקה לכולם
+        </button>
+        <button
+          onClick={() => runAutomation(false)}
+          className="px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5"
+          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+        >
+          ▶ הרץ לכולם
+        </button>
+        <button
+          onClick={() => openSinglePick(false)}
+          className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+        >
+          👤 הרץ להורה בודד
+        </button>
+        <button
+          onClick={() => openSinglePick(true)}
+          className="px-4 py-2 rounded-xl text-sm font-semibold bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors flex items-center gap-1.5"
+        >
+          🧪 בדיקה להורה בודד
+        </button>
+      </div>
+
+      {/* Activity log */}
+      <div className="px-6 py-4" dir="rtl">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">לוג פעולות אחרונות</p>
+          {needsMigration && (
+            <button
+              onClick={() => setShowMigration(v => !v)}
+              className="text-xs text-amber-600 underline"
+            >
+              {showMigration ? 'הסתר SQL' : '⚠️ נדרש SQL לאפשר לוג'}
+            </button>
+          )}
+        </div>
+
+        {needsMigration && showMigration && (
+          <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+            <p className="font-semibold">הרץ ב-Supabase → SQL editor:</p>
+            <pre dir="ltr" className="text-[10px] bg-white border border-amber-100 rounded p-2 overflow-x-auto whitespace-pre">
+              {AUTOMATION_LOGS_SQL}
+            </pre>
+          </div>
+        )}
+
+        {logsLoading ? (
+          <div className="space-y-1">
+            {[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">אין הרצות עדיין</p>
+        ) : (
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-right">
+                  <th className="px-3 py-2 font-semibold text-gray-400">תאריך</th>
+                  <th className="px-3 py-2 font-semibold text-gray-400">סוג</th>
+                  <th className="px-3 py-2 font-semibold text-gray-400">הורה</th>
+                  <th className="px-3 py-2 font-semibold text-gray-400">תוצאה</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {logs.map(log => (
+                  <tr key={log.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                      {new Date(log.run_at).toLocaleString('he-IL', {
+                        day: '2-digit', month: '2-digit',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-3 py-2">
+                      {log.dry_run
+                        ? <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">🧪 בדיקה</span>
+                        : <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">▶ אמיתי</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{log.parent_name ?? 'כל ההורים'}</td>
+                    <td className="px-3 py-2 text-gray-700">{log.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Running overlay ── */}
+      {phase === 'running' && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center" dir="rtl">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl px-12 py-8 text-center shadow-2xl space-y-2">
+            <div className="text-4xl animate-spin">⚙️</div>
+            <p className="font-semibold text-gray-700">מריץ אוטומציה...</p>
+            <p className="text-xs text-gray-400">{fmtMY(monthYear)}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Parent picker modal ── */}
+      {phase === 'parent-pick' && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPhase('idle')} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <button onClick={() => setPhase('idle')} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+              <h3 className="font-bold text-gray-800">
+                בחר הורה {dryRun ? <span className="text-amber-600 text-sm font-normal">(בדיקה)</span> : ''}
+              </h3>
+            </div>
+            <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <input
+                autoFocus
+                type="text"
+                placeholder="חיפוש הורה..."
+                value={parentSearch}
+                onChange={e => setParentSearch(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {parentsLoading
+                ? <div className="p-6 text-center text-gray-400 text-sm">טוען...</div>
+                : filteredParents.length === 0
+                  ? <div className="p-6 text-center text-gray-400 text-sm">לא נמצאו הורים עם משכורת</div>
+                  : filteredParents.map(p => (
+                    <button key={p.id}
+                      onClick={() => setPickedParent(p)}
+                      className={`w-full flex items-center justify-between px-5 py-3 text-right text-sm border-b border-gray-50 transition-colors ${pickedParent?.id === p.id ? 'bg-blue-50 border-blue-100' : 'hover:bg-gray-50'}`}
+                    >
+                      <span className="text-gray-400 text-xs">₪{fmtNum(Number(p.salary_gross))}/חודש</span>
+                      <span className="font-medium text-gray-800">{p.name}</span>
+                    </button>
+                  ))
+              }
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
+              <button onClick={() => setPhase('idle')}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                ביטול
+              </button>
+              <button
+                disabled={!pickedParent}
+                onClick={() => pickedParent && runAutomation(dryRun, pickedParent.id)}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+              >
+                {dryRun ? '🧪 הרץ בדיקה' : '▶ הרץ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Results modal ── */}
+      {phase === 'results' && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setPhase('idle'); setResult(null) }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Results header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <button onClick={() => { setPhase('idle'); setResult(null) }} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+              <h3 className="font-bold text-gray-800">
+                {result.error ? '❌ שגיאה' : result.dryRun ? '🧪 תוצאות בדיקה' : '✅ הרצה הושלמה'}
+              </h3>
+            </div>
+
+            {/* Summary bar */}
+            <div className={`px-5 py-3 border-b flex-shrink-0 ${result.dryRun ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+              {result.error
+                ? <p className="text-red-600 text-sm">{result.error}</p>
+                : (
+                  <div className="flex flex-wrap gap-4 text-sm items-center">
+                    <span className="text-gray-600">חודש: <strong>{fmtMY(result.monthYear)}</strong></span>
+                    <span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span>
+                    <span className="text-gray-400">דולגו: {result.skipped}</span>
+                    <span className="font-bold text-gray-800">סה&quot;כ ₪{fmtNum(result.totalOffset)}</span>
+                  </div>
+                )}
+              {result.dryRun && !result.error && (
+                <p className="text-xs text-amber-700 mt-1">⚠️ בדיקה בלבד — שום דבר לא נשמר</p>
+              )}
+            </div>
+
+            {/* Actions table */}
+            {!result.error && (
+              <div className="overflow-y-auto flex-1">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                    <tr className="text-right text-xs text-gray-400">
+                      <th className="px-4 py-2">הורה</th>
+                      <th className="px-4 py-2 text-left">משכורת</th>
+                      <th className="px-4 py-2 text-left">שכ&quot;ל</th>
+                      <th className="px-4 py-2 text-left">קיזוז</th>
+                      <th className="px-4 py-2 text-center">סטטוס</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {result.actions.map((a, i) => (
+                      <tr key={i} className={a.skipped ? 'opacity-50' : ''}>
+                        <td className="px-4 py-2.5 font-medium text-gray-800">{a.parentName}</td>
+                        <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">
+                          {a.salary != null ? `₪${fmtNum(a.salary)}` : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">
+                          {a.tuitionBalance != null ? `₪${fmtNum(a.tuitionBalance)}` : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">
+                          {a.skipped ? '—' : `₪${fmtNum(a.offset ?? 0)}`}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          {a.skipped
+                            ? <span className="px-2 py-0.5 rounded-full text-[10px] bg-gray-100 text-gray-500">{a.reason ?? 'דולג'}</span>
+                            : <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-700">✓ קוזז</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => { setPhase('idle'); setResult(null) }}
+                className="w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                סגור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════ */
 
 const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white text-right'
 
