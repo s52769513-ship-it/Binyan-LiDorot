@@ -371,6 +371,17 @@ function PlannedTab() {
   const [logs,        setLogs]        = useState<ImportLog[]>([])
   const [logsLoading, setLogsLoading] = useState(true)
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
+  const [plannedPPs,  setPlannedPPs]  = useState<{ id: string; name: string; amount: number; balance: number; monthYear: string; parentName?: string }[]>([])
+  const [ppLoading,   setPpLoading]   = useState(true)
+
+  const loadPlanned = (my: string) => {
+    setPpLoading(true)
+    fetch(`/api/planned-payments?name=משכורת&monthYear=${encodeURIComponent(my)}&withParentNames=true&limit=100`)
+      .then(r => r.json())
+      .then(d => setPlannedPPs(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setPpLoading(false))
+  }
 
   useEffect(() => {
     fetch('/api/automations/logs?automationId=salary-excel-import')
@@ -378,6 +389,7 @@ function PlannedTab() {
       .then(d => setLogs(d.logs ?? []))
       .catch(() => {})
       .finally(() => setLogsLoading(false))
+    loadPlanned(initMY)
   }, [])
 
   const reloadLogs = () =>
@@ -387,7 +399,7 @@ function PlannedTab() {
   const handleMonthChange = (v: string) => {
     setMonthInput(v)
     const [y, m] = v.split('-')
-    if (y && m) setMonthYear(`${m}/${y}`)
+    if (y && m) { const my = `${m}/${y}`; setMonthYear(my); loadPlanned(my) }
   }
 
   const handleDownload = () => {
@@ -421,6 +433,64 @@ function PlannedTab() {
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
           <span className="text-sm font-medium text-indigo-600">{monthYear}</span>
         </div>
+      </div>
+
+      {/* Planned payments list */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-700">תשלומים מתוכננים — {monthYear}</p>
+          {!ppLoading && <span className="text-xs text-gray-400">{plannedPPs.length} רשומות</span>}
+        </div>
+        {ppLoading ? (
+          <div className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}</div>
+        ) : plannedPPs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">אין תשלומים מתוכננים לחודש זה — הרץ את האוטומציה תחילה</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-400 text-right">
+                <th className="px-4 py-2">עובד</th>
+                <th className="px-4 py-2 text-left">סכום</th>
+                <th className="px-4 py-2 text-left">יתרה</th>
+                <th className="px-4 py-2 text-center">סטטוס</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {plannedPPs.map(pp => {
+                const paid = pp.amount - pp.balance
+                const closed = pp.balance <= 0
+                return (
+                  <tr key={pp.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{pp.parentName ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-left tabular-nums text-gray-600">{fmt(pp.amount)}</td>
+                    <td className="px-4 py-2.5 text-left tabular-nums">
+                      {closed
+                        ? <span className="text-emerald-600 font-medium">✓ שולם</span>
+                        : <span className="text-amber-600">{fmt(pp.balance)}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      {closed ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">סגור</span>
+                      ) : paid > 0 ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">חלקי</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">פתוח</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 border-t-2 border-gray-200 text-sm font-bold">
+                <td className="px-4 py-2.5 text-gray-600">סה&quot;כ</td>
+                <td className="px-4 py-2.5 text-left tabular-nums text-indigo-700">{fmt(plannedPPs.reduce((s,p) => s+p.amount, 0))}</td>
+                <td className="px-4 py-2.5 text-left tabular-nums text-amber-600">{fmt(plannedPPs.reduce((s,p) => s+p.balance, 0))}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </div>
 
       {/* Download */}
@@ -576,9 +646,9 @@ function ActualTab() {
 
   const load = () => {
     setLoading(true)
-    fetch('/api/transactions?type=קיזוז שכר לימוד&limit=200')
+    fetch('/api/transactions?project=משכורת&limit=500')
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setTransactions(d) })
+      .then(d => { if (Array.isArray(d.data ?? d)) setTransactions(d.data ?? d) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }

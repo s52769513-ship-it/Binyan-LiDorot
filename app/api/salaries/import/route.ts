@@ -61,7 +61,6 @@ export async function POST(req: NextRequest) {
 
       for (const { method, amount } of payments) {
         const txId = crypto.randomUUID()
-
         if (!dryRun) {
           await supabaseAdmin.from('transactions').insert({
             id:                 txId,
@@ -76,18 +75,18 @@ export async function POST(req: NextRequest) {
             planned_payment_id: pp?.id ?? null,
             synced_at:          '2099-12-31T23:59:59.999Z',
           })
-
-          if (pp) {
-            const allAmounts = payments.reduce((s, p) => s + p.amount, 0)
-            await supabaseAdmin
-              .from('planned_payments')
-              .update({ balance: Math.max(0, Number(pp.balance) - allAmounts) })
-              .eq('id', pp.id)
-          }
         }
-
         txIds.push(txId)
         totalCreated++
+      }
+
+      // Update PP balance once after all payment methods are processed
+      if (!dryRun && pp) {
+        const allAmounts = payments.reduce((s, p) => s + p.amount, 0)
+        await supabaseAdmin
+          .from('planned_payments')
+          .update({ balance: Math.max(0, Number(pp.balance) - allAmounts) })
+          .eq('id', pp.id)
       }
 
       const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
