@@ -66,6 +66,7 @@ function SettingsTab() {
   const [openId, setOpenId]       = useState<string | null>(null)
   const [openCard, setOpenCard]   = useState<string | null>(null)
   const [saving, setSaving]       = useState<string | null>(null)
+  const [saveErr, setSaveErr]     = useState<Record<string, string>>({})
   // Edits keyed by employee id
   const [edits, setEdits]         = useState<Record<string, Partial<Employee>>>({})
 
@@ -91,15 +92,21 @@ function SettingsTab() {
     const patch = edits[emp.id]
     if (!patch || Object.keys(patch).length === 0) { setOpenId(null); return }
     setSaving(emp.id)
+    setSaveErr(prev => { const n = {...prev}; delete n[emp.id]; return n })
     try {
-      await fetch(`/api/parents/${emp.id}`, {
+      const res  = await fetch(`/api/parents/${emp.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       })
+      const data = await res.json()
+      if (!res.ok) {
+        setSaveErr(prev => ({ ...prev, [emp.id]: data.error ?? 'שגיאה בשמירה' }))
+        return
+      }
       // Refresh
-      const data = await fetch('/api/salaries').then(r => r.json())
-      if (Array.isArray(data)) setEmployees(data)
+      const list = await fetch('/api/salaries').then(r => r.json())
+      if (Array.isArray(list)) setEmployees(list)
       setEdits(prev => { const n = {...prev}; delete n[emp.id]; return n })
       setOpenId(null)
     } finally { setSaving(null) }
@@ -252,6 +259,9 @@ function SettingsTab() {
                               <span className="text-gray-600">כולל שכר אשה</span>
                             </label>
                           </div>
+                          {saveErr[emp.id] && (
+                            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2 py-1.5 mb-1">{saveErr[emp.id]}</p>
+                          )}
                           <div className="flex gap-2 justify-start">
                             <button
                               onClick={e => { e.stopPropagation(); save(emp) }}
@@ -261,7 +271,7 @@ function SettingsTab() {
                               {saving === emp.id ? 'שומר...' : 'שמור שינויים'}
                             </button>
                             <button
-                              onClick={e => { e.stopPropagation(); setOpenId(null); setEdits(prev => { const n={...prev}; delete n[emp.id]; return n }) }}
+                              onClick={e => { e.stopPropagation(); setOpenId(null); setSaveErr(prev => { const n={...prev}; delete n[emp.id]; return n }); setEdits(prev => { const n={...prev}; delete n[emp.id]; return n }) }}
                               className="px-4 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                             >
                               ביטול

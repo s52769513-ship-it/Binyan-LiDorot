@@ -52,6 +52,34 @@ export async function PATCH(
     }
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })
+
+    // Validate new salary is not lower than already-applied offsets
+    if ('salaryGross' in body) {
+      const newSalary = Number(body.salaryGross) || 0
+      const today     = new Date()
+      const months    = [0, 1, 2].map(i => {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+        return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+      })
+      const { data: offsetTxs } = await supabaseAdmin
+        .from('transactions')
+        .select('amount, month_year')
+        .contains('parent_ids', [id])
+        .eq('type', 'קיזוז ממשכורת')
+        .in('month_year', months)
+      if (offsetTxs && offsetTxs.length > 0) {
+        const byMonth: Record<string, number> = {}
+        for (const tx of offsetTxs)
+          byMonth[tx.month_year] = (byMonth[tx.month_year] || 0) + Math.abs(Number(tx.amount))
+        const maxOffset = Math.max(...Object.values(byMonth))
+        if (newSalary < maxOffset)
+          return NextResponse.json({
+            error: `המשכורת החדשה (₪${newSalary}) נמוכה מהקיזוז שכבר בוצע (₪${maxOffset}). יש לתקן את הקיזוז תחילה.`,
+            offsetAmount: maxOffset,
+          }, { status: 422 })
+      }
+    }
+
     const { error } = await supabaseAdmin.from('parents').update(update).eq('id', id)
     if (error) throw error
     return NextResponse.json({ success: true })
