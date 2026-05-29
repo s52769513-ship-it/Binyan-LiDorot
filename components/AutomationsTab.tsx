@@ -390,7 +390,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             if (ev.type === 'step') {
               setActiveStep(ev.step)
               addLine('step', `◆ ${ev.msg}`)
-              await delay(350)
+              await delay(180)
             } else if (ev.type === 'progress') {
               if (ev.skipped) {
                 addLine('skip', `  — ${ev.parentName}`, ev.reason)
@@ -401,7 +401,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
                 addLine('ok', `  ✓ ${ev.parentName}${ev.ppCreated?' — PP נוצר':''}${(ev.offsetFound??0)>0?` · קיזוז ₪${fmtN(ev.offsetFound)}`:''}`)
               }
               actions.push(ev as RunAction)
-              await delay(400)
+              await delay(220)
             } else if (ev.type === 'complete') {
               setActiveStep(def.steps.length + 1)
               addLine('done',
