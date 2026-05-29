@@ -3,14 +3,17 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   try {
-    const nameFilter   = req.nextUrl.searchParams.get('name') ?? ''
-    const parentId     = req.nextUrl.searchParams.get('parentId') ?? ''
-    const openOnly     = req.nextUrl.searchParams.get('open') === 'true'
+    const nameFilter      = req.nextUrl.searchParams.get('name') ?? ''
+    const parentId        = req.nextUrl.searchParams.get('parentId') ?? ''
+    const openOnly        = req.nextUrl.searchParams.get('open') === 'true'
+    const withParentNames = req.nextUrl.searchParams.get('withParentNames') === 'true'
+    const limitParam      = parseInt(req.nextUrl.searchParams.get('limit') ?? '200')
+
     let query = supabaseAdmin
       .from('planned_payments')
       .select('id, name, amount, balance, date, month_year, parent_ids')
       .order('date', { ascending: false })
-      .limit(200)
+      .limit(limitParam)
 
     if (nameFilter) query = query.ilike('name', `%${nameFilter}%`)
     if (parentId)   query = query.contains('parent_ids', [parentId])
@@ -19,16 +22,31 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query
     if (error) throw error
 
+    // Optionally join parent names
+    let parentMap: Record<string, string> = {}
+    if (withParentNames) {
+      const allParentIds = [...new Set((data ?? []).flatMap(p => (p.parent_ids as string[]) ?? []))]
+      if (allParentIds.length > 0) {
+        const { data: pData } = await supabaseAdmin.from('parents').select('id, name').in('id', allParentIds)
+        parentMap = Object.fromEntries((pData ?? []).map(p => [p.id, p.name as string]))
+      }
+    }
+
     return NextResponse.json(
-      (data ?? []).map(p => ({
-        id: p.id,
-        name: p.name ?? '',
-        amount: p.amount ?? 0,
-        balance: p.balance ?? 0,
-        date: p.date ?? '',
-        monthYear: p.month_year ?? '',
-        parentIds: p.parent_ids ?? [],
-      }))
+      (data ?? []).map(p => {
+        const ids = (p.parent_ids as string[]) ?? []
+        const parentName = withParentNames ? (ids.map(id => parentMap[id]).filter(Boolean).join(', ') || '') : undefined
+        return {
+          id: p.id,
+          name: p.name ?? '',
+          amount: p.amount ?? 0,
+          balance: p.balance ?? 0,
+          date: p.date ?? '',
+          monthYear: p.month_year ?? '',
+          parentIds: ids,
+          ...(withParentNames ? { parentName } : {}),
+        }
+      })
     )
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
@@ -137,5 +155,22 @@ export async function POST(req: NextRequest) {
     const message = (err as { message?: string })?.message ?? String(err)
     console.error('planned-payments POST error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = req.nextUrl.searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'חסר מזהה' }, { status: 400 })
+    // Delete linked transactions first, then the PP
+    await supabaseAdmin.from('transactions').delete().eq('planned_payment_id', id)
+    const { error } = await supabaseAdmin.from('planned_payments').delete().eq('id', id)
+    if (error) throw error
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json(
+      { error: (err as { message?: string })?.message ?? String(err) },
+      { status: 500 }
+    )
   }
 }

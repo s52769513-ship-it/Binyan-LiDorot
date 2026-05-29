@@ -50,7 +50,10 @@ interface PreviewData {
   parents: ParentPreview[]; totalToCreate: number; months: string[]
 }
 
+type TuitionTab = 'kids' | 'planned'
+
 export default function TuitionPage() {
+  const [activeTab, setActiveTab] = useState<TuitionTab>('kids')
   const [data, setData]         = useState<KidsData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
@@ -136,6 +139,7 @@ export default function TuitionPage() {
 
   return (
     <div className="space-y-4" dir="rtl">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
@@ -157,8 +161,26 @@ export default function TuitionPage() {
         <h2 className="text-2xl font-bold text-gray-800">שכר לימוד</h2>
       </div>
 
-      {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { key: 'kids',    label: 'ילדים' },
+          { key: 'planned', label: '📋 תשלומים מתוכננים' },
+        ] as { key: TuitionTab; label: string }[]).map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === t.key ? 'border-[#1a3a7a] text-[#1a3a7a]' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
+      {error && activeTab === 'kids' && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
+
+      {activeTab === 'planned' && <PlannedPaymentsTab />}
+
+      {activeTab === 'kids' && <>
       {/* Summary KPIs */}
       {!loading && summary && (
         <div className="grid grid-cols-3 gap-3">
@@ -315,6 +337,7 @@ export default function TuitionPage() {
       {selectedParent && (
         <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
       )}
+      </>}
 
       {/* Generate-year preview modal */}
       {genPreview && (
@@ -380,6 +403,175 @@ export default function TuitionPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── PlannedPaymentsTab ─────────────────────────────── */
+interface PPRow {
+  id: string; name: string; amount: number; balance: number
+  date: string; monthYear: string; parentIds: string[]; parentName: string
+}
+
+function PlannedPaymentsTab() {
+  const [rows, setRows]       = useState<PPRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch]   = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const load = () => {
+    setLoading(true)
+    fetch('/api/planned-payments?withParentNames=true&limit=500')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setRows(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const months = [...new Set(rows.map(r => r.monthYear).filter(Boolean))].sort((a, b) => {
+    const [am, ay] = a.split('/').map(Number)
+    const [bm, by] = b.split('/').map(Number)
+    return by !== ay ? by - ay : bm - am
+  })
+
+  const filtered = rows.filter(r => {
+    if (monthFilter && r.monthYear !== monthFilter) return false
+    if (search.trim()) {
+      const q = search.trim()
+      return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
+    }
+    return true
+  })
+
+  const deletePP = async (id: string) => {
+    if (!confirm('למחוק תשלום מתוכנן זה? גם תנועות המשויכות אליו יימחקו.')) return
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (d.error) { alert(d.error); return }
+      setRows(prev => prev.filter(r => r.id !== id))
+    } catch { alert('שגיאה במחיקה') }
+    finally { setDeleting(null) }
+  }
+
+  const totalBalance = filtered.reduce((s, r) => s + Math.max(0, r.balance), 0)
+  const totalAmount  = filtered.reduce((s, r) => s + r.amount, 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
+          <p className="text-xs text-gray-500">סה&quot;כ תשלומים</p>
+          <p className="text-lg font-bold text-gray-800">{filtered.length}</p>
+        </div>
+        <div className="bg-emerald-50 rounded-xl border border-emerald-100 p-3 text-center">
+          <p className="text-xs text-gray-500">שולם</p>
+          <p className="text-lg font-bold text-emerald-700">
+            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalAmount - totalBalance)}
+          </p>
+        </div>
+        <div className="bg-red-50 rounded-xl border border-red-100 p-3 text-center">
+          <p className="text-xs text-gray-500">יתרה לגביה</p>
+          <p className="text-lg font-bold text-red-600">
+            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalBalance)}
+          </p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="חיפוש הורה / חודש..."
+          className="flex-1 min-w-[160px] px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+        />
+        {months.length > 0 && (
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white">
+            <option value="">כל החודשים</option>
+            {months.map(m => <option key={m} value={m}>{fmtMY(m)}</option>)}
+          </select>
+        )}
+        {(search || monthFilter) && (
+          <button onClick={() => { setSearch(''); setMonthFilter('') }}
+            className="px-3 py-2 text-sm text-gray-400 hover:text-gray-700 underline">נקה</button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400">אין תשלומים מתוכננים</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 text-right">
+                <th className="px-4 py-2.5">הורה</th>
+                <th className="px-4 py-2.5">חודש</th>
+                <th className="px-4 py-2.5 text-left">סכום</th>
+                <th className="px-4 py-2.5 text-left">יתרה</th>
+                <th className="px-4 py-2.5 text-center">סטטוס</th>
+                <th className="px-2 py-2.5 w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map(r => {
+                const isOverdue = r.balance > 0 && !!r.date && new Date(r.date) < today
+                const isPaid    = r.balance <= 0
+                return (
+                  <tr key={r.id} className={`hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-600">
+                      <div>{r.monthYear}</div>
+                      {r.monthYear && <div className="text-[10px] text-gray-400">{HEBREW_MONTH[r.monthYear.split('/')[0]] || ''}</div>}
+                    </td>
+                    <td className="px-4 py-2.5 text-left tabular-nums text-gray-700">
+                      ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(r.amount)}
+                    </td>
+                    <td className="px-4 py-2.5 text-left tabular-nums font-semibold">
+                      {isPaid
+                        ? <span className="text-emerald-600">✓</span>
+                        : <span className={isOverdue ? 'text-red-600' : 'text-amber-600'}>
+                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(r.balance)}
+                          </span>
+                      }
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        isPaid    ? 'bg-emerald-50 text-emerald-700'
+                        : isOverdue ? 'bg-red-50 text-red-700'
+                        : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {isPaid ? 'שולם' : isOverdue ? 'באיחור' : 'פתוח'}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2.5 text-center">
+                      <button
+                        onClick={() => deletePP(r.id)}
+                        disabled={deleting === r.id}
+                        className="p-1.5 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 text-base"
+                        title="מחק תשלום"
+                      >
+                        {deleting === r.id ? '...' : '🗑'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
