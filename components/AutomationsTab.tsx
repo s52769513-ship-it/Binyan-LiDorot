@@ -319,6 +319,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   const nowStr = () => new Date().toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
   const addLine = (kind: LiveLine['kind'], text: string, detail?: string) =>
     setLiveLines(p => [...p, { time: nowStr(), kind, text, detail }])
+  const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
   const loadLogs = async () => {
     try {
@@ -389,6 +390,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             if (ev.type === 'step') {
               setActiveStep(ev.step)
               addLine('step', `◆ ${ev.msg}`)
+              await delay(350)
             } else if (ev.type === 'progress') {
               if (ev.skipped) {
                 addLine('skip', `  — ${ev.parentName}`, ev.reason)
@@ -399,6 +401,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
                 addLine('ok', `  ✓ ${ev.parentName}${ev.ppCreated?' — PP נוצר':''}${(ev.offsetFound??0)>0?` · קיזוז ₪${fmtN(ev.offsetFound)}`:''}`)
               }
               actions.push(ev as RunAction)
+              await delay(400)
             } else if (ev.type === 'complete') {
               setActiveStep(def.steps.length + 1)
               addLine('done',
@@ -462,47 +465,48 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
         </button>
       </div>
 
+      {/* ── Flow diagram (always visible) ── */}
+      <div className={`px-6 py-5 border-b border-gray-100 overflow-x-auto ${!enabled ? 'opacity-40' : ''}`} dir="ltr">
+        <FlowDiagram steps={def.steps} activeStep={isRunning ? activeStep : 0} />
+      </div>
+
+      {/* ── Disabled notice ── */}
       {!enabled && (
-        <div className="px-6 py-8 text-center text-gray-400 text-sm">
-          <p className="text-2xl mb-2">⏸</p>
-          האוטומציה כבויה — הפעל כדי להשתמש
+        <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2 text-xs text-gray-400" dir="rtl">
+          <span>⏸</span>
+          <span>האוטומציה כבויה — הרצות אמיתיות מושבתות. בדיקות עדיין זמינות.</span>
         </div>
       )}
 
-      {enabled && <>
-        {/* ── Flow diagram ── */}
-        <div className="px-6 py-5 border-b border-gray-100 overflow-x-auto" dir="ltr">
-          <FlowDiagram steps={def.steps} activeStep={isRunning ? activeStep : 0} />
+      {/* ── Live terminal (during run) ── */}
+      {(isRunning || liveLines.length > 0) && (
+        <div className="px-6 py-3 border-b border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">לוג הרצה</p>
+          <LiveTerminal lines={liveLines} running={isRunning} />
         </div>
+      )}
 
-        {/* ── Live terminal (during run) ── */}
-        {(isRunning || liveLines.length > 0) && (
-          <div className="px-6 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">לוג הרצה</p>
-            <LiveTerminal lines={liveLines} running={isRunning} />
+      {/* ── Params ── */}
+      {!isRunning && (
+        <div className="px-6 py-4 border-b border-gray-100" dir="rtl">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">פרמטרים</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
+            <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+            <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── Params ── */}
-        {!isRunning && (
-          <div className="px-6 py-4 border-b border-gray-100" dir="rtl">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">פרמטרים</p>
-            <div className="flex items-center gap-3 flex-wrap">
-              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
-              <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
-              <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── Run buttons ── */}
-        {!isRunning && (
-          <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2" dir="rtl">
-            <button onClick={() => runStream(true)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
-              🧪 בדיקה לכולם
-            </button>
+      {/* ── Run buttons ── */}
+      {!isRunning && (
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2" dir="rtl">
+          <button onClick={() => runStream(true)}
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
+            🧪 בדיקה לכולם
+          </button>
+          {enabled && <>
             <button onClick={() => runStream(false)}
               className="px-4 py-2 rounded-xl text-sm font-bold transition-all"
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
@@ -512,11 +516,12 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
               👤 הרץ להורה בודד
             </button>
-            <button onClick={() => openPick(true)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors">
-              🧪 בדיקה להורה
-            </button>
-          </div>
+          </>}
+          <button onClick={() => openPick(true)}
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
+            🧪 בדיקה להורה
+          </button>
+        </div>
         )}
 
         {/* ── Activity log ── */}
@@ -569,7 +574,6 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               )
           }
         </div>
-      </>}
 
       {/* ── Modals ── */}
       {isRunning && (
