@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
       notes: notes || '',
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       project_ids: [],
-      project_names: Array.isArray(projectNames) ? projectNames : [],
+      project_names: (Array.isArray(projectNames) ? projectNames : []).map((n: string) => n === 'משכורות' ? 'משכורת' : n),
       planned_payment_id: plannedPaymentId || null,
       synced_at: syncedAt,
     }

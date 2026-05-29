@@ -17,7 +17,8 @@ export async function GET() {
 
     const all = new Set<string>()
     for (const row of data ?? []) {
-      for (const name of (row.project_names as string[]) ?? []) {
+      for (const raw of (row.project_names as string[]) ?? []) {
+        const name = raw === 'משכורות' ? 'משכורת' : raw
         if (name) all.add(name)
       }
     }
