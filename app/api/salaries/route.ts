@@ -40,7 +40,9 @@ export async function GET() {
     const wives = womanByParent[p.id] ?? []
     const wifeSalary = wives.reduce((s, w) => s + (w.salary_gross || 0), 0)
     const familySalary = p.show_spouse_salary ? (p.salary_gross || 0) + wifeSalary : (p.salary_gross || 0)
-    const tuitionDeduction = p.deduct_tuition ? Math.max(0, p.tuition_balance || 0) : 0
+    const tuitionBalance    = Math.max(0, p.tuition_balance || 0)
+    const tuitionDeduction  = p.deduct_tuition ? tuitionBalance : 0
+    const effectiveOffset   = Math.min(familySalary, tuitionBalance)
     return {
       id: p.id,
       name: p.name,
@@ -57,7 +59,9 @@ export async function GET() {
       salaryGross:           p.salary_gross || 0,
       salaryNet:             p.salary_after_tuition || 0,
       familySalary,
+      tuitionBalance,
       tuitionDeduction,
+      effectiveOffset,
       netAfterTuition:       familySalary - tuitionDeduction,
       wifeSalary,
       women: wives.map(w => ({

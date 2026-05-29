@@ -30,7 +30,9 @@ interface Employee {
   salaryGross: number
   salaryNet: number
   familySalary: number
+  tuitionBalance: number
   tuitionDeduction: number
+  effectiveOffset: number
   netAfterTuition: number
   wifeSalary: number
   women: Woman[]
@@ -241,13 +243,24 @@ function SettingsTab() {
                                 onChange={e => setEdit(emp.id, 'exceptionalExpenses', Number(e.target.value))}
                                 className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer col-span-1 pt-4">
-                              <input type="checkbox"
-                                defaultChecked={emp.deductTuition}
-                                onChange={e => setEdit(emp.id, 'deductTuition', e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" />
-                              <span className="text-gray-600">קיזוז שכ&quot;ל</span>
-                            </label>
+                            <div className="flex flex-col gap-1 col-span-1 pt-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox"
+                                  defaultChecked={emp.deductTuition}
+                                  onChange={e => setEdit(emp.id, 'deductTuition', e.target.checked)}
+                                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" />
+                                <span className="text-gray-600">קיזוז שכ&quot;ל</span>
+                              </label>
+                              {emp.effectiveOffset > 0 && (
+                                <p className="text-[10px] text-gray-400 mr-6">
+                                  {fmt(emp.tuitionBalance)} שכ&quot;ל · {fmt(emp.familySalary)} משכורת
+                                  <span className="text-red-500 font-semibold mr-1">← {fmt(emp.effectiveOffset)}</span>
+                                </p>
+                              )}
+                              {emp.effectiveOffset === 0 && emp.tuitionBalance === 0 && (
+                                <p className="text-[10px] text-gray-400 mr-6">אין יתרת שכ&quot;ל</p>
+                              )}
+                            </div>
                             <label className="flex items-center gap-2 cursor-pointer col-span-1 pt-4">
                               <input type="checkbox"
                                 defaultChecked={emp.showSpouseSalary}
