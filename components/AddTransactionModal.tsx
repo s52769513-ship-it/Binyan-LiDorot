@@ -58,7 +58,13 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   useEffect(() => {
     fetch('/api/projects')
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setProjects(d) })
+      .then(d => {
+        if (Array.isArray(d)) {
+          const list = [...d]
+          if (preselectedProject && !list.includes(preselectedProject)) list.unshift(preselectedProject)
+          setProjects(list)
+        }
+      })
       .catch(() => {})
   }, [])
 
