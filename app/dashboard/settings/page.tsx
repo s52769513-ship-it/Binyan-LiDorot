@@ -483,7 +483,7 @@ const AUTOMATION_LOGS_SQL = `CREATE TABLE IF NOT EXISTS automation_logs (
   automation_id TEXT NOT NULL,
   run_at TIMESTAMPTZ DEFAULT NOW(),
   dry_run BOOLEAN DEFAULT false,
-  parent_id UUID REFERENCES parents(id) ON DELETE SET NULL,
+  parent_id TEXT REFERENCES parents(id) ON DELETE SET NULL,
   parent_name TEXT,
   actions_count INT DEFAULT 0,
   status TEXT DEFAULT 'success',
