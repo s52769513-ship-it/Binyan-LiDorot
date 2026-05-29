@@ -53,7 +53,7 @@ export async function PATCH(
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })
 
-    // Validate new salary is not lower than already-applied offsets
+    // Auto-adjust offsets when salary changes
     if ('salaryGross' in body) {
       const newSalary = Number(body.salaryGross) || 0
       const today     = new Date()
@@ -61,22 +61,80 @@ export async function PATCH(
         const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
         return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
       })
-      const { data: offsetTxs } = await supabaseAdmin
-        .from('transactions')
-        .select('amount, month_year')
-        .contains('parent_ids', [id])
-        .eq('type', 'קיזוז ממשכורת')
-        .in('month_year', months)
-      if (offsetTxs && offsetTxs.length > 0) {
-        const byMonth: Record<string, number> = {}
-        for (const tx of offsetTxs)
-          byMonth[tx.month_year] = (byMonth[tx.month_year] || 0) + Math.abs(Number(tx.amount))
-        const maxOffset = Math.max(...Object.values(byMonth))
-        if (newSalary < maxOffset)
-          return NextResponse.json({
-            error: `המשכורת החדשה (₪${newSalary}) נמוכה מהקיזוז שכבר בוצע (₪${maxOffset}). יש לתקן את הקיזוז תחילה.`,
-            offsetAmount: maxOffset,
-          }, { status: 422 })
+
+      // Fetch all offset transactions + salary PPs for recent months
+      const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: salaryPPs }] = await Promise.all([
+        supabaseAdmin.from('transactions').select('id, amount, month_year')
+          .contains('parent_ids', [id]).eq('type', 'קיזוז ממשכורת').in('month_year', months),
+        supabaseAdmin.from('transactions').select('id, amount, month_year, planned_payment_id')
+          .contains('parent_ids', [id]).eq('type', 'קיזוז משכר לימוד').in('month_year', months),
+        supabaseAdmin.from('planned_payments').select('id, amount, balance, month_year')
+          .contains('parent_ids', [id]).eq('name', 'משכורת').in('month_year', months),
+      ])
+
+      for (const my of months) {
+        const tuitionOffsetTx  = (tuitionOffsetTxs ?? []).find(t => t.month_year === my)
+        const salaryOffsetTx   = (salaryOffsetTxs  ?? []).find(t => t.month_year === my)
+        const salaryPP         = (salaryPPs        ?? []).find(p => p.month_year === my)
+
+        // ── Adjust salary PP amount + balance ──────────────────────────────
+        if (salaryPP) {
+          const oldAmount = Number(salaryPP.amount)
+          const amountDelta = newSalary - oldAmount
+          if (amountDelta !== 0) {
+            await supabaseAdmin.from('planned_payments').update({
+              amount:  newSalary,
+              balance: Math.max(0, Number(salaryPP.balance) + amountDelta),
+            }).eq('id', salaryPP.id)
+          }
+        }
+
+        // ── Adjust offset transactions if old offset > new salary ───────────
+        if (tuitionOffsetTx) {
+          const oldOffset = Math.abs(Number(tuitionOffsetTx.amount))
+          if (oldOffset <= newSalary) continue  // offset still valid, nothing to fix
+
+          // Find tuition PP to know original tuition amount
+          const { data: tuitionPPs } = await supabaseAdmin
+            .from('planned_payments').select('id, amount, balance')
+            .contains('parent_ids', [id]).eq('month_year', my).neq('name', 'משכורת').limit(1)
+          const tuitionPP   = tuitionPPs?.[0]
+          const newOffset   = Math.min(newSalary, tuitionPP ? Number(tuitionPP.amount) : oldOffset)
+          const offsetDelta = oldOffset - newOffset  // positive = amount returned to tuition
+
+          // Update tuition-side offset tx
+          await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', tuitionOffsetTx.id)
+
+          // Restore delta to tuition PP balance
+          if (tuitionPP) {
+            await supabaseAdmin.from('planned_payments')
+              .update({ balance: Number(tuitionPP.balance) + offsetDelta })
+              .eq('id', tuitionPP.id)
+          }
+
+          // Restore delta to parent tuition_balance
+          const { data: parentRow } = await supabaseAdmin
+            .from('parents').select('tuition_balance').eq('id', id).single()
+          if (parentRow) {
+            await supabaseAdmin.from('parents')
+              .update({ tuition_balance: (Number(parentRow.tuition_balance) || 0) + offsetDelta })
+              .eq('id', id)
+          }
+
+          // Update salary-side offset tx + salary PP balance
+          if (salaryOffsetTx) {
+            await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', salaryOffsetTx.id)
+            if (salaryOffsetTx.planned_payment_id) {
+              const { data: spp } = await supabaseAdmin
+                .from('planned_payments').select('balance').eq('id', salaryOffsetTx.planned_payment_id).single()
+              if (spp) {
+                await supabaseAdmin.from('planned_payments')
+                  .update({ balance: Math.max(0, Number(spp.balance) + offsetDelta) })
+                  .eq('id', salaryOffsetTx.planned_payment_id)
+              }
+            }
+          }
+        }
       }
     }
 

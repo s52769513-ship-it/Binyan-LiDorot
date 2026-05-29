@@ -100,10 +100,7 @@ function SettingsTab() {
         body: JSON.stringify(patch),
       })
       const data = await res.json()
-      if (!res.ok) {
-        setSaveErr(prev => ({ ...prev, [emp.id]: data.error ?? 'שגיאה בשמירה' }))
-        return
-      }
+      if (!res.ok) { setSaveErr(prev => ({ ...prev, [emp.id]: data.error ?? 'שגיאה בשמירה' })); return }
       // Refresh
       const list = await fetch('/api/salaries').then(r => r.json())
       if (Array.isArray(list)) setEmployees(list)
