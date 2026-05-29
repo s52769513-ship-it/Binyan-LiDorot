@@ -302,11 +302,124 @@ function SettingsTab() {
 
 /* ─── תשלומים מתוכננים Tab ─────────────────────────── */
 function PlannedTab() {
+  const today     = new Date()
+  const initMY    = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
+  const initInput = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+
+  const [monthInput, setMonthInput] = useState(initInput)
+  const [monthYear,  setMonthYear]  = useState(initMY)
+  const [file,       setFile]       = useState<File | null>(null)
+  const [dryRun,     setDryRun]     = useState(false)
+  const [importing,  setImporting]  = useState(false)
+  const [importRes,  setImportRes]  = useState<{ success: boolean; dryRun: boolean; totalCreated: number; results: { parentName: string; payments: { method: string; amount: number }[]; ppFound: boolean }[] } | null>(null)
+  const [importErr,  setImportErr]  = useState('')
+
+  const handleMonthChange = (v: string) => {
+    setMonthInput(v)
+    const [y, m] = v.split('-')
+    if (y && m) setMonthYear(`${m}/${y}`)
+  }
+
+  const handleDownload = () => {
+    window.location.href = `/api/salaries/export?monthYear=${encodeURIComponent(monthYear)}`
+  }
+
+  const handleImport = async () => {
+    if (!file) return
+    setImporting(true); setImportErr(''); setImportRes(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('monthYear', monthYear)
+      fd.append('dryRun', String(dryRun))
+      const res  = await fetch('/api/salaries/import', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data.error) { setImportErr(data.error); return }
+      setImportRes(data)
+    } catch (e) { setImportErr(String(e)) }
+    finally { setImporting(false) }
+  }
+
   return (
-    <div className="text-center py-16 text-gray-400">
-      <p className="text-4xl mb-3">📋</p>
-      <p className="text-base font-medium text-gray-500">תשלומים מתוכננים למשכורות</p>
-      <p className="text-sm mt-1">בקרוב — יצירה אוטומטית של תשלומים מתוכננים על בסיס הגדרות המשכורת</p>
+    <div className="space-y-5" dir="rtl">
+      {/* Month picker */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <p className="text-sm font-semibold text-gray-700 mb-3">חודש לעיבוד</p>
+        <div className="flex items-center gap-3">
+          <input type="month" value={monthInput} onChange={e => handleMonthChange(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+          <span className="text-sm font-medium text-indigo-600">{monthYear}</span>
+        </div>
+      </div>
+
+      {/* Download */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <p className="text-sm font-semibold text-gray-700 mb-1">שלב 1 — הורדת אקסל</p>
+        <p className="text-xs text-gray-400 mb-3">קובץ עם כל העובדים, עמודות אמצעי תשלום ונוסחאות מחושבות</p>
+        <button onClick={handleDownload}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
+          ⬇ הורד אקסל משכורות — {monthYear}
+        </button>
+      </div>
+
+      {/* Upload */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-3">
+        <p className="text-sm font-semibold text-gray-700">שלב 2 — העלאת אקסל לאחר מילוי</p>
+        <p className="text-xs text-gray-400">המערכת תיצור תנועות תשלום לכל עובד לפי אמצעי התשלום שמולאו</p>
+
+        <input type="file" accept=".xlsx,.xls"
+          onChange={e => { setFile(e.target.files?.[0] ?? null); setImportRes(null); setImportErr('') }}
+          className="block text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)}
+            className="w-4 h-4 rounded text-amber-500" />
+          <span className="text-sm text-amber-700">בדיקה בלבד — לא שומר לדאטהבייס</span>
+        </label>
+
+        {importErr && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{importErr}</p>}
+
+        <button disabled={!file || importing} onClick={handleImport}
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 ${
+            dryRun ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                   : 'text-white'
+          }`}
+          style={!dryRun ? { background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' } : {}}>
+          {importing ? 'מעבד...' : dryRun ? '🧪 בדוק אקסל' : '⬆ ייבא תשלומים'}
+        </button>
+      </div>
+
+      {/* Results */}
+      {importRes && (
+        <div className={`rounded-2xl border shadow-sm overflow-hidden ${importRes.dryRun ? 'border-amber-200' : 'border-emerald-200'}`}>
+          <div className={`px-5 py-3 flex items-center justify-between ${importRes.dryRun ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+            <span className={`text-sm font-bold ${importRes.dryRun ? 'text-amber-800' : 'text-emerald-800'}`}>
+              {importRes.dryRun ? '🧪 תוצאות בדיקה' : '✅ ייבוא הושלם'}
+            </span>
+            <span className="text-xs text-gray-500">{importRes.totalCreated} תנועות {importRes.dryRun ? 'שהיו נוצרות' : 'נוצרו'}</span>
+          </div>
+          <div className="bg-white divide-y divide-gray-50">
+            {importRes.results.map((r, i) => (
+              <div key={i} className="px-5 py-3 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {r.ppFound ? 'PP ✓' : 'ללא PP'}
+                  </span>
+                  <span className="font-medium text-gray-800">{r.parentName}</span>
+                </div>
+                <div className="flex gap-2 text-xs text-gray-500">
+                  {r.payments.map((p, j) => (
+                    <span key={j} className="bg-gray-50 border border-gray-100 rounded px-2 py-0.5">
+                      {p.method} ₪{new Intl.NumberFormat('he-IL').format(p.amount)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
