@@ -57,8 +57,23 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, amount } = await req.json()
+    const body = await req.json()
+    const { id } = body
     if (!id) return NextResponse.json({ error: 'חסר מזהה' }, { status: 400 })
+
+    // Direct balance override (e.g. recomputed from linked transactions)
+    if ('balance' in body && !('amount' in body)) {
+      const newBalance = Math.max(0, Number(body.balance))
+      const { error } = await supabaseAdmin
+        .from('planned_payments')
+        .update({ balance: newBalance })
+        .eq('id', id)
+      if (error) throw error
+      return NextResponse.json({ success: true, balance: newBalance })
+    }
+
+    // Amount change — adjust balance proportionally
+    const { amount } = body
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
     }

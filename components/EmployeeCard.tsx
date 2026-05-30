@@ -337,6 +337,21 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parent?.plannedPayments])
 
+  // Recompute PP balance from linked transactions and patch DB if stale
+  useEffect(() => {
+    if (!selectedPP || loadingPpTx) return
+    const computedPaid    = ppTxList.reduce((s, t) => s + Math.abs(t.amount), 0)
+    const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
+    if (computedBalance === selectedPP.balance) return
+    setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
+    fetch('/api/planned-payments', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selectedPP.id, balance: computedBalance }),
+    }).then(() => load()).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ppTxList, loadingPpTx])
+
   const patch = useCallback(async (fields: Record<string, unknown>) => {
     await fetch(`/api/parents/${parentId}`, {
       method: 'PATCH',

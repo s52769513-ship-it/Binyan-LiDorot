@@ -455,9 +455,30 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   }, [])
 
   useEffect(() => {
-    if (selectedPP) loadPpTx(selectedPP.id)
-    else setPpTxList([])
+    if (!selectedPP) { setPpTxList([]); return }
+    loadPpTx(selectedPP.id)
   }, [selectedPP, loadPpTx])
+
+  // After ppTxList loads, recompute the real balance from linked transactions
+  // and patch the DB if it's stale
+  useEffect(() => {
+    if (!selectedPP || ppTxLoading) return
+    const computedPaid    = ppTxList.reduce((s, t) => s + Math.abs(t.amount), 0)
+    const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
+    if (computedBalance === selectedPP.balance) return  // already correct
+
+    // Update local state immediately
+    setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
+    setRows(prev => prev.map(r => r.id === selectedPP.id ? { ...r, balance: computedBalance } : r))
+
+    // Patch DB silently
+    fetch('/api/planned-payments', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selectedPP.id, balance: computedBalance }),
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ppTxList, ppTxLoading])
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
