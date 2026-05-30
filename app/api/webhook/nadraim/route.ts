@@ -102,21 +102,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // dry run — return diagnostic info without writing
+    // dry run — find PP too then return diagnostic info without writing
     if (dryRun) {
+      let dryPP = null
+      if (parentId) {
+        const { data: openPPs } = await supabaseAdmin
+          .from('planned_payments')
+          .select('id, amount, balance, month_year, name')
+          .contains('parent_ids', [parentId])
+          .neq('name', 'משכורת')
+          .gt('balance', 0)
+          .order('month_year', { ascending: false })
+        if (openPPs?.length) {
+          const curr = openPPs.find(pp => pp.month_year === monthYear)
+          dryPP = curr ?? openPPs[openPPs.length - 1]
+        }
+      }
       return NextResponse.json({
         dryRun: true,
-        zeout,
-        parentFound,
-        parentCreated,
-        parentId,
-        amount,
-        currencyNote,
-        date,
-        monthYear,
+        zeout, parentFound, parentCreated, parentId,
+        amount, currencyNote, date, monthYear,
         txType:      String(TransactionType ?? '').trim() || 'נדרים',
         projectName: String(Groupe ?? '').trim() || 'בנין לדורות',
         clientName:  String(ClientName ?? ''),
+        linkedPP: dryPP ? { id: dryPP.id, name: dryPP.name, monthYear: dryPP.month_year, balance: dryPP.balance } : null,
       })
     }
 
@@ -129,9 +138,31 @@ export async function POST(req: NextRequest) {
       Comments       ? String(Comments)       : null,
     ].filter(Boolean).join(' · ')
 
-    // 5. Create transaction
-    const txId       = crypto.randomUUID()
-    const txType     = String(TransactionType ?? '').trim() || 'נדרים'
+    // 5. Find open tuition PP to link (not משכורת)
+    // Priority: current month first, then oldest open
+    let linkedPPId: string | null = null
+    let linkedPPBalance: number | null = null
+    if (parentId) {
+      const { data: openPPs } = await supabaseAdmin
+        .from('planned_payments')
+        .select('id, amount, balance, month_year, name')
+        .contains('parent_ids', [parentId])
+        .neq('name', 'משכורת')
+        .gt('balance', 0)
+        .order('month_year', { ascending: false })
+
+      if (openPPs && openPPs.length > 0) {
+        // Prefer current month, fallback to most recent open
+        const currentMonthPP = openPPs.find(pp => pp.month_year === monthYear)
+        const chosen = currentMonthPP ?? openPPs[openPPs.length - 1] // oldest = last after desc sort reversed
+        linkedPPId      = chosen.id
+        linkedPPBalance = Number(chosen.balance)
+      }
+    }
+
+    // 6. Create transaction
+    const txId        = crypto.randomUUID()
+    const txType      = String(TransactionType ?? '').trim() || 'נדרים'
     const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
 
     const { error: txErr } = await supabaseAdmin.from('transactions').insert({
@@ -144,12 +175,21 @@ export async function POST(req: NextRequest) {
       parent_ids:         parentId ? [parentId] : [],
       project_ids:        [],
       project_names:      [projectName],
-      planned_payment_id: null,
+      planned_payment_id: linkedPPId,
       synced_at:          '2099-12-31T23:59:59.999Z',
     })
     if (txErr) throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
 
-    // 6. Automation log
+    // 7. Update linked PP balance
+    if (linkedPPId && linkedPPBalance !== null) {
+      const newBalance = Math.max(0, linkedPPBalance - amount)
+      await supabaseAdmin
+        .from('planned_payments')
+        .update({ balance: newBalance })
+        .eq('id', linkedPPId)
+    }
+
+    // 8. Automation log
     try {
       await supabaseAdmin.from('automation_logs').insert({
         id:            crypto.randomUUID(),
