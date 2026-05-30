@@ -593,35 +593,37 @@ function ImportResultsTable({ res, compact }: {
           <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-400 text-right">
             <th className="px-4 py-2">שם</th>
             <th className="px-4 py-2">אמצעי תשלום</th>
-            <th className="px-4 py-2 text-left">שולם</th>
+            <th className="px-4 py-2 text-left">סכום</th>
             <th className="px-4 py-2 text-left">יתרת משכורת</th>
             <th className="px-4 py-2 text-center">תשלום מתוכנן</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
-          {res.results.map((r, i) => (
-            <tr key={i} className="hover:bg-gray-50">
-              <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName}</td>
-              <td className="px-4 py-2.5">
-                <div className="flex flex-wrap gap-1">
-                  {r.payments.map((p, j) => (
-                    <span key={j} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded px-2 py-0.5">
-                      {p.method} ₪{fmtN(p.amount)}
-                    </span>
-                  ))}
-                </div>
-              </td>
-              <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">₪{fmtN(r.totalPaid)}</td>
-              <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500">
-                {r.ppBalance != null ? (r.ppBalance > 0 ? <span className="text-amber-600">₪{fmtN(r.ppBalance)}</span> : <span className="text-emerald-600">✓ סגור</span>) : '—'}
-              </td>
-              <td className="px-4 py-2.5 text-center">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
-                  {r.ppFound ? 'מקושר ✓' : 'לא נמצא'}
-                </span>
-              </td>
-            </tr>
-          ))}
+        <tbody>
+          {res.results.map((r, i) =>
+            r.payments.map((p, j) => (
+              <tr key={`${i}-${j}`} className={`hover:bg-gray-50 ${j === 0 ? 'border-t border-gray-100' : 'border-t border-dashed border-gray-100'}`}>
+                {j === 0 && (
+                  <td className="px-4 py-2.5 font-medium text-gray-800 align-top" rowSpan={r.payments.length}>
+                    {r.parentName}
+                  </td>
+                )}
+                <td className="px-4 py-2.5 text-indigo-700">{p.method}</td>
+                <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">₪{fmtN(p.amount)}</td>
+                {j === 0 && (
+                  <>
+                    <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500 align-top" rowSpan={r.payments.length}>
+                      {r.ppBalance != null ? (r.ppBalance > 0 ? <span className="text-amber-600">₪{fmtN(r.ppBalance)}</span> : <span className="text-emerald-600">✓ סגור</span>) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-center align-top" rowSpan={r.payments.length}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                        {r.ppFound ? 'מקושר ✓' : 'לא נמצא'}
+                      </span>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))
+          )}
         </tbody>
         <tfoot>
           <tr className="bg-gray-50 border-t-2 border-gray-200 text-sm font-bold">
