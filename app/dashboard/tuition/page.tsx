@@ -479,6 +479,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   })
 
   const filtered = rows.filter(r => {
+    if (r.name === 'משכורת') return false
     if (monthFilter && r.monthYear !== monthFilter) return false
     if (search.trim()) {
       const q = search.trim()
