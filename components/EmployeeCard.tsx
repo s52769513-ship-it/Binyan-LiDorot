@@ -317,15 +317,26 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   }, [parent?.plannedPayments])
 
   // Load transactions linked to the selected planned payment
-  useEffect(() => {
-    if (!selectedPP) { setPpTxList([]); return }
+  // Re-fetch also when parent data refreshes (Realtime) so list stays in sync
+  const loadPpTx = useCallback((ppId: string) => {
     setLoadingPpTx(true)
-    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
+    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(ppId)}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPpTxList(d); else setPpTxList([]) })
       .catch(() => setPpTxList([]))
       .finally(() => setLoadingPpTx(false))
-  }, [selectedPP?.id])
+  }, [])
+
+  useEffect(() => {
+    if (!selectedPP) { setPpTxList([]); return }
+    loadPpTx(selectedPP.id)
+  }, [selectedPP?.id, loadPpTx])
+
+  // When parent data refreshes via Realtime, also refresh ppTxList
+  useEffect(() => {
+    if (selectedPP?.id) loadPpTx(selectedPP.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parent?.plannedPayments])
 
   const patch = useCallback(async (fields: Record<string, unknown>) => {
     await fetch(`/api/parents/${parentId}`, {
@@ -1220,16 +1231,29 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 )}
                 <span className="text-xs text-gray-400 mr-2">סכום מתוכנן</span>
               </div>
-              {selectedPP.balance > 0 ? (
-                <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
-                  <span className="text-lg font-bold text-red-600">{fmt(selectedPP.balance)}</span>
-                  <span className="text-xs text-red-400">יתרה לתשלום</span>
-                </div>
-              ) : (
-                <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
-                  <span className="text-sm font-semibold text-emerald-600">✓ שולם במלואו</span>
-                </div>
-              )}
+              {(() => {
+                const paid = selectedPP.amount - selectedPP.balance
+                return (
+                  <>
+                    {paid > 0 && (
+                      <div className="flex justify-between items-center bg-emerald-50 rounded-lg px-3 py-2">
+                        <span className="text-base font-bold text-emerald-600">{fmt(paid)}</span>
+                        <span className="text-xs text-emerald-500">שולם</span>
+                      </div>
+                    )}
+                    {selectedPP.balance > 0 ? (
+                      <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
+                        <span className="text-lg font-bold text-red-600">{fmt(selectedPP.balance)}</span>
+                        <span className="text-xs text-red-400">יתרה לתשלום</span>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
+                        <span className="text-sm font-semibold text-emerald-600">✓ שולם במלואו</span>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
               {selectedPP.date && (
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{fmtDate(selectedPP.date)}</span>
