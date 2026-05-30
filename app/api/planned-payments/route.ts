@@ -5,6 +5,7 @@ export async function GET(req: NextRequest) {
   try {
     const nameFilter      = req.nextUrl.searchParams.get('name') ?? ''
     const parentId        = req.nextUrl.searchParams.get('parentId') ?? ''
+    const idFilter        = req.nextUrl.searchParams.get('id') ?? ''
     const openOnly        = req.nextUrl.searchParams.get('open') === 'true'
     const withParentNames = req.nextUrl.searchParams.get('withParentNames') === 'true'
     const limitParam      = parseInt(req.nextUrl.searchParams.get('limit') ?? '200')
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
       .order('date', { ascending: false })
       .limit(limitParam)
 
+    if (idFilter)   query = query.eq('id', idFilter)
     if (nameFilter) query = query.ilike('name', `%${nameFilter}%`)
     if (parentId)   query = query.contains('parent_ids', [parentId])
     if (openOnly)   query = query.gt('balance', 0)

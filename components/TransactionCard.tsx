@@ -57,7 +57,14 @@ function fmt(n: number) {
   }).format(n)
 }
 
-const TX_TYPES = ['תשלום', 'החזר', 'זיכוי', 'חוב', 'אחר']
+const TX_TYPES = ['הו"ק', 'נדרים', 'העברה בנקאית', 'מזומן', 'שיק', 'זיכוי', 'קיזוז משכר לימוד', 'קיזוז ממשכורת', 'אחר']
+const PROJECT_OPTIONS = ['בנין לדורות', 'משכורת', 'הכנסה', 'הוצאה', 'אחר']
+
+function dateToMonthYear(iso: string): string {
+  if (!iso) return ''
+  const [y, m] = iso.split('-')
+  return m && y ? `${m}/${y}` : ''
+}
 
 function InlineText({
   value, onSave, multiline = false,
@@ -328,25 +335,34 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
 }) {
   const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
-  const [draft, setDraft]     = useState<Transaction>(tx)
-  const [saving, setSaving]   = useState(false)
-  const [ppInfo, setPpInfo]   = useState<{ name: string; amount: number; balance: number } | null>(null)
+  const [draft, setDraft]       = useState<Transaction>(tx)
+  const [saving, setSaving]     = useState(false)
+  const [ppInfo, setPpInfo]     = useState<{ name: string; amount: number; balance: number } | null>(null)
+  const [ppLoading, setPpLoading] = useState(false)
+  const [ppError, setPpError]   = useState(false)
+  const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
 
-  // Load PP info if linked
+  // Load PP info by direct ID lookup
   useEffect(() => {
     if (!tx.plannedPaymentId) { setPpInfo(null); return }
-    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(tx.plannedPaymentId)}`)
-      .catch(() => null)
-    // Fetch PP details directly
-    fetch(`/api/planned-payments`)
+    setPpLoading(true); setPpError(false)
+    fetch(`/api/planned-payments?id=${encodeURIComponent(tx.plannedPaymentId)}`)
       .then(r => r.json())
       .then((list: { id: string; name: string; amount: number; balance: number }[]) => {
-        const pp = list.find(p => p.id === tx.plannedPaymentId)
+        const pp = Array.isArray(list) ? list[0] : null
         if (pp) setPpInfo({ name: pp.name, amount: pp.amount, balance: pp.balance })
+        else setPpError(true)
       })
-      .catch(() => null)
+      .catch(() => setPpError(true))
+      .finally(() => setPpLoading(false))
   }, [tx.plannedPaymentId])
+
+  // When date changes, auto-update monthYear
+  const handleDateChange = (newDate: string) => {
+    setDraft(d => ({ ...d, date: newDate, monthYear: dateToMonthYear(newDate) }))
+  }
 
   const save = async () => {
     setSaving(true)
@@ -357,10 +373,12 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
       if (draft.date      !== tx.date)      body.date      = draft.date
       if (draft.monthYear !== tx.monthYear) body.month_year = draft.monthYear
       if (draft.notes     !== tx.notes)     body.notes     = draft.notes
+      if (JSON.stringify(draft.projectNames) !== JSON.stringify(tx.projectNames))
+        body.project_names = draft.projectNames
       if (draft.plannedPaymentId !== tx.plannedPaymentId)
         body.planned_payment_id = draft.plannedPaymentId ?? null
 
-      if (Object.keys(body).length === 0) return
+      if (Object.keys(body).length === 0) { onClose(); return }
       const r = await fetch(`/api/transactions/${tx.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -368,6 +386,9 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
       if (r.ok) { onSaved?.(draft); onClose() }
     } finally { setSaving(false) }
   }
+
+  const currentType = TX_TYPES.includes(draft.type) ? draft.type : draft.type
+  const currentProject = draft.projectNames?.[0] ?? ''
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -377,7 +398,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
           <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
         </div>
 
-        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto" dir="rtl">
           {tx.parentName && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-400">שם</span>
@@ -387,69 +408,88 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
 
           {/* Amount */}
           <div className="flex justify-between items-center gap-3">
+            <input type="number" value={draft.amount}
+              onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
+              className="text-xl font-bold text-emerald-700 w-32 border-b-2 border-emerald-300 focus:border-emerald-500 focus:outline-none bg-transparent text-left" />
             <span className="text-xs text-gray-400 shrink-0">סכום</span>
-            <input type="number" value={draft.amount} onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
-              className="text-base font-bold text-emerald-700 text-left w-28 border-b border-gray-200 focus:border-emerald-400 focus:outline-none bg-transparent" />
           </div>
 
-          {/* Type */}
+          {/* Type — select */}
           <div className="flex justify-between items-center gap-3">
+            <select
+              value={currentType}
+              onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
+              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
+            >
+              {!TX_TYPES.includes(draft.type) && draft.type && (
+                <option value={draft.type}>{draft.type}</option>
+              )}
+              {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
             <span className="text-xs text-gray-400 shrink-0">אמצעי תשלום</span>
-            <input value={draft.type} onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
-              className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
           </div>
 
           {/* Date */}
           <div className="flex justify-between items-center gap-3">
-            <span className="text-xs text-gray-400 shrink-0">תאריך</span>
-            <input type="date" value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))}
+            <input type="date" value={draft.date} onChange={e => handleDateChange(e.target.value)}
               className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
+            <span className="text-xs text-gray-400 shrink-0">תאריך</span>
           </div>
 
-          {/* Month */}
+          {/* Month — read-only, auto from date */}
           <div className="flex justify-between items-center gap-3">
+            <span className="text-sm text-gray-500 tabular-nums">{draft.monthYear}</span>
             <span className="text-xs text-gray-400 shrink-0">חודש</span>
-            <input value={draft.monthYear} onChange={e => setDraft(d => ({ ...d, monthYear: e.target.value }))}
-              placeholder="MM/YYYY" className="text-sm text-gray-800 text-right w-24 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
           </div>
 
-          {/* Project */}
-          {tx.projectNames?.length > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
-              <span className="text-sm text-gray-700">{tx.projectNames.join(', ')}</span>
-            </div>
-          )}
+          {/* Category — select */}
+          <div className="flex justify-between items-center gap-3">
+            <select
+              value={currentProject}
+              onChange={e => setDraft(d => ({ ...d, projectNames: e.target.value ? [e.target.value] : [] }))}
+              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
+            >
+              <option value="">— ללא —</option>
+              {!PROJECT_OPTIONS.includes(currentProject) && currentProject && (
+                <option value={currentProject}>{currentProject}</option>
+              )}
+              {PROJECT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
+          </div>
 
           {/* Notes */}
           <div className="flex justify-between items-start gap-3">
-            <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
             <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
               rows={2} className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent resize-none" />
+            <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
           </div>
 
           {/* Linked PP */}
-          {ppInfo && (
-            <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
-              <div className="flex justify-between items-center">
-                <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
-                  className="text-xs text-red-400 hover:text-red-600">נתק</button>
-                <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
+          {tx.plannedPaymentId && !unlinking && (
+            ppLoading ? (
+              <div className="text-xs text-gray-400 text-center py-2">טוען תשלום מתוכנן...</div>
+            ) : ppError ? (
+              <div className="text-xs text-red-400 text-center py-2">לא נמצא תשלום מתוכנן</div>
+            ) : ppInfo ? (
+              <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
+                <div className="flex justify-between items-center">
+                  <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
+                    className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                  <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-amber-600 font-medium">{fmtIL(ppInfo.balance)} נשאר</span>
+                  <span className="text-gray-600">{ppInfo.name}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>{fmtIL(ppInfo.amount - ppInfo.balance)} שולם</span>
+                  <span>{fmtIL(ppInfo.amount)} סכום מלא</span>
+                </div>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-amber-600 font-medium">{fmtIL(ppInfo.balance)} נשאר</span>
-                <span className="text-gray-600">{ppInfo.name}</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>{fmtIL(ppInfo.amount)} סכום מלא</span>
-                <span>{fmtIL(ppInfo.amount - ppInfo.balance)} שולם</span>
-              </div>
-            </div>
+            ) : null
           )}
-          {!ppInfo && tx.plannedPaymentId && (
-            <div className="text-xs text-gray-400 text-center">טוען פרטי תשלום מתוכנן...</div>
-          )}
-          {draft.plannedPaymentId !== tx.plannedPaymentId && draft.plannedPaymentId === null && (
+          {unlinking && (
             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">הקישור לתשלום המתוכנן יוסר בשמירה</div>
           )}
         </div>
