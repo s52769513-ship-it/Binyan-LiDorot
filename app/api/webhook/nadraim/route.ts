@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         const firstName  = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] ?? ''
 
         parentId = crypto.randomUUID()
-        await supabaseAdmin.from('parents').insert({
+        const { error: parentErr } = await supabaseAdmin.from('parents').insert({
           id:           parentId,
           name:         String(ClientName ?? '').trim(),
           first_name:   firstName,
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
           status:       ['תורם'],
           synced_at:    '2099-12-31T23:59:59.999Z',
         })
+        if (parentErr) throw new Error(`יצירת הורה נכשלה: ${parentErr.message}`)
       }
     }
 
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
     const txType     = String(TransactionType ?? '').trim() || 'נדרים'
     const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
 
-    await supabaseAdmin.from('transactions').insert({
+    const { error: txErr } = await supabaseAdmin.from('transactions').insert({
       id:                 txId,
       amount,
       type:               txType,
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
       planned_payment_id: null,
       synced_at:          '2099-12-31T23:59:59.999Z',
     })
+    if (txErr) throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
 
     // 6. Automation log
     try {
