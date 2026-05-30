@@ -427,10 +427,22 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {parent && (
             <div className="flex gap-px mb-0 mt-1">
               <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
-                <p className={`text-base font-bold tabular-nums ${parent.tuitionBalance > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                  {fmt(Math.abs(parent.tuitionBalance))}
-                </p>
-                <p className="text-[10px] text-white/50">{parent.tuitionBalance > 0 ? 'חוב' : 'זכות'}</p>
+                {overdueTotal > 0 ? (
+                  <>
+                    <p className="text-base font-bold tabular-nums text-red-300">{fmt(overdueTotal)}</p>
+                    <p className="text-[10px] text-white/50">חוב באיחור</p>
+                  </>
+                ) : (parent.ppCredit ?? 0) > 0 ? (
+                  <>
+                    <p className="text-base font-bold tabular-nums text-emerald-300">{fmt(parent.ppCredit)}</p>
+                    <p className="text-[10px] text-white/50">זכות</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base font-bold tabular-nums text-emerald-300">✓</p>
+                    <p className="text-[10px] text-white/50">מעודכן</p>
+                  </>
+                )}
               </div>
               <div className="flex-1 bg-white/10 px-3 py-2 text-center">
                 <p className="text-base font-bold text-white/80 tabular-nums">{parent.childrenCount}</p>
