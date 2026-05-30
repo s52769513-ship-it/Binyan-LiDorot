@@ -398,7 +398,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   const currentProject = draft.projectNames?.[0] ?? ''
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
           <span className="text-sm font-bold" style={{ color: '#d4a921' }}>פירוט תנועה</span>
