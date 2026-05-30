@@ -1,7 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import EmployeeCard from '@/components/EmployeeCard'
+import { TxDetailModal } from '@/components/TransactionCard'
+import type { Transaction } from '@/components/TransactionCard'
+import dynamic from 'next/dynamic'
+const AddTransactionModal = dynamic(() => import('@/components/AddTransactionModal'), { ssr: false })
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -178,7 +182,7 @@ export default function TuitionPage() {
 
       {error && activeTab === 'kids' && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
-      {activeTab === 'planned' && <PlannedPaymentsTab />}
+      {activeTab === 'planned' && <PlannedPaymentsTab onOpenParent={id => setSelectedParent(id)} />}
 
       {activeTab === 'kids' && <>
       {/* Summary KPIs */}
@@ -409,18 +413,51 @@ export default function TuitionPage() {
   )
 }
 
+function hebrewDate(iso: string): string {
+  if (!iso) return ''
+  try {
+    return new Intl.DateTimeFormat('he-IL', { dateStyle: 'long' }).format(new Date(iso))
+  } catch { return iso }
+}
+
 /* ─── PlannedPaymentsTab ─────────────────────────────── */
 interface PPRow {
   id: string; name: string; amount: number; balance: number
   date: string; monthYear: string; parentIds: string[]; parentName: string
 }
 
-function PlannedPaymentsTab() {
-  const [rows, setRows]       = useState<PPRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
+type PpTxItem = {
+  id: string; amount: number; date: string; monthYear: string
+  type: string; notes: string; parentIds: string[]; projectNames: string[]; isCredit: boolean
+}
+
+function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => void }) {
+  const [rows, setRows]         = useState<PPRow[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
   const [monthFilter, setMonthFilter] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
+
+  // PP detail modal state
+  const [selectedPP, setSelectedPP]     = useState<PPRow | null>(null)
+  const [ppTxList, setPpTxList]         = useState<PpTxItem[]>([])
+  const [ppTxLoading, setPpTxLoading]   = useState(false)
+  const [selectedPpTx, setSelectedPpTx] = useState<Transaction | null>(null)
+  const [showAddTxForPP, setShowAddTxForPP] = useState(false)
+
+  const loadPpTx = useCallback((ppId: string) => {
+    setPpTxLoading(true)
+    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(ppId)}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPpTxList(d); else setPpTxList([]) })
+      .catch(() => setPpTxList([]))
+      .finally(() => setPpTxLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (selectedPP) loadPpTx(selectedPP.id)
+    else setPpTxList([])
+  }, [selectedPP, loadPpTx])
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -509,6 +546,176 @@ function PlannedPaymentsTab() {
         )}
       </div>
 
+      {/* ── PP detail modal ── */}
+      {selectedPP && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl"
+          onClick={e => { if (e.target === e.currentTarget) setSelectedPP(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedPP(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 z-10">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setSelectedPP(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800 text-base">{selectedPP.name || 'תשלום מתוכנן'}</h3>
+            </div>
+
+            {/* PP info */}
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-bold text-gray-800">
+                  ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(selectedPP.amount)}
+                </span>
+                <span className="text-xs text-gray-400">סכום מתוכנן</span>
+              </div>
+              {(() => {
+                const paid = selectedPP.amount - selectedPP.balance
+                return <>
+                  {paid > 0 && (
+                    <div className="flex justify-between items-center bg-emerald-50 rounded-lg px-3 py-2">
+                      <span className="text-base font-bold text-emerald-600">
+                        ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(paid)}
+                      </span>
+                      <span className="text-xs text-emerald-500">שולם</span>
+                    </div>
+                  )}
+                  {selectedPP.balance > 0 ? (
+                    <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
+                      <span className="text-lg font-bold text-red-600">
+                        ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(selectedPP.balance)}
+                      </span>
+                      <span className="text-xs text-red-400">יתרה לתשלום</span>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
+                      <span className="text-sm font-semibold text-emerald-600">✓ שולם במלואו</span>
+                    </div>
+                  )}
+                </>
+              })()}
+              {selectedPP.date && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span className="text-xs text-gray-400">{hebrewDate(selectedPP.date)}</span>
+                  <span className="text-gray-400">תאריך</span>
+                </div>
+              )}
+              {selectedPP.monthYear && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{selectedPP.monthYear}</span>
+                  <span className="text-gray-400">חודש</span>
+                </div>
+              )}
+              {selectedPP.parentName && (
+                <button
+                  onClick={() => { onOpenParent(selectedPP.parentIds[0]); setSelectedPP(null) }}
+                  className="w-full text-right text-sm text-[#1a3a7a] hover:underline"
+                >
+                  ↗ {selectedPP.parentName}
+                </button>
+              )}
+            </div>
+
+            {/* Linked transactions */}
+            <div className="border-t border-gray-100 pt-3 mb-4">
+              <p className="text-xs font-semibold text-gray-500 mb-2">
+                תשלומים ששולמו
+                {ppTxLoading && <span className="text-gray-300 mr-1">...</span>}
+              </p>
+              {!ppTxLoading && ppTxList.length === 0 ? (
+                <p className="text-xs text-gray-300 text-center py-1">אין תשלומים עדיין</p>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {ppTxList.map(tx => (
+                    <div key={tx.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${tx.isCredit ? 'bg-emerald-50' : 'bg-gray-50'}`}>
+                      {tx.isCredit ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-sm font-bold text-emerald-600">
+                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(tx.amount))}
+                          </span>
+                          <span className="text-xs text-emerald-500">{tx.notes}</span>
+                        </div>
+                      ) : (
+                        <button
+                          className="flex items-center justify-between flex-1 text-right hover:bg-white/60 rounded-lg px-1 -mx-1 transition-colors"
+                          onClick={() => setSelectedPpTx({
+                            id: tx.id, amount: Math.abs(tx.amount), type: tx.type,
+                            date: tx.date, monthYear: tx.monthYear, notes: tx.notes,
+                            projectNames: tx.projectNames, parentIds: tx.parentIds,
+                            plannedPaymentId: selectedPP.id,
+                          })}
+                        >
+                          <div className="flex items-center gap-2">
+                            {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
+                            {tx.date && <span className="text-xs text-gray-400">{new Intl.DateTimeFormat('he-IL').format(new Date(tx.date))}</span>}
+                          </div>
+                          <span className="text-sm font-bold text-emerald-700">
+                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(tx.amount))}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2">
+              {selectedPP.balance > 0 && (
+                <button
+                  onClick={() => setShowAddTxForPP(true)}
+                  className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-semibold text-sm hover:bg-emerald-800 transition-colors"
+                >
+                  + הוסף תשלום
+                </button>
+              )}
+              <button
+                onClick={() => { onOpenParent(selectedPP.parentIds[0]); setSelectedPP(null) }}
+                className="w-full py-2 rounded-xl border border-[#1a3a7a]/30 text-[#1a3a7a] text-sm font-medium hover:bg-indigo-50 transition-colors"
+              >
+                פתח כרטיס הורה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TxDetailModal for editing a linked tx */}
+      {selectedPpTx && (
+        <TxDetailModal
+          tx={selectedPpTx}
+          onClose={() => setSelectedPpTx(null)}
+          onSaved={() => {
+            setSelectedPpTx(null)
+            if (selectedPP) loadPpTx(selectedPP.id)
+          }}
+        />
+      )}
+
+      {/* AddTransactionModal for paying a PP */}
+      {showAddTxForPP && selectedPP && (
+        <AddTransactionModal
+          fixedLabel="בנין לדורות"
+          sourceLabel={selectedPP.name}
+          prefilledAmount={selectedPP.balance}
+          plannedPaymentId={selectedPP.id}
+          parentId={selectedPP.parentIds[0]}
+          preselectedProject="בניין לדורות"
+          onClose={() => setShowAddTxForPP(false)}
+          onSuccess={() => {
+            setShowAddTxForPP(false)
+            // Refresh PP row balance
+            fetch(`/api/planned-payments?id=${encodeURIComponent(selectedPP.id)}`)
+              .then(r => r.json())
+              .then(d => {
+                if (Array.isArray(d) && d[0]) {
+                  setSelectedPP(prev => prev ? { ...prev, balance: d[0].balance } : prev)
+                  setRows(prev => prev.map(r => r.id === selectedPP.id ? { ...r, balance: d[0].balance } : r))
+                }
+              })
+            loadPpTx(selectedPP.id)
+          }}
+        />
+      )}
+
       {loading ? (
         <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
       ) : filtered.length === 0 ? (
@@ -531,7 +738,9 @@ function PlannedPaymentsTab() {
                 const isOverdue = r.balance > 0 && !!r.date && new Date(r.date) < today
                 const isPaid    = r.balance <= 0
                 return (
-                  <tr key={r.id} className={`hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
+                  <tr key={r.id}
+                    onClick={() => setSelectedPP(r)}
+                    className={`cursor-pointer hover:bg-blue-50/40 transition-colors ${isOverdue ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">
                       <div>{r.monthYear}</div>
@@ -557,7 +766,7 @@ function PlannedPaymentsTab() {
                         {isPaid ? 'שולם' : isOverdue ? 'באיחור' : 'פתוח'}
                       </span>
                     </td>
-                    <td className="px-2 py-2.5 text-center">
+                    <td className="px-2 py-2.5 text-center" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => deletePP(r.id)}
                         disabled={deleting === r.id}
