@@ -794,7 +794,7 @@ function TxDetailModal({ tx, onClose, onOpenCard }: {
         {tx.parentName && (
           <div className="px-5 pb-5">
             <button
-              onClick={() => { onOpenCard(tx.parentName!); onClose() }}
+              onClick={() => { onOpenCard(tx.parentIds?.[0] ?? ''); onClose() }}
               className="w-full py-2 rounded-xl text-sm font-semibold border border-[#1a3a7a] text-[#1a3a7a] hover:bg-[#1a3a7a] hover:text-white transition-colors">
               פתח כרטיס עובד
             </button>

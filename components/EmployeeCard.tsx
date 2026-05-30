@@ -870,6 +870,51 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           )}
                         </div>
                       </SectionCard>
+
+                      {/* ── תשלומים ששולמו ── */}
+                      {(() => {
+                        const salaryTxs = transactions.filter(t =>
+                          (t.projectNames ?? []).includes('משכורת') ||
+                          t.type === 'קיזוז משכר לימוד' ||
+                          t.type === 'קיזוז ממשכורת'
+                        )
+                        if (salaryTxs.length === 0) return null
+                        const months = [...new Set(salaryTxs.map(t => t.monthYear).filter(Boolean))].sort().reverse()
+                        return (
+                          <SectionCard title="תשלומי משכורת ששולמו">
+                            <div className="divide-y divide-gray-100">
+                              {months.map(my => {
+                                const mTxs = salaryTxs.filter(t => t.monthYear === my)
+                                const total = mTxs.filter(t => t.type !== 'קיזוז משכר לימוד' && t.type !== 'קיזוז ממשכורת')
+                                  .reduce((s, t) => s + Math.abs(t.amount), 0)
+                                return (
+                                  <div key={my} className="px-4 py-2.5">
+                                    <div className="flex justify-between items-center mb-1.5">
+                                      <span className="text-xs font-bold text-emerald-700">{total > 0 ? fmt(total) : ''}</span>
+                                      <span className="text-xs font-semibold text-gray-500">{my}</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {mTxs.map(t => {
+                                        const isOffset = t.type === 'קיזוז משכר לימוד' || t.type === 'קיזוז ממשכורת'
+                                        return (
+                                          <div key={t.id} className="flex justify-between items-center text-sm">
+                                            <span className={`tabular-nums font-semibold ${isOffset ? 'text-red-500' : 'text-emerald-700'}`}>
+                                              {isOffset ? '− ' : ''}{fmt(Math.abs(t.amount))}
+                                            </span>
+                                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${isOffset ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-700'}`}>
+                                              {t.type || 'משכורת'}
+                                            </span>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </SectionCard>
+                        )
+                      })()}
                     </>
                   ) : (
                     <p className="text-center text-gray-400 text-sm py-8">אין נתוני משכורת</p>
