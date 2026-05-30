@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ParentDetail, PlannedPaymentItem, TransactionItem, WomanDetail } from '@/lib/types'
-import { TransactionRow } from '@/components/TransactionCard'
+import { TransactionRow, TxDetailModal } from '@/components/TransactionCard'
+import type { Transaction } from '@/components/TransactionCard'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
@@ -264,11 +265,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [ppAmountDraft, setPPAmountDraft]     = useState('')
   const [savingPPAmount, setSavingPPAmount]   = useState(false)
   // Linked transactions in PP modal
-  const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;type:string;notes:string;isCredit:boolean}[]>([])
+  const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;parentIds:string[];projectNames:string[];isCredit:boolean}[]>([])
+  const [selectedPpTx, setSelectedPpTx]       = useState<Transaction | null>(null)
   const [loadingPpTx, setLoadingPpTx]         = useState(false)
-  const [editingPpTxId, setEditingPpTxId]     = useState<string|null>(null)
-  const [editingPpTxAmt, setEditingPpTxAmt]   = useState('')
-  const [savingPpTx, setSavingPpTx]           = useState(false)
 
   // Salary detail modal
   const [showSalaryDetail, setShowSalaryDetail] = useState(false)
@@ -1325,90 +1324,44 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           <span className="text-sm font-bold text-emerald-600">{fmt(Math.abs(tx.amount))}</span>
                           <span className="text-xs text-emerald-500">{tx.notes}</span>
                         </div>
-                      ) : editingPpTxId === tx.id ? (
-                        <div className="flex items-center gap-1.5 flex-1">
-                          <input
-                            type="number"
-                            className="w-24 border border-emerald-400 rounded px-1.5 py-0.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                            value={editingPpTxAmt}
-                            onChange={e => setEditingPpTxAmt(e.target.value)}
-                            autoFocus
-                            onKeyDown={e => {
-                              if (e.key === 'Escape') { setEditingPpTxId(null) }
-                              if (e.key === 'Enter') {
-                                const newAmt = Number(editingPpTxAmt)
-                                if (!newAmt || newAmt <= 0) return
-                                setSavingPpTx(true)
-                                fetch(`/api/transactions/${tx.id}`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ amount: newAmt }),
-                                })
-                                  .then(() => {
-                                    setEditingPpTxId(null)
-                                    if (selectedPP) {
-                                      fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
-                                        .then(r => r.json()).then(d => { if (Array.isArray(d)) setPpTxList(d) })
-                                    }
-                                    load()
-                                  })
-                                  .finally(() => setSavingPpTx(false))
-                              }
-                            }}
-                          />
-                          <button
-                            disabled={savingPpTx}
-                            onClick={() => {
-                              const newAmt = Number(editingPpTxAmt)
-                              if (!newAmt || newAmt <= 0) return
-                              setSavingPpTx(true)
-                              fetch(`/api/transactions/${tx.id}`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ amount: newAmt }),
-                              })
-                                .then(() => {
-                                  setEditingPpTxId(null)
-                                  if (selectedPP) {
-                                    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(selectedPP.id)}`)
-                                      .then(r => r.json()).then(d => { if (Array.isArray(d)) setPpTxList(d) })
-                                  }
-                                  load()
-                                })
-                                .finally(() => setSavingPpTx(false))
-                            }}
-                            className="text-emerald-600 font-bold text-xs disabled:opacity-40"
-                          >✓</button>
-                          <button onClick={() => setEditingPpTxId(null)} className="text-gray-400 text-xs">✕</button>
-                        </div>
                       ) : (
-                        <div className="flex items-center gap-2 flex-1">
+                        /* Clickable transaction row → opens TxDetailModal */
+                        <button
+                          className="flex items-center justify-between flex-1 text-right hover:bg-white/60 rounded-lg px-1 -mx-1 transition-colors"
+                          onClick={() => setSelectedPpTx({
+                            id:               tx.id,
+                            amount:           Math.abs(tx.amount),
+                            type:             tx.type,
+                            date:             tx.date,
+                            monthYear:        tx.monthYear,
+                            notes:            tx.notes,
+                            projectNames:     tx.projectNames,
+                            parentIds:        tx.parentIds,
+                            plannedPaymentId: selectedPP?.id ?? null,
+                          })}
+                        >
+                          <div className="flex items-center gap-2">
+                            {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
+                            {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
+                          </div>
                           <span className="text-sm font-bold text-emerald-700">{fmt(Math.abs(tx.amount))}</span>
-                          {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
-                          {tx.type && <span className="text-xs text-gray-400">{tx.type}</span>}
-                        </div>
+                        </button>
                       )}
-                      {!tx.isCredit && editingPpTxId !== tx.id && (
-                        <div className="flex gap-1 mr-1">
-                          <button
-                            onClick={() => { setEditingPpTxId(tx.id); setEditingPpTxAmt(String(Math.abs(tx.amount))) }}
-                            className="p-1 text-gray-400 hover:text-blue-500 text-xs"
-                            title="עריכה"
-                          >✏️</button>
-                          <button
-                            onClick={() => {
-                              if (!confirm('למחוק תשלום זה?')) return
-                              const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
-                              fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
-                                .then(() => {
-                                  setPpTxList(prev => prev.filter(t => t.id !== tx.id))
-                                  load()
-                                })
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-500 text-xs"
-                            title="מחיקה"
-                          >🗑️</button>
-                        </div>
+                      {!tx.isCredit && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            if (!confirm('למחוק תשלום זה?')) return
+                            const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
+                            fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
+                              .then(() => {
+                                setPpTxList(prev => prev.filter(t => t.id !== tx.id))
+                                load()
+                              })
+                          }}
+                          className="p-1 text-gray-300 hover:text-red-400 text-xs mr-1 shrink-0"
+                          title="מחיקה"
+                        >🗑️</button>
                       )}
                     </div>
                   ))}
@@ -1483,6 +1436,23 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
             >סגור</button>
           </div>
         </div>
+      )}
+
+      {/* ── Transaction detail modal (from PP list) ── */}
+      {selectedPpTx && (
+        <TxDetailModal
+          tx={selectedPpTx}
+          onClose={() => setSelectedPpTx(null)}
+          onSaved={updated => {
+            setPpTxList(prev => prev.map(t =>
+              t.id === updated.id
+                ? { ...t, amount: updated.amount, type: updated.type, date: updated.date, monthYear: updated.monthYear, notes: updated.notes, projectNames: updated.projectNames }
+                : t
+            ))
+            setSelectedPpTx(null)
+            load()
+          }}
+        />
       )}
 
       {/* ── Salary detail modal ── */}
