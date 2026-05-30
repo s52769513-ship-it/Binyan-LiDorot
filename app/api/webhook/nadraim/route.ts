@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
       TransactionId, Comments,
     } = payload as Record<string, string>
 
+    const dryRun = req.nextUrl.searchParams.get('dryRun') === 'true'
+
     if (!Amount || !TransactionTime) {
       return NextResponse.json({ error: 'חסרים שדות חובה: Amount, TransactionTime' }, { status: 400 })
     }
@@ -59,17 +61,22 @@ export async function POST(req: NextRequest) {
 
     // 3. Find or create parent by Zeout (ת"ז)
     let parentId: string | null = null
+    let parentFound = false
+    let parentCreated = false
     const zeout = String(Zeout ?? '').trim()
 
     if (zeout) {
-      const { data: found } = await supabaseAdmin
+      const { data: found, error: searchErr } = await supabaseAdmin
         .from('parents')
-        .select('id')
+        .select('id, name, id_number')
         .eq('id_number', zeout)
         .limit(1)
 
+      if (searchErr) throw new Error(`חיפוש הורה נכשל: ${searchErr.message}`)
+
       if (found?.[0]) {
         parentId = found[0].id
+        parentFound = true
       } else {
         // Create new parent
         const nameParts  = String(ClientName ?? '').trim().split(' ')
@@ -77,19 +84,40 @@ export async function POST(req: NextRequest) {
         const firstName  = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] ?? ''
 
         parentId = crypto.randomUUID()
-        const { error: parentErr } = await supabaseAdmin.from('parents').insert({
-          id:           parentId,
-          name:         String(ClientName ?? '').trim(),
-          first_name:   firstName,
-          last_name:    lastName,
-          id_number:    zeout,
-          father_phone: String(Phone ?? '').trim() || null,
-          email:        String(Mail  ?? '').trim() || null,
-          status:       ['תורם'],
-          synced_at:    '2099-12-31T23:59:59.999Z',
-        })
-        if (parentErr) throw new Error(`יצירת הורה נכשלה: ${parentErr.message}`)
+        parentCreated = true
+        if (!dryRun) {
+          const { error: parentErr } = await supabaseAdmin.from('parents').insert({
+            id:           parentId,
+            name:         String(ClientName ?? '').trim(),
+            first_name:   firstName,
+            last_name:    lastName,
+            id_number:    zeout,
+            father_phone: String(Phone ?? '').trim() || null,
+            email:        String(Mail  ?? '').trim() || null,
+            status:       ['תורם'],
+            synced_at:    '2099-12-31T23:59:59.999Z',
+          })
+          if (parentErr) throw new Error(`יצירת הורה נכשלה: ${parentErr.message}`)
+        }
       }
+    }
+
+    // dry run — return diagnostic info without writing
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true,
+        zeout,
+        parentFound,
+        parentCreated,
+        parentId,
+        amount,
+        currencyNote,
+        date,
+        monthYear,
+        txType:      String(TransactionType ?? '').trim() || 'נדרים',
+        projectName: String(Groupe ?? '').trim() || 'בנין לדורות',
+        clientName:  String(ClientName ?? ''),
+      })
     }
 
     // 4. Notes
