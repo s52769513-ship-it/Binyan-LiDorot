@@ -7,6 +7,7 @@ import EmployeeCard from '@/components/EmployeeCard'
 import StudentCard from '@/components/StudentCard'
 import PaymentCard from '@/components/PaymentCard'
 import dynamic from 'next/dynamic'
+import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddParentModal = dynamic(() => import('@/components/AddParentModal'), { ssr: false })
 
@@ -57,6 +58,7 @@ export default function ParentsPage() {
   }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren])
 
   useEffect(() => { loadParents() }, [loadParents])
+  useRealtimeRefresh(loadParents, ['parents', 'transactions', 'planned_payments'])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')

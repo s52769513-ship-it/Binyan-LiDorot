@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AddTransactionModal from '@/components/AddTransactionModal'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
+import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -58,7 +59,7 @@ export default function TransactionsPage() {
 
   const PAGE_SIZE = 50
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page) })
     if (debouncedSearch) params.set('search', debouncedSearch)
@@ -77,10 +78,11 @@ export default function TransactionsPage() {
       })
       .catch(() => setError('שגיאה בטעינת תנועות'))
       .finally(() => setLoading(false))
-  }
+  }, [page, debouncedSearch, month, type, project])
 
   useEffect(() => { setPage(0) }, [debouncedSearch, month, type, project])
-  useEffect(() => { load() }, [page, debouncedSearch, month, type, project])
+  useEffect(() => { load() }, [load])
+  useRealtimeRefresh(load, 'transactions')
 
   const totalIncome  = useMemo(() => rows.filter(r => r.amount > 0).reduce((s, r) => s + r.amount, 0), [rows])
   const totalExpense = useMemo(() => rows.filter(r => r.amount < 0).reduce((s, r) => s + r.amount, 0), [rows])

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ParentDetail, PlannedPaymentItem, TransactionItem, WomanDetail } from '@/lib/types'
 import { TransactionRow } from '@/components/TransactionCard'
+import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
@@ -300,6 +301,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   }, [parentId])
 
   useEffect(() => { load() }, [load])
+  useRealtimeRefresh(load, ['transactions', 'planned_payments', 'parents'])
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
