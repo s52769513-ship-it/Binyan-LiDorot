@@ -18,14 +18,14 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('parents')
       .select(
-        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance',
+        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance, id_number',
         { count: 'exact' }
       )
 
     if (search.trim()) {
       const q = search.trim()
       query = query.or(
-        `name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%`
+        `name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
       )
     }
 
