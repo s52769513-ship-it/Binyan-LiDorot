@@ -337,23 +337,30 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
 
   const [draft, setDraft]       = useState<Transaction>(tx)
   const [saving, setSaving]     = useState(false)
-  const [ppInfo, setPpInfo]     = useState<{ name: string; amount: number; balance: number } | null>(null)
+  const [ppInfo, setPpInfo]     = useState<{ name: string; amount: number; balance: number; date: string; monthYear: string } | null>(null)
+  const [ppTxTotal, setPpTxTotal] = useState<number | null>(null)
   const [ppLoading, setPpLoading] = useState(false)
   const [ppError, setPpError]   = useState(false)
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
 
-  // Load PP info by direct ID lookup
+  // Load PP info by direct ID lookup + compute paid amount from linked transactions
   useEffect(() => {
-    if (!tx.plannedPaymentId) { setPpInfo(null); return }
+    if (!tx.plannedPaymentId) { setPpInfo(null); setPpTxTotal(null); return }
     setPpLoading(true); setPpError(false)
-    fetch(`/api/planned-payments?id=${encodeURIComponent(tx.plannedPaymentId)}`)
-      .then(r => r.json())
-      .then((list: { id: string; name: string; amount: number; balance: number }[]) => {
-        const pp = Array.isArray(list) ? list[0] : null
-        if (pp) setPpInfo({ name: pp.name, amount: pp.amount, balance: pp.balance })
+    Promise.all([
+      fetch(`/api/planned-payments?id=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
+      fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
+    ])
+      .then(([ppList, txList]) => {
+        const pp = Array.isArray(ppList) ? ppList[0] : null
+        if (pp) setPpInfo({ name: pp.name, amount: pp.amount, balance: pp.balance, date: pp.date ?? '', monthYear: pp.monthYear ?? '' })
         else setPpError(true)
+        if (Array.isArray(txList)) {
+          const total = txList.filter((t: { isCredit?: boolean }) => !t.isCredit).reduce((s: number, t: { amount: number }) => s + Math.abs(t.amount), 0)
+          setPpTxTotal(total)
+        }
       })
       .catch(() => setPpError(true))
       .finally(() => setPpLoading(false))
@@ -471,23 +478,56 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
               <div className="text-xs text-gray-400 text-center py-2">טוען תשלום מתוכנן...</div>
             ) : ppError ? (
               <div className="text-xs text-red-400 text-center py-2">לא נמצא תשלום מתוכנן</div>
-            ) : ppInfo ? (
-              <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
-                <div className="flex justify-between items-center">
-                  <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
-                    className="text-xs text-red-400 hover:text-red-600">נתק</button>
-                  <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
+            ) : ppInfo ? (() => {
+              // Use actual paid transactions sum; fallback to DB balance delta
+              const paid = ppTxTotal !== null ? ppTxTotal : (ppInfo.amount - ppInfo.balance)
+              const remaining = Math.max(0, ppInfo.amount - paid)
+              return (
+                <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
+                  {/* Header: title + unlink */}
+                  <div className="flex justify-between items-center">
+                    <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
+                      className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                    <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
+                  </div>
+
+                  {/* PP name + dates — clickable to open parent */}
+                  <button
+                    onClick={() => { if (onOpenParent && tx.parentIds?.[0]) { onOpenParent(tx.parentIds[0]); onClose() } }}
+                    className="w-full text-right group"
+                    disabled={!onOpenParent || !tx.parentIds?.[0]}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="text-right">
+                        {ppInfo.date && (
+                          <div className="text-xs text-indigo-500 group-hover:text-indigo-700 transition-colors">
+                            {hebrewDate(ppInfo.date)}
+                          </div>
+                        )}
+                        {ppInfo.monthYear && (
+                          <div className="text-[10px] text-gray-400">{ppInfo.monthYear}</div>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold text-indigo-800 group-hover:underline">
+                        {ppInfo.name}
+                        {onOpenParent && tx.parentIds?.[0] && <span className="text-indigo-400 text-xs mr-1">↗</span>}
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Amounts */}
+                  <div className="flex justify-between text-sm border-t border-indigo-100 pt-1.5">
+                    <span className={`font-medium ${remaining > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {remaining > 0 ? `${fmtIL(remaining)} נשאר` : '✓ שולם במלואו'}
+                    </span>
+                    <span className="text-gray-500 text-xs">{fmtIL(ppInfo.amount)} סכום מלא</span>
+                  </div>
+                  {paid > 0 && (
+                    <div className="text-xs text-emerald-600">{fmtIL(paid)} שולם</div>
+                  )}
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-amber-600 font-medium">{fmtIL(ppInfo.balance)} נשאר</span>
-                  <span className="text-gray-600">{ppInfo.name}</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400">
-                  <span>{fmtIL(ppInfo.amount - ppInfo.balance)} שולם</span>
-                  <span>{fmtIL(ppInfo.amount)} סכום מלא</span>
-                </div>
-              </div>
-            ) : null
+              )
+            })() : null
           )}
           {unlinking && (
             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">הקישור לתשלום המתוכנן יוסר בשמירה</div>
