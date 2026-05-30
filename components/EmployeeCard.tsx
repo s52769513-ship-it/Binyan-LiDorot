@@ -358,16 +358,22 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   // Planned payment helpers
   const today = new Date(); today.setHours(0,0,0,0)
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
-  const overduePPs = (parent?.plannedPayments ?? []).filter(isOverdue)
-  const pendingPPs = (parent?.plannedPayments ?? []).filter(pp => !isOverdue(pp) && pp.balance > 0)
-  const paidPPs    = (parent?.plannedPayments ?? []).filter(pp => pp.balance <= 0)
+
+  // Tuition PPs only (for payments tab)
+  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.name !== 'משכורת')
+  const overduePPs = tuitionPPs_all.filter(isOverdue)
+  const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
+  const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
   const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
 
+  // Salary PPs (for salary tab)
+  const salaryPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.name === 'משכורת')
+
   const currentMonth    = `${String(new Date().getMonth()+1).padStart(2,'0')}/${new Date().getFullYear()}`
-  const thisMonthPP     = (parent?.plannedPayments ?? []).filter(p => p.monthYear === currentMonth)
+  const thisMonthPP     = tuitionPPs_all.filter(p => p.monthYear === currentMonth)
   const paidThisMonth   = thisMonthPP.reduce((s, p) => s + Math.max(0, p.amount - p.balance), 0)
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
-  const totalDebt       = (parent?.plannedPayments ?? []).reduce((s, p) => s + Math.max(0, p.balance), 0)
+  const totalDebt       = tuitionPPs_all.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'details',  label: 'פרטים' },
@@ -701,7 +707,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               )}
 
               {/* Two-panel: pending | paid */}
-              {parent.plannedPayments.length === 0 ? (
+              {tuitionPPs_all.length === 0 ? (
                 <p className="text-center text-gray-400 text-sm py-6">אין תשלומים מתוכננים</p>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -883,6 +889,39 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           )}
                         </div>
                       </SectionCard>
+
+                      {/* ── תשלומים מתוכננים של משכורת ── */}
+                      {salaryPPs_all.length > 0 && (() => {
+                        const salaryOverdue  = salaryPPs_all.filter(isOverdue)
+                        const salaryPending  = salaryPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
+                        const salaryPaid     = salaryPPs_all.filter(pp => pp.balance <= 0)
+                        return (
+                          <SectionCard title="תשלומים מתוכננים - משכורת">
+                            <div className="divide-y divide-gray-50">
+                              {[...salaryOverdue, ...salaryPending].map(pp => (
+                                <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                                  className={`w-full text-right flex justify-between items-center px-4 py-2.5 hover:bg-gray-50 transition-colors ${isOverdue(pp) ? 'bg-red-50' : ''}`}>
+                                  <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>{fmt(pp.balance)}</span>
+                                  <div className="text-right">
+                                    <p className="text-xs text-gray-500">{pp.monthYear}</p>
+                                    {isOverdue(pp) && <p className="text-[10px] text-red-400">⚠ באיחור</p>}
+                                  </div>
+                                </button>
+                              ))}
+                              {salaryPaid.map(pp => (
+                                <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                                  className="w-full text-right flex justify-between items-center px-4 py-2.5 hover:bg-emerald-50 transition-colors">
+                                  <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                                  <p className="text-xs text-gray-500">{pp.monthYear}</p>
+                                </button>
+                              ))}
+                              {salaryOverdue.length === 0 && salaryPending.length === 0 && salaryPaid.length === 0 && (
+                                <p className="text-xs text-gray-400 text-center py-3">אין תשלומים</p>
+                              )}
+                            </div>
+                          </SectionCard>
+                        )
+                      })()}
 
                       {/* ── תשלומים ששולמו ── */}
                       {(() => {

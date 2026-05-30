@@ -34,6 +34,7 @@ export interface TransactionItem {
   monthYear: string
   notes: string
   projectNames: string[]
+  plannedPaymentId?: string | null
 }
 
 export interface DebtItem {

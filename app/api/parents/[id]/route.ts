@@ -307,6 +307,7 @@ export async function GET(
         monthYear: tx.month_year ?? '',
         notes: tx.notes ?? '',
         projectNames: (tx.project_names as string[]) ?? [],
+        plannedPaymentId: tx.planned_payment_id ?? null,
       })),
     })
   } catch (err) {

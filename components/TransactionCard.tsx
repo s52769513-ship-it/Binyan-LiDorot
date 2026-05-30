@@ -12,6 +12,7 @@ export interface Transaction {
   projectNames: string[]
   parentName?: string
   parentIds?: string[]
+  plannedPaymentId?: string | null
 }
 
 interface Props {
@@ -319,23 +320,54 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
 }
 
 /* ─── Transaction Detail Modal ─────────────────────────────── */
-export function TxDetailModal({ tx, onClose, onOpenParent }: {
+export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   tx: Transaction
   onClose: () => void
   onOpenParent?: (id: string) => void
+  onSaved?: (updated: Transaction) => void
 }) {
   const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
-  const fmtD  = (d: string) => { if (!d) return '—'; const [y,m,day] = d.split('-'); return day ? `${day}/${m}/${y}` : d }
 
-  const rows: { label: string; value: string; highlight?: boolean }[] = [
-    tx.parentName ? { label: 'שם', value: tx.parentName } : null,
-    { label: 'תאריך', value: fmtD(tx.date) },
-    { label: 'חודש', value: tx.monthYear || '—' },
-    { label: 'אמצעי תשלום', value: tx.type || '—' },
-    { label: 'סכום', value: fmtIL(tx.amount), highlight: true },
-    tx.projectNames?.length ? { label: 'קטגוריה', value: tx.projectNames.join(', ') } : null,
-    tx.notes ? { label: 'הערות', value: tx.notes } : null,
-  ].filter(Boolean) as { label: string; value: string; highlight?: boolean }[]
+  const [draft, setDraft]     = useState<Transaction>(tx)
+  const [saving, setSaving]   = useState(false)
+  const [ppInfo, setPpInfo]   = useState<{ name: string; amount: number; balance: number } | null>(null)
+  const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
+
+  // Load PP info if linked
+  useEffect(() => {
+    if (!tx.plannedPaymentId) { setPpInfo(null); return }
+    fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(tx.plannedPaymentId)}`)
+      .catch(() => null)
+    // Fetch PP details directly
+    fetch(`/api/planned-payments`)
+      .then(r => r.json())
+      .then((list: { id: string; name: string; amount: number; balance: number }[]) => {
+        const pp = list.find(p => p.id === tx.plannedPaymentId)
+        if (pp) setPpInfo({ name: pp.name, amount: pp.amount, balance: pp.balance })
+      })
+      .catch(() => null)
+  }, [tx.plannedPaymentId])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const body: Record<string, unknown> = {}
+      if (draft.amount    !== tx.amount)    body.amount    = draft.amount
+      if (draft.type      !== tx.type)      body.type      = draft.type
+      if (draft.date      !== tx.date)      body.date      = draft.date
+      if (draft.monthYear !== tx.monthYear) body.month_year = draft.monthYear
+      if (draft.notes     !== tx.notes)     body.notes     = draft.notes
+      if (draft.plannedPaymentId !== tx.plannedPaymentId)
+        body.planned_payment_id = draft.plannedPaymentId ?? null
+
+      if (Object.keys(body).length === 0) return
+      const r = await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (r.ok) { onSaved?.(draft); onClose() }
+    } finally { setSaving(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -344,23 +376,98 @@ export function TxDetailModal({ tx, onClose, onOpenParent }: {
           <span className="text-sm font-bold" style={{ color: '#d4a921' }}>פירוט תנועה</span>
           <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
         </div>
-        <div className="p-5 space-y-3">
-          {rows.map(r => (
-            <div key={r.label} className="flex items-center justify-between gap-4">
-              <span className="text-xs text-gray-400 shrink-0">{r.label}</span>
-              <span className={`text-sm font-medium text-right ${r.highlight ? 'text-emerald-700 text-base font-bold' : 'text-gray-800'}`}>{r.value}</span>
+
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          {tx.parentName && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-400">שם</span>
+              <span className="text-sm font-medium text-gray-800">{tx.parentName}</span>
             </div>
-          ))}
+          )}
+
+          {/* Amount */}
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-xs text-gray-400 shrink-0">סכום</span>
+            <input type="number" value={draft.amount} onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
+              className="text-base font-bold text-emerald-700 text-left w-28 border-b border-gray-200 focus:border-emerald-400 focus:outline-none bg-transparent" />
+          </div>
+
+          {/* Type */}
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-xs text-gray-400 shrink-0">אמצעי תשלום</span>
+            <input value={draft.type} onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
+              className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
+          </div>
+
+          {/* Date */}
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-xs text-gray-400 shrink-0">תאריך</span>
+            <input type="date" value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))}
+              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
+          </div>
+
+          {/* Month */}
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-xs text-gray-400 shrink-0">חודש</span>
+            <input value={draft.monthYear} onChange={e => setDraft(d => ({ ...d, monthYear: e.target.value }))}
+              placeholder="MM/YYYY" className="text-sm text-gray-800 text-right w-24 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
+          </div>
+
+          {/* Project */}
+          {tx.projectNames?.length > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
+              <span className="text-sm text-gray-700">{tx.projectNames.join(', ')}</span>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className="flex justify-between items-start gap-3">
+            <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
+            <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
+              rows={2} className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent resize-none" />
+          </div>
+
+          {/* Linked PP */}
+          {ppInfo && (
+            <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
+              <div className="flex justify-between items-center">
+                <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
+                  className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-amber-600 font-medium">{fmtIL(ppInfo.balance)} נשאר</span>
+                <span className="text-gray-600">{ppInfo.name}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>{fmtIL(ppInfo.amount)} סכום מלא</span>
+                <span>{fmtIL(ppInfo.amount - ppInfo.balance)} שולם</span>
+              </div>
+            </div>
+          )}
+          {!ppInfo && tx.plannedPaymentId && (
+            <div className="text-xs text-gray-400 text-center">טוען פרטי תשלום מתוכנן...</div>
+          )}
+          {draft.plannedPaymentId !== tx.plannedPaymentId && draft.plannedPaymentId === null && (
+            <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">הקישור לתשלום המתוכנן יוסר בשמירה</div>
+          )}
         </div>
-        {onOpenParent && tx.parentIds?.[0] && (
-          <div className="px-5 pb-5">
-            <button
-              onClick={() => { onOpenParent(tx.parentIds![0]); onClose() }}
+
+        <div className="px-5 pb-5 pt-3 space-y-2 border-t border-gray-100">
+          {dirty && (
+            <button onClick={save} disabled={saving}
+              className="w-full py-2 rounded-xl text-sm font-semibold bg-[#1a3a7a] text-white hover:bg-[#0d1f52] disabled:opacity-60 transition-colors">
+              {saving ? 'שומר...' : 'שמור שינויים'}
+            </button>
+          )}
+          {onOpenParent && tx.parentIds?.[0] && (
+            <button onClick={() => { onOpenParent(tx.parentIds![0]); onClose() }}
               className="w-full py-2 rounded-xl text-sm font-semibold border border-[#1a3a7a] text-[#1a3a7a] hover:bg-[#1a3a7a] hover:text-white transition-colors">
               פתח כרטיס הורה
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
