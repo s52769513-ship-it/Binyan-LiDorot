@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AddTransactionModal from '@/components/AddTransactionModal'
 import EmployeeCard from '@/components/EmployeeCard'
+import { TxDetailModal } from '@/components/TransactionCard'
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -50,6 +51,7 @@ export default function TransactionsPage() {
   const [error, setError]       = useState('')
   const [showAdd, setShowAdd]   = useState(false)
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
+  const [selectedTx, setSelectedTx] = useState<TxRow | null>(null)
 
   const [debouncedSearch, setDebouncedSearch] = useState('')
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 350); return () => clearTimeout(t) }, [search])
@@ -174,9 +176,10 @@ export default function TransactionsPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map(tx => (
-                  <tr key={tx.id} className="hover:bg-gray-50/60 transition-colors">
+                  <tr key={tx.id} onClick={() => setSelectedTx(tx)}
+                    className="hover:bg-blue-50/40 cursor-pointer transition-colors">
                     <td className="px-4 py-3 text-sm text-gray-500 tabular-nums whitespace-nowrap">{fmtDate(tx.date)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {tx.parentName ? (
                         <button onClick={() => setSelectedParent(tx.parentIds[0])}
                           className="text-sm font-medium text-[#1a3a7a] hover:underline">
@@ -229,6 +232,13 @@ export default function TransactionsPage() {
 
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onSuccess={() => { setShowAdd(false); load() }} />}
       {selectedParent && <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />}
+      {selectedTx && (
+        <TxDetailModal
+          tx={{ ...selectedTx, projectNames: selectedTx.projectNames }}
+          onClose={() => setSelectedTx(null)}
+          onOpenParent={id => { setSelectedTx(null); setSelectedParent(id) }}
+        />
+      )}
     </div>
   )
 }

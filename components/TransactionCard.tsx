@@ -10,12 +10,15 @@ export interface Transaction {
   monthYear: string
   notes: string
   projectNames: string[]
+  parentName?: string
+  parentIds?: string[]
 }
 
 interface Props {
   tx: Transaction
   onUpdate: (updated: Transaction) => void
   onDelete: (id: string) => void
+  onOpenParent?: (parentId: string) => void
 }
 
 const HLETTERS_ONES    = ['','א','ב','ג','ד','ה','ו','ז','ח','ט']
@@ -315,11 +318,60 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
   )
 }
 
+/* ─── Transaction Detail Modal ─────────────────────────────── */
+export function TxDetailModal({ tx, onClose, onOpenParent }: {
+  tx: Transaction
+  onClose: () => void
+  onOpenParent?: (id: string) => void
+}) {
+  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  const fmtD  = (d: string) => { if (!d) return '—'; const [y,m,day] = d.split('-'); return day ? `${day}/${m}/${y}` : d }
+
+  const rows: { label: string; value: string; highlight?: boolean }[] = [
+    tx.parentName ? { label: 'שם', value: tx.parentName } : null,
+    { label: 'תאריך', value: fmtD(tx.date) },
+    { label: 'חודש', value: tx.monthYear || '—' },
+    { label: 'אמצעי תשלום', value: tx.type || '—' },
+    { label: 'סכום', value: fmtIL(tx.amount), highlight: true },
+    tx.projectNames?.length ? { label: 'קטגוריה', value: tx.projectNames.join(', ') } : null,
+    tx.notes ? { label: 'הערות', value: tx.notes } : null,
+  ].filter(Boolean) as { label: string; value: string; highlight?: boolean }[]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+          <span className="text-sm font-bold" style={{ color: '#d4a921' }}>פירוט תנועה</span>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          {rows.map(r => (
+            <div key={r.label} className="flex items-center justify-between gap-4">
+              <span className="text-xs text-gray-400 shrink-0">{r.label}</span>
+              <span className={`text-sm font-medium text-right ${r.highlight ? 'text-emerald-700 text-base font-bold' : 'text-gray-800'}`}>{r.value}</span>
+            </div>
+          ))}
+        </div>
+        {onOpenParent && tx.parentIds?.[0] && (
+          <div className="px-5 pb-5">
+            <button
+              onClick={() => { onOpenParent(tx.parentIds![0]); onClose() }}
+              className="w-full py-2 rounded-xl text-sm font-semibold border border-[#1a3a7a] text-[#1a3a7a] hover:bg-[#1a3a7a] hover:text-white transition-colors">
+              פתח כרטיס הורה
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* Compact row variant for use inside tables */
-export function TransactionRow({ tx, onUpdate, onDelete }: Props) {
+export function TransactionRow({ tx, onUpdate, onDelete, onOpenParent }: Props) {
   const [local, setLocal] = useState<Transaction>(tx)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
 
   const patch = async (fields: Partial<Transaction>) => {
     const next = { ...local, ...fields }
@@ -348,7 +400,11 @@ export function TransactionRow({ tx, onUpdate, onDelete }: Props) {
   }
 
   return (
-    <tr className="border-b border-gray-100 hover:bg-gray-50/50" dir="rtl">
+    <>
+      {showDetail && (
+        <TxDetailModal tx={local} onClose={() => setShowDetail(false)} onOpenParent={onOpenParent} />
+      )}
+    <tr onClick={() => setShowDetail(true)} className="border-b border-gray-100 hover:bg-blue-50/40 cursor-pointer transition-colors" dir="rtl">
       <td className="px-3 py-2 text-sm">
         <div className="text-xs">{hebrewDate(local.date)}</div>
         <div className="text-gray-400 text-xs">{local.date}</div>
@@ -369,7 +425,7 @@ export function TransactionRow({ tx, onUpdate, onDelete }: Props) {
             ))
           : <span className="text-gray-300">—</span>}
       </td>
-      <td className="px-3 py-2 text-right">
+      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)} className="text-gray-300 hover:text-red-400 text-xs">✕</button>
         ) : (
@@ -383,5 +439,6 @@ export function TransactionRow({ tx, onUpdate, onDelete }: Props) {
         )}
       </td>
     </tr>
+    </>
   )
 }
