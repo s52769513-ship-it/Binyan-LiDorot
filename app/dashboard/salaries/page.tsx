@@ -48,6 +48,7 @@ interface Transaction {
   notes: string
   parentIds: string[]
   parentName?: string
+  projectNames?: string[]
 }
 
 function fmt(n: number) {
@@ -645,6 +646,7 @@ function ActualTab() {
   const [monthFilter, setMonth]         = useState('')
   const [showAdd, setShowAdd]           = useState(false)
   const [openCard, setOpenCard]         = useState<string | null>(null)
+  const [selectedTx, setSelectedTx]     = useState<Transaction | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -713,12 +715,10 @@ function ActualTab() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map(tx => (
-                <tr key={tx.id} className="hover:bg-gray-50">
+                <tr key={tx.id} onClick={() => setSelectedTx(tx)}
+                  className="hover:bg-blue-50 cursor-pointer transition-colors">
                   <td className="px-4 py-2.5 font-medium text-gray-800">
-                    {tx.parentName
-                      ? <button onClick={() => setOpenCard(tx.parentName!)} className="text-[#1a3a7a] hover:underline">{tx.parentName}</button>
-                      : <span className="text-gray-500 italic">{tx.notes || '—'}</span>
-                    }
+                    <span className="text-[#1a3a7a]">{tx.parentName || <span className="text-gray-500 italic">{tx.notes || '—'}</span>}</span>
                     {tx.notes && tx.parentName && <p className="text-xs text-gray-400">{tx.notes}</p>}
                   </td>
                   <td className="px-4 py-2.5 text-gray-500">{tx.monthYear || '—'}</td>
@@ -742,6 +742,13 @@ function ActualTab() {
         </div>
       )}
 
+      {selectedTx && (
+        <TxDetailModal
+          tx={selectedTx}
+          onClose={() => setSelectedTx(null)}
+          onOpenCard={id => setOpenCard(id)}
+        />
+      )}
       {openCard && <EmployeeCard parentId={openCard} onClose={() => setOpenCard(null)} />}
       {showAdd && (
         <AddTransactionModal
@@ -750,6 +757,50 @@ function ActualTab() {
           onSuccess={() => { setShowAdd(false); load() }}
         />
       )}
+    </div>
+  )
+}
+
+/* ─── Transaction Detail Modal ─── */
+function TxDetailModal({ tx, onClose, onOpenCard }: {
+  tx: Transaction
+  onClose: () => void
+  onOpenCard: (id: string) => void
+}) {
+  const rows: { label: string; value: string; highlight?: boolean }[] = [
+    { label: 'שם עובד',       value: tx.parentName || '—' },
+    { label: 'חודש',          value: tx.monthYear   || '—' },
+    { label: 'תאריך תשלום',   value: fmtDate(tx.date) },
+    { label: 'אמצעי תשלום',   value: tx.type        || '—' },
+    { label: 'סכום',          value: fmt(Math.abs(tx.amount)), highlight: true },
+    { label: 'פרויקט',        value: (tx.projectNames ?? []).join(', ') || '—' },
+    { label: 'הערות',         value: tx.notes       || '—' },
+  ]
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+          <span className="text-sm font-bold" style={{ color: '#d4a921' }}>💸 פירוט תשלום משכורת</span>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+        </div>
+        <div className="p-5 space-y-2.5">
+          {rows.map(r => (
+            <div key={r.label} className="flex items-center justify-between gap-3">
+              <span className="text-xs text-gray-400 shrink-0">{r.label}</span>
+              <span className={`text-sm font-medium text-right ${r.highlight ? 'text-emerald-700 text-base font-bold' : 'text-gray-800'}`}>{r.value}</span>
+            </div>
+          ))}
+        </div>
+        {tx.parentName && (
+          <div className="px-5 pb-5">
+            <button
+              onClick={() => { onOpenCard(tx.parentName!); onClose() }}
+              className="w-full py-2 rounded-xl text-sm font-semibold border border-[#1a3a7a] text-[#1a3a7a] hover:bg-[#1a3a7a] hover:text-white transition-colors">
+              פתח כרטיס עובד
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
