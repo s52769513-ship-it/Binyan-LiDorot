@@ -291,9 +291,56 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     setLoading(true); setError('')
     fetch(`/api/parents/${parentId}`)
       .then(r => r.json())
-      .then(d => {
-        if (d.error) setError(d.error)
-        else { setParent(d); setTransactions(d.transactions ?? []) }
+      .then(async d => {
+        if (d.error) { setError(d.error); return }
+        setParent(d); setTransactions(d.transactions ?? [])
+
+        // Auto-apply ppCredit to open tuition PPs (oldest first)
+        const credit = Number(d.ppCredit) || 0
+        if (credit > 0) {
+          const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
+            (d.plannedPayments ?? [])
+              .filter((pp: { name: string; balance: number }) => pp.name !== 'משכורת' && pp.balance > 0)
+              .sort((a: { monthYear: string }, b: { monthYear: string }) => {
+                const [am, ay] = a.monthYear.split('/').map(Number)
+                const [bm, by] = b.monthYear.split('/').map(Number)
+                return ay !== by ? ay - by : am - bm
+              })
+
+          let remaining = credit
+          for (const pp of openTuitionPPs) {
+            if (remaining <= 0) break
+            const applied    = Math.min(remaining, pp.balance)
+            const newBalance = pp.balance - applied
+            remaining -= applied
+            // Update PP balance
+            await fetch('/api/planned-payments', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: pp.id, balance: newBalance }),
+            })
+            // Create a credit transaction linked to the PP
+            await fetch('/api/transactions', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: applied, type: 'זיכוי', date: new Date().toISOString().split('T')[0],
+                monthYear: pp.monthYear || '', notes: 'זיכוי שמור',
+                parentIds: [parentId], projectNames: ['בנין לדורות'],
+                plannedPaymentId: pp.id,
+              }),
+            })
+          }
+          // Update ppCredit to remaining
+          if (remaining !== credit) {
+            await fetch(`/api/parents/${parentId}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ppCredit: remaining }),
+            })
+            // Reload to get fresh data
+            fetch(`/api/parents/${parentId}`).then(r => r.json()).then(fresh => {
+              if (!fresh.error) { setParent(fresh); setTransactions(fresh.transactions ?? []) }
+            })
+          }
+        }
       })
       .catch(() => setError('שגיאה'))
       .finally(() => setLoading(false))
@@ -424,17 +471,19 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           </div>
 
           {/* Financial strip */}
-          {parent && (
+          {parent && (() => {
+            const net = overdueTotal - (parent.ppCredit ?? 0)
+            return (
             <div className="flex gap-px mb-0 mt-1">
               <div className="flex-1 bg-white/10 rounded-tl-xl px-3 py-2 text-center">
-                {overdueTotal > 0 ? (
+                {net > 0 ? (
                   <>
-                    <p className="text-base font-bold tabular-nums text-red-300">{fmt(overdueTotal)}</p>
+                    <p className="text-base font-bold tabular-nums text-red-300">{fmt(net)}</p>
                     <p className="text-[10px] text-white/50">חוב באיחור</p>
                   </>
-                ) : (parent.ppCredit ?? 0) > 0 ? (
+                ) : net < 0 ? (
                   <>
-                    <p className="text-base font-bold tabular-nums text-emerald-300">{fmt(parent.ppCredit)}</p>
+                    <p className="text-base font-bold tabular-nums text-emerald-300">{fmt(Math.abs(net))}</p>
                     <p className="text-[10px] text-white/50">זכות</p>
                   </>
                 ) : (
@@ -466,7 +515,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               })()}
               {parent.salaryGross === 0 && <div className="flex-1 bg-white/10 rounded-tr-xl" />}
             </div>
-          )}
+            )
+          })()}
 
           {/* Tabs + quick actions */}
           <div className="flex items-center gap-0.5 mt-2" dir="rtl">
