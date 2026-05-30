@@ -287,6 +287,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [settingsDraft, setSettingsDraft]             = useState<Record<string, string | number | boolean>>({})
   const [savingSettings, setSavingSettings]           = useState(false)
 
+  const creditApplyingRef = useRef(false)
+
   const load = useCallback(() => {
     setLoading(true); setError('')
     fetch(`/api/parents/${parentId}`)
@@ -296,49 +298,51 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
         setParent(d); setTransactions(d.transactions ?? [])
 
         // Auto-apply ppCredit to open tuition PPs (oldest first)
+        // Guard prevents concurrent/duplicate application triggered by Realtime refreshes
         const credit = Number(d.ppCredit) || 0
-        if (credit > 0) {
-          const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
-            (d.plannedPayments ?? [])
-              .filter((pp: { name: string; balance: number }) => pp.name !== 'משכורת' && pp.balance > 0)
-              .sort((a: { monthYear: string }, b: { monthYear: string }) => {
-                const [am, ay] = a.monthYear.split('/').map(Number)
-                const [bm, by] = b.monthYear.split('/').map(Number)
-                return ay !== by ? ay - by : am - bm
-              })
+        if (credit > 0 && !creditApplyingRef.current) {
+          creditApplyingRef.current = true
+          try {
+            const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
+              (d.plannedPayments ?? [])
+                .filter((pp: { name: string; balance: number }) => pp.name !== 'משכורת' && pp.balance > 0)
+                .sort((a: { monthYear: string }, b: { monthYear: string }) => {
+                  const [am, ay] = a.monthYear.split('/').map(Number)
+                  const [bm, by] = b.monthYear.split('/').map(Number)
+                  return ay !== by ? ay - by : am - bm
+                })
 
-          let remaining = credit
-          for (const pp of openTuitionPPs) {
-            if (remaining <= 0) break
-            const applied    = Math.min(remaining, pp.balance)
-            const newBalance = pp.balance - applied
-            remaining -= applied
-            // Update PP balance
-            await fetch('/api/planned-payments', {
-              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: pp.id, balance: newBalance }),
-            })
-            // Create a credit transaction linked to the PP
-            await fetch('/api/transactions', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                amount: applied, type: 'זיכוי', date: new Date().toISOString().split('T')[0],
-                monthYear: pp.monthYear || '', notes: 'זיכוי שמור',
-                parentIds: [parentId], projectNames: ['בנין לדורות'],
-                plannedPaymentId: pp.id,
-              }),
-            })
-          }
-          // Update ppCredit to remaining
-          if (remaining !== credit) {
-            await fetch(`/api/parents/${parentId}`, {
-              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ppCredit: remaining }),
-            })
-            // Reload to get fresh data
-            fetch(`/api/parents/${parentId}`).then(r => r.json()).then(fresh => {
-              if (!fresh.error) { setParent(fresh); setTransactions(fresh.transactions ?? []) }
-            })
+            let remaining = credit
+            for (const pp of openTuitionPPs) {
+              if (remaining <= 0) break
+              const applied    = Math.min(remaining, pp.balance)
+              const newBalance = pp.balance - applied
+              remaining -= applied
+              await fetch('/api/planned-payments', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: pp.id, balance: newBalance }),
+              })
+              await fetch('/api/transactions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  amount: applied, type: 'זיכוי', date: new Date().toISOString().split('T')[0],
+                  monthYear: pp.monthYear || '', notes: 'זיכוי שמור',
+                  parentIds: [parentId], projectNames: ['בנין לדורות'],
+                  plannedPaymentId: pp.id,
+                }),
+              })
+            }
+            if (remaining !== credit) {
+              await fetch(`/api/parents/${parentId}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ppCredit: remaining }),
+              })
+              fetch(`/api/parents/${parentId}`).then(r => r.json()).then(fresh => {
+                if (!fresh.error) { setParent(fresh); setTransactions(fresh.transactions ?? []) }
+              })
+            }
+          } finally {
+            creditApplyingRef.current = false
           }
         }
       })

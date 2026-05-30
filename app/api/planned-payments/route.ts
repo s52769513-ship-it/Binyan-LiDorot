@@ -63,7 +63,10 @@ export async function PATCH(req: NextRequest) {
 
     // Direct balance override (e.g. recomputed from linked transactions)
     if ('balance' in body && !('amount' in body)) {
-      const newBalance = Math.max(0, Number(body.balance))
+      const { data: existing } = await supabaseAdmin
+        .from('planned_payments').select('amount').eq('id', id).single()
+      const cap = existing?.amount != null ? Number(existing.amount) : Infinity
+      const newBalance = Math.min(cap, Math.max(0, Number(body.balance)))
       const { error } = await supabaseAdmin
         .from('planned_payments')
         .update({ balance: newBalance })
