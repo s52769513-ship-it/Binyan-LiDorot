@@ -422,7 +422,7 @@ function hebrewDate(iso: string): string {
 
 /* ─── PlannedPaymentsTab ─────────────────────────────── */
 interface PPRow {
-  id: string; name: string; amount: number; balance: number
+  id: string; name: string; ppType: string; amount: number; balance: number
   date: string; monthYear: string; parentIds: string[]; parentName: string
 }
 
