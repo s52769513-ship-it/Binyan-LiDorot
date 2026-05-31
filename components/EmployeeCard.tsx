@@ -9,6 +9,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
+const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
 
 /* ─── helpers ──────────────────────────────────────── */
 const fmt = (n: number) =>
@@ -274,6 +275,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   // Generate year planned payments
   const [generatingYear, setGeneratingYear]     = useState(false)
   const [yearGenResult, setYearGenResult]       = useState<{ created: string[]; skipped: string[] } | null>(null)
+  const [showReport, setShowReport]             = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -461,7 +463,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
         {/* ── HEADER ── */}
         <div className="px-5 pt-4 pb-0 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)' }}>
           <div className="flex items-start justify-between mb-2">
-            <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            <div className="flex items-center gap-1">
+              <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+              {parent && (
+                <button
+                  onClick={() => setShowReport(true)}
+                  className="px-2.5 py-1 rounded-lg text-white/70 hover:text-white hover:bg-white/10 text-xs font-medium leading-none border border-white/20 hover:border-white/40 transition-all"
+                  title="הפקת דוח"
+                >
+                  📄 דוח
+                </button>
+              )}
+            </div>
             <div className="text-right flex-1 mr-2">
               {loading
                 ? <div className="h-7 w-48 bg-white/20 rounded animate-pulse mb-1 ml-auto" />
@@ -1596,6 +1609,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           onClose={() => setShowAddPlanned(false)}
           onSuccess={() => { setShowAddPlanned(false); load() }}
         />
+      )}
+
+      {showReport && parent && (
+        <ReportModal parent={parent} onClose={() => setShowReport(false)} />
       )}
     </div>
   )
