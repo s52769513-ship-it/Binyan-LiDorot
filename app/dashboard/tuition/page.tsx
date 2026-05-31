@@ -422,7 +422,7 @@ function hebrewDate(iso: string): string {
 
 /* ─── PlannedPaymentsTab ─────────────────────────────── */
 interface PPRow {
-  id: string; name: string; amount: number; balance: number
+  id: string; name: string; ppType: string; amount: number; balance: number
   date: string; monthYear: string; parentIds: string[]; parentName: string
 }
 
@@ -500,7 +500,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   })
 
   const filtered = rows.filter(r => {
-    if (r.name === 'משכורת') return false
+    if (r.ppType === 'salary') return false
     if (monthFilter && r.monthYear !== monthFilter) return false
     if (search.trim()) {
       const q = search.trim()

@@ -32,6 +32,24 @@ interface DashboardData {
   monthlyData: MonthlyItem[]
   lastSync: string | null
   departmentStats: DeptStat[]
+  salaryDebt: number
+  salaryDebtCount: number
+  overdueAmount: number
+  overdueCount: number
+  ppCreditTotal: number
+  ppCreditList: { id: string; name: string; ppCredit: number }[]
+  overdueAlerts: { id: string; parentId: string; parentName: string; balance: number; date: string; monthYear: string }[]
+  salaryAlerts: { parentId: string; parentName: string; balance: number; monthYear: string }[]
+}
+
+interface CashflowMonth {
+  monthYear: string
+  isPast: boolean
+  isCurrent: boolean
+  tuition: { planned: number; collected: number; remaining: number; collectionPct: number; byDept: Record<string, { planned: number; collected: number; remaining: number }> }
+  salary: { planned: number; paid: number; remaining: number }
+  net: number
+  netActual: number
 }
 
 interface AnalyticsMonthItem { month: string; income: number; expenses: number; balance: number }
@@ -235,9 +253,235 @@ function HBarChart({ title, items, total }: { title: string; items: { name: stri
   )
 }
 
+// ─── RecordsPanel ─────────────────────────────────────────────────────────────
+
+interface RecordsPanelProps {
+  title: string
+  records: { key: string; name: string; amount: number; sub?: string; parentId?: string; amountColor?: string }[]
+  total?: number
+  totalLabel?: string
+  onClose: () => void
+  onOpenParent: (id: string) => void
+  loading?: boolean
+}
+
+function RecordsPanel({ title, records, total, totalLabel, onClose, onOpenParent, loading }: RecordsPanelProps) {
+  return (
+    <div className="fixed inset-y-0 right-0 w-[380px] z-[70] bg-white shadow-xl flex flex-col" dir="rtl">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <span className="text-sm font-semibold text-gray-800">{title}</span>
+        <button
+          onClick={onClose}
+          className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors text-base font-bold"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : records.length === 0 ? (
+          <div className="py-12 text-center text-gray-400 text-sm">אין רשומות</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {records.map(r => (
+              <button
+                key={r.key}
+                onClick={() => r.parentId && onOpenParent(r.parentId)}
+                disabled={!r.parentId}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-right disabled:cursor-default"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">{r.name}</div>
+                  {r.sub && <div className="text-[11px] text-gray-400 mt-0.5">{r.sub}</div>}
+                </div>
+                <div
+                  className="text-sm font-bold tabular-nums flex-shrink-0"
+                  style={{ color: r.amountColor ?? '#ef4444' }}
+                >
+                  ₪{fmt(r.amount)}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer total */}
+      {total !== undefined && (
+        <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-600">{totalLabel ?? 'סה״כ'}</span>
+          <span className="text-sm font-bold tabular-nums text-gray-900">₪{fmt(total)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Cashflow table ───────────────────────────────────────────────────────────
+
+function CashflowTable({ data, loading, showDept, onToggleDept }: {
+  data: CashflowMonth[] | null
+  loading: boolean
+  showDept: boolean
+  onToggleDept: () => void
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {[1,2,3,4,5,6,7,8,9].map(i => (
+          <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+  if (!data) return null
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Table header controls */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+        <span className="text-xs font-semibold text-gray-700">תזרים מזומנים — 9 חודשים</span>
+        <button
+          onClick={onToggleDept}
+          className={`text-[11px] px-2.5 py-1 rounded border transition-colors ${
+            showDept
+              ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          חלוקה לפי אגף
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs" dir="rtl">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-3 py-2 text-right font-semibold text-gray-600 whitespace-nowrap">חודש</th>
+              {/* Tuition group */}
+              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={4}>
+                הכנסות שכ״ל
+              </th>
+              {/* Salary group */}
+              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
+                הוצאות משכורת
+              </th>
+              <th className="px-3 py-2 text-center font-semibold text-gray-600 whitespace-nowrap">נטו</th>
+            </tr>
+            <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-400">
+              <th className="px-3 py-1 text-right"></th>
+              <th className="px-2 py-1 text-center">צפוי</th>
+              <th className="px-2 py-1 text-center">נגבה</th>
+              <th className="px-2 py-1 text-center">יתרה</th>
+              <th className="px-2 py-1 text-center border-r border-gray-100">%</th>
+              <th className="px-2 py-1 text-center">צפוי</th>
+              <th className="px-2 py-1 text-center">שולם</th>
+              <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
+              <th className="px-3 py-1 text-center"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map(row => {
+              const isPast = row.isPast
+              const isCurrent = row.isCurrent
+              const rowClass = isCurrent
+                ? 'bg-blue-50 font-semibold'
+                : isPast
+                  ? 'text-gray-400'
+                  : ''
+
+              const deptEntries = showDept ? Object.entries(row.tuition.byDept) : []
+
+              return (
+                <>
+                  <tr
+                    key={row.monthYear}
+                    className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${rowClass}`}
+                  >
+                    <td className="px-3 py-2 font-medium whitespace-nowrap">
+                      {isCurrent && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 ml-1 mb-0.5" />}
+                      {row.monthYear}
+                    </td>
+                    {/* Tuition */}
+                    <td className="px-2 py-2 text-center tabular-nums">{row.tuition.planned > 0 ? `₪${fmt(row.tuition.planned)}` : '—'}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
+                      {row.tuition.collected > 0 ? `₪${fmt(row.tuition.collected)}` : '—'}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${row.tuition.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                      {row.tuition.remaining > 0 ? `₪${fmt(row.tuition.remaining)}` : '—'}
+                    </td>
+                    <td className="px-2 py-2 text-center border-r border-gray-100">
+                      {row.tuition.planned > 0 ? (
+                        <span className={`text-[10px] px-1 py-0.5 rounded-full font-medium ${
+                          row.tuition.collectionPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
+                          row.tuition.collectionPct >= 60 ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.tuition.collectionPct}%
+                        </span>
+                      ) : '—'}
+                    </td>
+                    {/* Salary */}
+                    <td className="px-2 py-2 text-center tabular-nums">{row.salary.planned > 0 ? `₪${fmt(row.salary.planned)}` : '—'}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${row.salary.paid > 0 && !isPast ? 'text-red-600' : ''}`}>
+                      {row.salary.paid > 0 ? `₪${fmt(row.salary.paid)}` : '—'}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.salary.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                      {row.salary.remaining > 0 ? `₪${fmt(row.salary.remaining)}` : '—'}
+                    </td>
+                    {/* Net */}
+                    <td className={`px-3 py-2 text-center tabular-nums font-bold ${
+                      row.net >= 0 ? 'text-emerald-700' : 'text-red-600'
+                    } ${isCurrent ? 'text-base' : ''}`}>
+                      {row.net !== 0 ? `${row.net >= 0 ? '+' : '−'}₪${fmt(Math.abs(row.net))}` : '—'}
+                    </td>
+                  </tr>
+
+                  {/* Dept breakdown rows */}
+                  {showDept && deptEntries.map(([dept, vals]) => (
+                    <tr
+                      key={`${row.monthYear}-${dept}`}
+                      className={`border-b border-gray-50 bg-gray-50/50 text-[10px] text-gray-500 ${isPast ? 'opacity-60' : ''}`}
+                    >
+                      <td className="px-3 py-1.5 pr-6 whitespace-nowrap">
+                        <span className="flex items-center gap-1">
+                          <span
+                            className="inline-block w-1.5 h-1.5 rounded-full"
+                            style={{ background: DEPT_COLOR[dept]?.dot ?? '#9ca3af' }}
+                          />
+                          {dept}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-center tabular-nums">{vals.planned > 0 ? `₪${fmt(vals.planned)}` : '—'}</td>
+                      <td className="px-2 py-1.5 text-center tabular-nums">{vals.collected > 0 ? `₪${fmt(vals.collected)}` : '—'}</td>
+                      <td className="px-2 py-1.5 text-center tabular-nums">{vals.remaining > 0 ? `₪${fmt(vals.remaining)}` : '—'}</td>
+                      <td className="px-2 py-1.5 text-center border-r border-gray-100">
+                        {vals.planned > 0 ? `${Math.round((vals.collected / vals.planned) * 100)}%` : '—'}
+                      </td>
+                      <td colSpan={4} />
+                    </tr>
+                  ))}
+                </>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-type ViewMode = 'current' | 'analytics'
+type ViewMode = 'current' | 'cashflow' | 'analytics'
 type AnalyticsPeriod = '6' | '12' | 'all'
 
 export default function Dashboard() {
@@ -253,6 +497,12 @@ export default function Dashboard() {
   const [period, setPeriod]         = useState<AnalyticsPeriod>('6')
   const [analytics, setAnalytics]   = useState<AnalyticsData | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
+
+  const [cashflow, setCashflow]     = useState<CashflowMonth[] | null>(null)
+  const [cashflowLoading, setCashflowLoading] = useState(false)
+  const [showDeptBreakdown, setShowDeptBreakdown] = useState(false)
+
+  const [activePanel, setActivePanel] = useState<'debt' | 'overdue' | 'salary' | 'credit' | null>(null)
 
   const load = () => {
     setLoading(true); setError('')
@@ -273,9 +523,22 @@ export default function Dashboard() {
       .finally(() => setAnalyticsLoading(false))
   }
 
+  const loadCashflow = () => {
+    setCashflowLoading(true)
+    fetch('/api/cashflow')
+      .then(r => r.json())
+      .then(d => { if (!d.error) setCashflow(d) })
+      .catch(() => {})
+      .finally(() => setCashflowLoading(false))
+  }
+
   useEffect(() => {
     if (view === 'analytics') loadAnalytics(period)
   }, [view, period])
+
+  useEffect(() => {
+    if (view === 'cashflow' && !cashflow) loadCashflow()
+  }, [view])
 
   const d = data
   const collectionPct = d && d.plannedThisMonth > 0
@@ -283,6 +546,75 @@ export default function Dashboard() {
   const lastSyncLabel = d?.lastSync
     ? new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(d.lastSync))
     : null
+
+  // Build panel records
+  const debtPanelRecords = (d?.debtAlerts ?? []).map(a => ({
+    key: a.id,
+    name: a.name,
+    amount: a.balance,
+    sub: `${a.childrenCount} ילדים`,
+    parentId: a.id,
+    amountColor: '#ef4444',
+  }))
+
+  const overduePanelRecords = (d?.overdueAlerts ?? []).map(a => ({
+    key: a.id,
+    name: a.parentName || a.parentId,
+    amount: a.balance,
+    sub: `${a.monthYear} · ${fmtDate(a.date)}`,
+    parentId: a.parentId,
+    amountColor: '#ef4444',
+  }))
+
+  const salaryPanelRecords = (d?.salaryAlerts ?? []).map((a, i) => ({
+    key: `${a.parentId}-${i}`,
+    name: a.parentName || a.parentId,
+    amount: a.balance,
+    sub: a.monthYear,
+    parentId: a.parentId,
+    amountColor: '#f59e0b',
+  }))
+
+  const creditPanelRecords = (d?.ppCreditList ?? []).map(p => ({
+    key: p.id,
+    name: p.name,
+    amount: p.ppCredit,
+    parentId: p.id,
+    amountColor: '#10b981',
+  }))
+
+  type PanelRecord = { key: string; name: string; amount: number; sub?: string; parentId?: string; amountColor?: string }
+  const activePanelConfig: Record<NonNullable<typeof activePanel>, {
+    title: string
+    records: PanelRecord[]
+    total: number
+    totalLabel: string
+  }> = {
+    debt: {
+      title: 'חוב שכ״ל — משפחות בחוב',
+      records: debtPanelRecords,
+      total: d?.totalDebt ?? 0,
+      totalLabel: 'סה״כ חוב',
+    },
+    overdue: {
+      title: 'תשלומים בפיגור',
+      records: overduePanelRecords,
+      total: d?.overdueAmount ?? 0,
+      totalLabel: 'סה״כ פיגור',
+    },
+    salary: {
+      title: 'חוב משכורות',
+      records: salaryPanelRecords,
+      total: d?.salaryDebt ?? 0,
+      totalLabel: 'סה״כ חוב משכורות',
+    },
+    credit: {
+      title: 'זיכויים שמורים',
+      records: creditPanelRecords,
+      total: d?.ppCreditTotal ?? 0,
+      totalLabel: 'סה״כ זיכויים',
+    },
+  }
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -300,12 +632,12 @@ export default function Dashboard() {
 
         {/* View toggle */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-          {(['current', 'analytics'] as ViewMode[]).map(v => (
+          {(['current', 'cashflow', 'analytics'] as ViewMode[]).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 view === v ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}>
-              {v === 'current' ? 'חודש שוטף' : 'ניתוח היסטורי'}
+              {v === 'current' ? 'חודש שוטף' : v === 'cashflow' ? 'תזרים עתידי' : 'ניתוח היסטורי'}
             </button>
           ))}
         </div>
@@ -325,31 +657,116 @@ export default function Dashboard() {
       {/* ── CURRENT MONTH VIEW ── */}
       {view === 'current' && (
         <>
-          {/* KPI row */}
-          <div className="grid grid-cols-4 gap-2">
-            {loading ? [1,2,3,4].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />) : (
+          {/* KPI row — 6 cards in 3×2 grid */}
+          <div className="grid grid-cols-3 gap-2">
+            {loading ? [1,2,3,4,5,6].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />) : (
               <>
-                {[
-                  { label: 'צפוי החודש', value: d?.plannedThisMonth ?? 0, pct: 100, fill: '#8899cc', dot: '#1a3a7a', sub: 'תשלומים מתוכננים' },
-                  { label: 'נגבה בפועל',  value: d?.actualThisMonth ?? 0,  pct: collectionPct, fill: '#10b981', dot: '#10b981',
-                    sub: `${collectionPct}% · פער ₪${fmt(Math.abs((d?.actualThisMonth ?? 0) - (d?.plannedThisMonth ?? 0)))}` },
-                  { label: 'חוב שכ״ל',   value: d?.totalDebt ?? 0, pct: Math.min(100, ((d?.totalDebt ?? 0) / Math.max(d?.plannedThisMonth ?? 1, 1)) * 100), fill: '#f59e0b', dot: '#f59e0b', sub: 'יתרה פתוחה' },
-                  { label: 'משפחות בחוב', value: d?.parentsInDebt ?? 0, pct: d && d.parentsInDebt > 0 ? 60 : 0, fill: '#ef4444', dot: '#ef4444', sub: 'ממתינות לגבייה' },
-                ].map(({ label, value, pct, fill, dot, sub }) => (
-                  <div key={label} className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: dot }} />
-                      <span className="text-[11px] text-gray-600 leading-tight">{label}</span>
-                    </div>
-                    <div className="text-xl font-bold tabular-nums text-gray-900 leading-none">
-                      <span className="text-xs font-normal text-gray-400">₪</span>{fmt(value)}
-                    </div>
-                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: fill }} />
-                    </div>
-                    <div className="text-[10px] text-gray-400 truncate">{sub}</div>
+                {/* Row 1: Planned, Collected, Debt */}
+                <div className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#1a3a7a' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">צפוי החודש</span>
                   </div>
-                ))}
+                  <div className="text-xl font-bold tabular-nums text-gray-900 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.plannedThisMonth ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: '100%', background: '#8899cc' }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">תשלומים מתוכננים</div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#10b981' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">נגבה בפועל</span>
+                  </div>
+                  <div className="text-xl font-bold tabular-nums text-gray-900 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.actualThisMonth ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, collectionPct)}%`, background: '#10b981' }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">
+                    {collectionPct}% · פער ₪{fmt(Math.abs((d?.actualThisMonth ?? 0) - (d?.plannedThisMonth ?? 0)))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActivePanel('debt')}
+                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-amber-300 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#f59e0b' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">חוב שכ״ל</span>
+                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-amber-400">←</span>
+                  </div>
+                  <div className="text-xl font-bold tabular-nums text-gray-900 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.totalDebt ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{
+                      width: `${Math.min(100, ((d?.totalDebt ?? 0) / Math.max(d?.plannedThisMonth ?? 1, 1)) * 100)}%`,
+                      background: '#f59e0b',
+                    }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">{d?.parentsInDebt ?? 0} משפחות בחוב</div>
+                </button>
+
+                {/* Row 2: Overdue, Salary debt, Credits */}
+                <button
+                  onClick={() => setActivePanel('overdue')}
+                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-red-300 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#ef4444' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">בפיגור</span>
+                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-red-400">←</span>
+                  </div>
+                  <div className="text-xl font-bold tabular-nums text-red-700 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.overdueAmount ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: d && d.overdueCount > 0 ? '70%' : '0%', background: '#ef4444' }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">{d?.overdueCount ?? 0} תשלומים באיחור</div>
+                </button>
+
+                <button
+                  onClick={() => setActivePanel('salary')}
+                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-orange-300 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#f97316' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">חוב משכורות</span>
+                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-orange-400">←</span>
+                  </div>
+                  <div className="text-xl font-bold tabular-nums text-orange-700 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.salaryDebt ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: d && d.salaryDebtCount > 0 ? '60%' : '0%', background: '#f97316' }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">{d?.salaryDebtCount ?? 0} רשומות פתוחות</div>
+                </button>
+
+                <button
+                  onClick={() => setActivePanel('credit')}
+                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#10b981' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">זיכויים שמורים</span>
+                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-emerald-400">←</span>
+                  </div>
+                  <div className="text-xl font-bold tabular-nums text-emerald-700 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.ppCreditTotal ?? 0)}
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: d && (d.ppCreditTotal ?? 0) > 0 ? '50%' : '0%', background: '#10b981' }} />
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate">{d?.ppCreditList?.length ?? 0} משפחות עם זיכוי</div>
+                </button>
               </>
             )}
           </div>
@@ -443,6 +860,18 @@ export default function Dashboard() {
         </>
       )}
 
+      {/* ── CASHFLOW VIEW ── */}
+      {view === 'cashflow' && (
+        <div className="space-y-3">
+          <CashflowTable
+            data={cashflow}
+            loading={cashflowLoading}
+            showDept={showDeptBreakdown}
+            onToggleDept={() => setShowDeptBreakdown(v => !v)}
+          />
+        </div>
+      )}
+
       {/* ── ANALYTICS VIEW ── */}
       {view === 'analytics' && (
         <div className="space-y-3">
@@ -531,6 +960,26 @@ export default function Dashboard() {
             <div className="py-12 text-center text-gray-400 text-sm">אין נתונים זמינים</div>
           )}
         </div>
+      )}
+
+      {/* ── PANELS ── */}
+      {activePanel && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/20 z-[60]"
+            onClick={() => setActivePanel(null)}
+          />
+          <RecordsPanel
+            title={activePanelConfig[activePanel].title}
+            records={activePanelConfig[activePanel].records}
+            total={activePanelConfig[activePanel].total}
+            totalLabel={activePanelConfig[activePanel].totalLabel}
+            onClose={() => setActivePanel(null)}
+            onOpenParent={id => { setActivePanel(null); setSelectedId(id) }}
+            loading={loading}
+          />
+        </>
       )}
 
       {deptModal && <DeptDebtModal framework={deptModal} onClose={() => setDeptModal(null)} />}

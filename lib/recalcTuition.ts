@@ -37,6 +37,7 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
       .from('planned_payments')
       .select('id, amount, balance')
       .contains('parent_ids', [parentId])
+      .eq('pp_type', 'tuition')
       .gt('balance', 0)
       .gte('date', currentMonthDate)
 

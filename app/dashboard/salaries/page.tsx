@@ -377,7 +377,7 @@ function PlannedTab() {
 
   const loadPlanned = (my: string) => {
     setPpLoading(true)
-    fetch(`/api/planned-payments?name=משכורת&monthYear=${encodeURIComponent(my)}&withParentNames=true&limit=100`)
+    fetch(`/api/planned-payments?ppType=salary&monthYear=${encodeURIComponent(my)}&withParentNames=true&limit=100`)
       .then(r => r.json())
       .then(d => setPlannedPPs(Array.isArray(d) ? d : []))
       .catch(() => {})
