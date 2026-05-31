@@ -12,6 +12,8 @@ export async function GET() {
       months.push(`${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`)
     }
 
+    const todayStr = now.toISOString().slice(0, 10)
+
     const [
       plannedThisMonthRes,
       actualThisMonthRes,
@@ -26,6 +28,9 @@ export async function GET() {
       ppDeptRes,
       txDeptRes,
       allParentsDebtRes,
+      salaryDebtRes,
+      overdueRes,
+      ppCreditRes,
     ] = await Promise.all([
       supabase.from('planned_payments').select('amount').eq('month_year', currentMonthYear),
 
@@ -65,6 +70,33 @@ export async function GET() {
       supabase.from('planned_payments').select('parent_ids, amount').eq('month_year', currentMonthYear),
       supabase.from('transactions').select('parent_ids, amount').eq('month_year', currentMonthYear).gt('amount', 0),
       supabase.from('parents').select('id, tuition_balance').gt('tuition_balance', 0),
+
+      // New: salary debt
+      supabase
+        .from('planned_payments')
+        .select('amount, balance, parent_ids, month_year')
+        .eq('pp_type', 'salary')
+        .gt('balance', 0)
+        .order('month_year', { ascending: false })
+        .limit(50),
+
+      // New: overdue tuition
+      supabase
+        .from('planned_payments')
+        .select('id, amount, balance, date, month_year, parent_ids')
+        .eq('pp_type', 'tuition')
+        .gt('balance', 0)
+        .lt('date', todayStr)
+        .order('date', { ascending: true })
+        .limit(50),
+
+      // New: parents with credit
+      supabase
+        .from('parents')
+        .select('id, name, pp_credit')
+        .gt('pp_credit', 0)
+        .order('pp_credit', { ascending: false })
+        .limit(20),
     ])
 
     // Build department breakdown (parent → framework via students → classes)
@@ -112,10 +144,14 @@ export async function GET() {
         collectionPct: v.planned > 0 ? Math.round((v.actual / v.planned) * 100) : 0,
       }))
 
-    // Fetch parent names for recent transactions
+    // Fetch parent names for recent transactions + overdue + salary alerts
     const txParentIds = [...new Set((recentTxRes.data ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
-    const parentNamesRes = txParentIds.length > 0
-      ? await supabase.from('parents').select('id, name').in('id', txParentIds)
+    const overdueParentIds = [...new Set((overdueRes.data ?? []).flatMap(r => (r.parent_ids as string[]) ?? []))]
+    const salaryParentIds = [...new Set((salaryDebtRes.data ?? []).flatMap(r => (r.parent_ids as string[]) ?? []))]
+    const allAlertParentIds = [...new Set([...txParentIds, ...overdueParentIds, ...salaryParentIds])]
+
+    const parentNamesRes = allAlertParentIds.length > 0
+      ? await supabase.from('parents').select('id, name').in('id', allAlertParentIds)
       : { data: [] as Array<{ id: string; name: string }> }
 
     const parentNameMap: Record<string, string> = {}
@@ -168,6 +204,44 @@ export async function GET() {
       const b = Number(r.balance) || 0; return s + (b > 0 ? b : 0)
     }, 0) ?? 0
 
+    // Compute new financial alert fields
+    const salaryDebt = (salaryDebtRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
+    const salaryDebtCount = (salaryDebtRes.data ?? []).length
+
+    const overdueAmount = (overdueRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
+    const overdueCount = (overdueRes.data ?? []).length
+
+    const ppCreditTotal = (ppCreditRes.data ?? []).reduce((s, r) => s + (Number(r.pp_credit) || 0), 0)
+    const ppCreditList = (ppCreditRes.data ?? []).map(p => ({
+      id: p.id as string,
+      name: p.name as string,
+      ppCredit: Number(p.pp_credit) || 0,
+    }))
+
+    const overdueAlerts = (overdueRes.data ?? []).slice(0, 10).map(r => {
+      const pids = (r.parent_ids as string[]) ?? []
+      const parentId = pids[0] ?? ''
+      return {
+        id: r.id as string,
+        parentId,
+        parentName: parentNameMap[parentId] ?? '',
+        balance: Number(r.balance) || 0,
+        date: String(r.date || ''),
+        monthYear: String(r.month_year || ''),
+      }
+    })
+
+    const salaryAlerts = (salaryDebtRes.data ?? []).slice(0, 10).map(r => {
+      const pids = (r.parent_ids as string[]) ?? []
+      const parentId = pids[0] ?? ''
+      return {
+        parentId,
+        parentName: parentNameMap[parentId] ?? '',
+        balance: Number(r.balance) || 0,
+        monthYear: String(r.month_year || ''),
+      }
+    })
+
     return NextResponse.json({
       // New rich fields
       plannedThisMonth: Math.round(plannedThisMonth),
@@ -179,6 +253,15 @@ export async function GET() {
       monthlyData,
       lastSync: lastSyncRes.data?.synced_at ?? null,
       departmentStats,
+      // New financial alert fields
+      salaryDebt:       Math.round(salaryDebt),
+      salaryDebtCount,
+      overdueAmount:    Math.round(overdueAmount),
+      overdueCount,
+      ppCreditTotal:    Math.round(ppCreditTotal),
+      ppCreditList,
+      overdueAlerts,
+      salaryAlerts,
       // Legacy fields
       totalDebts:              Math.round(totalDebts),
       totalPlannedPayments:    Math.round(totalPlannedPayments),
