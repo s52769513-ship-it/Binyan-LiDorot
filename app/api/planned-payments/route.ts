@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   try {
     const nameFilter      = req.nextUrl.searchParams.get('name') ?? ''
+    const ppTypeFilter    = req.nextUrl.searchParams.get('ppType') ?? ''
+    const monthYearFilter = req.nextUrl.searchParams.get('monthYear') ?? ''
     const parentId        = req.nextUrl.searchParams.get('parentId') ?? ''
     const idFilter        = req.nextUrl.searchParams.get('id') ?? ''
     const openOnly        = req.nextUrl.searchParams.get('open') === 'true'
@@ -12,14 +14,16 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('planned_payments')
-      .select('id, name, amount, balance, date, month_year, parent_ids')
+      .select('id, name, pp_type, amount, balance, date, month_year, parent_ids')
       .order('date', { ascending: false })
       .limit(limitParam)
 
-    if (idFilter)   query = query.eq('id', idFilter)
-    if (nameFilter) query = query.ilike('name', `%${nameFilter}%`)
-    if (parentId)   query = query.contains('parent_ids', [parentId])
-    if (openOnly)   query = query.gt('balance', 0)
+    if (idFilter)        query = query.eq('id', idFilter)
+    if (nameFilter)      query = query.ilike('name', `%${nameFilter}%`)
+    if (ppTypeFilter)    query = query.eq('pp_type', ppTypeFilter)
+    if (monthYearFilter) query = query.eq('month_year', monthYearFilter)
+    if (parentId)        query = query.contains('parent_ids', [parentId])
+    if (openOnly)        query = query.gt('balance', 0)
 
     const { data, error } = await query
     if (error) throw error
@@ -41,6 +45,7 @@ export async function GET(req: NextRequest) {
         return {
           id: p.id,
           name: p.name ?? '',
+          ppType: (p.pp_type ?? (p.name === 'משכורת' ? 'salary' : 'tuition')) as string,
           amount: p.amount ?? 0,
           balance: p.balance ?? 0,
           date: p.date ?? '',
@@ -107,7 +112,7 @@ export async function PATCH(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, name, date, monthYear, parentIds } = body
+    const { amount, name, date, monthYear, parentIds, ppType } = body
 
     if (!amount || isNaN(Number(amount))) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
@@ -121,6 +126,7 @@ export async function POST(req: NextRequest) {
       id,
       amount: Number(amount),
       name: name || '',
+      pp_type: ppType ?? (name === 'משכורת' ? 'salary' : 'tuition'),
       date: date || null,
       month_year: monthYear || '',
       balance: Number(amount),   // new planned payment → full amount is balance

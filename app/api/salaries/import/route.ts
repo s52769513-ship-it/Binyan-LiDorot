@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         .select('id, balance')
         .contains('parent_ids', [parentId])
         .eq('month_year', monthYear)
-        .eq('name', 'משכורת')
+        .eq('pp_type', 'salary')
         .limit(1)
 
       const pp = pps?.[0] ?? null

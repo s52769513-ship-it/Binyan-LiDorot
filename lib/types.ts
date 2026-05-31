@@ -46,6 +46,7 @@ export interface DebtItem {
 export interface PlannedPaymentItem {
   id: string
   name: string
+  ppType: 'tuition' | 'salary' | string
   amount: number
   date: string
   monthYear: string

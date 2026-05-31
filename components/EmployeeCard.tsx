@@ -305,7 +305,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           try {
             const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
               (d.plannedPayments ?? [])
-                .filter((pp: { name: string; balance: number }) => pp.name !== 'משכורת' && pp.balance > 0)
+                .filter((pp: { ppType: string; balance: number }) => pp.ppType !== 'salary' && pp.balance > 0)
                 .sort((a: { monthYear: string }, b: { monthYear: string }) => {
                   const [am, ay] = a.monthYear.split('/').map(Number)
                   const [bm, by] = b.monthYear.split('/').map(Number)
@@ -425,14 +425,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
 
   // Tuition PPs only (for payments tab)
-  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.name !== 'משכורת')
+  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType !== 'salary')
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
   const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
 
   // Salary PPs (for salary tab)
-  const salaryPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.name === 'משכורת')
+  const salaryPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'salary')
 
   const currentMonth    = `${String(new Date().getMonth()+1).padStart(2,'0')}/${new Date().getFullYear()}`
   const thisMonthPP     = tuitionPPs_all.filter(p => p.monthYear === currentMonth)

@@ -69,7 +69,7 @@ export async function PATCH(
         supabaseAdmin.from('transactions').select('id, amount, month_year, planned_payment_id')
           .contains('parent_ids', [id]).eq('type', 'קיזוז משכר לימוד').in('month_year', months),
         supabaseAdmin.from('planned_payments').select('id, amount, balance, month_year')
-          .contains('parent_ids', [id]).eq('name', 'משכורת').in('month_year', months),
+          .contains('parent_ids', [id]).eq('pp_type', 'salary').in('month_year', months),
       ])
 
       for (const my of months) {
@@ -97,7 +97,7 @@ export async function PATCH(
           // Find tuition PP to know original tuition amount
           const { data: tuitionPPs } = await supabaseAdmin
             .from('planned_payments').select('id, amount, balance')
-            .contains('parent_ids', [id]).eq('month_year', my).neq('name', 'משכורת').limit(1)
+            .contains('parent_ids', [id]).eq('month_year', my).eq('pp_type', 'tuition').limit(1)
           const tuitionPP   = tuitionPPs?.[0]
           const newOffset   = Math.min(newSalary, tuitionPP ? Number(tuitionPP.amount) : oldOffset)
           const offsetDelta = oldOffset - newOffset  // positive = amount returned to tuition
@@ -293,6 +293,7 @@ export async function GET(
       plannedPayments: (plannedRes.data ?? []).map(pp => ({
         id: pp.id,
         name: pp.name ?? '',
+        ppType: (pp.pp_type ?? (pp.name === 'משכורת' ? 'salary' : 'tuition')) as string,
         amount: pp.amount ?? 0,
         date: pp.date ?? '',
         monthYear: pp.month_year ?? '',

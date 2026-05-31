@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
             .select('id, amount, balance')
             .contains('parent_ids', [parent.id])
             .eq('month_year', targetMY)
-            .eq('name', 'משכורת')
+            .eq('pp_type', 'salary')
             .limit(1)
 
           const existingPP = existingPPs?.[0]
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
               const { error } = await supabaseAdmin.from('planned_payments').insert({
                 id:         ppId,
                 name:       'משכורת',
+                pp_type:    'salary',
                 amount:     salary,
                 balance:    salary,
                 date:       targetDate,
