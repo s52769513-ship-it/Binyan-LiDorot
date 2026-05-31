@@ -5,13 +5,10 @@ export async function GET(req: NextRequest) {
   const framework = req.nextUrl.searchParams.get('framework') ?? ''
 
   try {
-    const [studentsRes, classesRes, parentsRes] = await Promise.all([
+    // Build parent→framework map
+    const [studentsRes, classesRes] = await Promise.all([
       supabase.from('students').select('parent_ids, class_name'),
       supabase.from('classes').select('class_name, framework'),
-      supabase.from('parents')
-        .select('id, name, tuition_balance, children_count')
-        .gt('tuition_balance', 0)
-        .order('tuition_balance', { ascending: false }),
     ])
 
     const classFrameworkMap: Record<string, string> = {}
@@ -27,15 +24,31 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const parents = (parentsRes.data ?? []).filter(p => {
+    // All parent IDs for this framework (for income tab)
+    const allFwParentIds = Object.entries(parentFrameworkMap)
+      .filter(([, fw]) => framework === 'אחר' ? fw === 'אחר' : fw === framework)
+      .map(([id]) => id)
+
+    // Parents in debt + all parents (for names)
+    const [debtParentsRes, allParentsRes] = await Promise.all([
+      supabase
+        .from('parents')
+        .select('id, name, tuition_balance, children_count')
+        .gt('tuition_balance', 0)
+        .order('tuition_balance', { ascending: false }),
+      allFwParentIds.length > 0
+        ? supabase.from('parents').select('id, name').in('id', allFwParentIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    ])
+
+    const debtParents = (debtParentsRes.data ?? []).filter(p => {
       const fw = parentFrameworkMap[p.id as string] ?? 'אחר'
       return framework === 'אחר' ? fw === 'אחר' : fw === framework
     })
+    const debtParentIds = debtParents.map(p => p.id as string)
 
-    const parentIds = parents.map(p => p.id as string)
-
-    // Get open planned payments for these parents
-    const ppRes = parentIds.length > 0
+    // Open planned payments for parents in debt
+    const ppRes = debtParentIds.length > 0
       ? await supabase
           .from('planned_payments')
           .select('id, parent_ids, name, amount, balance, month_year')
@@ -45,7 +58,7 @@ export async function GET(req: NextRequest) {
     const ppByParent: Record<string, { id: string; name: string; amount: number; balance: number; monthYear: string }[]> = {}
     for (const pp of ppRes.data ?? []) {
       for (const pid of (pp.parent_ids as string[]) ?? []) {
-        if (parentIds.includes(pid)) {
+        if (debtParentIds.includes(pid)) {
           if (!ppByParent[pid]) ppByParent[pid] = []
           ppByParent[pid].push({
             id: pp.id as string,
@@ -58,14 +71,63 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Recent income transactions for all parents in this framework (last 3 months)
+    const now = new Date()
+    const months: string[] = []
+    for (let i = 2; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push(`${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`)
+    }
+
+    const txRes = allFwParentIds.length > 0
+      ? await supabase
+          .from('transactions')
+          .select('id, amount, date, month_year, notes, type, parent_ids')
+          .in('month_year', months)
+          .gt('amount', 0)
+          .order('date', { ascending: false })
+          .limit(200)
+      : { data: [] as Array<{ id: string; amount: number; date: string; month_year: string; notes: string; type: string; parent_ids: string[] }> }
+
+    // Build parent name map
+    const parentNameMap: Record<string, string> = {}
+    for (const p of allParentsRes.data ?? []) parentNameMap[p.id] = p.name
+
+    const transactions = (txRes.data ?? [])
+      .filter(tx => ((tx.parent_ids as string[]) ?? []).some(pid => allFwParentIds.includes(pid)))
+      .map(tx => {
+        const pids = (tx.parent_ids as string[]) ?? []
+        const parentId = pids.find(pid => allFwParentIds.includes(pid)) ?? pids[0] ?? ''
+        return {
+          id: tx.id as string,
+          amount: Number(tx.amount) || 0,
+          date: String(tx.date || ''),
+          monthYear: String(tx.month_year || ''),
+          notes: String(tx.notes || ''),
+          type: String(tx.type || ''),
+          parentId,
+          parentName: parentNameMap[parentId] ?? '',
+        }
+      })
+
+    // Month summaries for income tab
+    const monthTotals: Record<string, number> = {}
+    for (const m of months) monthTotals[m] = 0
+    for (const tx of transactions) {
+      if (tx.monthYear in monthTotals) monthTotals[tx.monthYear] += tx.amount
+    }
+
     return NextResponse.json({
-      parents: parents.map(p => ({
+      parents: debtParents.map(p => ({
         id: p.id as string,
         name: p.name as string,
         balance: Number(p.tuition_balance) || 0,
         childrenCount: Number(p.children_count) || 0,
         openPayments: ppByParent[p.id as string] ?? [],
       })),
+      transactions,
+      monthTotals,
+      months,
     })
   } catch (err) {
     console.error('dept-debt error:', err)
