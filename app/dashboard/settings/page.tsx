@@ -11,6 +11,7 @@ interface Settings {
   phone?: string
   primary_color?: string
   logo_url?: string
+  nav_position?: 'top' | 'side'
 }
 
 interface ClassRow {
@@ -343,6 +344,59 @@ export default function SettingsPage() {
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
       {error   && <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-right text-sm">{error}</div>}
 
+      {/* Nav position */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">מיקום סרגל הניווט</h3>
+          <p className="text-xs text-gray-400 mt-0.5">בחר האם הסרגל יופיע בראש העמוד או בצד</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { value: 'top',  label: 'סרגל עליון', icon: (
+              <svg viewBox="0 0 48 36" className="w-full h-full" fill="none">
+                <rect x="1" y="1" width="46" height="34" rx="3" stroke="currentColor" strokeWidth="1.5" fill="white"/>
+                <rect x="1" y="1" width="46" height="10" rx="3" fill="currentColor" opacity="0.15"/>
+                <rect x="1" y="1" width="46" height="10" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+                <rect x="6" y="16" width="36" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+                <rect x="6" y="22" width="28" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+                <rect x="6" y="28" width="20" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+              </svg>
+            )},
+            { value: 'side', label: 'סרגל צידי',  icon: (
+              <svg viewBox="0 0 48 36" className="w-full h-full" fill="none">
+                <rect x="1" y="1" width="46" height="34" rx="3" stroke="currentColor" strokeWidth="1.5" fill="white"/>
+                <rect x="34" y="1" width="13" height="34" rx="3" fill="currentColor" opacity="0.15"/>
+                <rect x="34" y="1" width="13" height="34" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+                <rect x="6" y="8"  width="22" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+                <rect x="6" y="14" width="22" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+                <rect x="6" y="20" width="16" height="3" rx="1.5" fill="currentColor" opacity="0.2"/>
+              </svg>
+            )},
+          ] as { value: 'top'|'side'; label: string; icon: React.ReactNode }[]).map(opt => {
+            const active = (settings.nav_position ?? 'top') === opt.value
+            return (
+              <button
+                key={opt.value}
+                onClick={() => { save({ nav_position: opt.value }); setSettings(prev => ({ ...prev, nav_position: opt.value })) }}
+                className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                  active
+                    ? 'border-[#1a3a7a] bg-[#1a3a7a]/5'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <div className={`w-24 h-16 ${active ? 'text-[#1a3a7a]' : 'text-gray-400'}`}>
+                  {opt.icon}
+                </div>
+                <span className={`text-sm font-semibold ${active ? 'text-[#1a3a7a]' : 'text-gray-500'}`}>
+                  {opt.label}
+                </span>
+                {active && <span className="text-xs text-[#1a3a7a] font-medium">✓ פעיל</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Logo upload */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">לוגו המוסד</h3>
@@ -424,6 +478,7 @@ export default function SettingsPage() {
   address TEXT,
   phone TEXT,
   primary_color TEXT DEFAULT '#1a3a7a',
+  nav_position TEXT DEFAULT 'top',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -432,7 +487,10 @@ INSERT INTO institution_settings (id) VALUES (1);
 ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "service_role_all" ON institution_settings
-  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- אם הטבלה כבר קיימת, הרץ:
+ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS nav_position TEXT DEFAULT 'top';`}</pre>
         <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
       </>}
