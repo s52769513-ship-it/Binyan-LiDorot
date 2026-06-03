@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       Amount, Currency, TransactionType,
       Groupe, TransactionTime, Makor,
       TransactionId, Comments,
+      HokId,  // standing order external ID from Nadraim
     } = payload as Record<string, string>
 
     const dryRun = req.nextUrl.searchParams.get('dryRun') === 'true'
@@ -102,14 +103,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 3b. Look up standing order by HokId (if provided)
+    const hokIdStr = String(HokId ?? '').trim()
+    let standingOrderDbId: string | null = null
+    let billingParentId: string | null = parentId  // whose planned payments to link to
+    if (hokIdStr) {
+      const { data: soRows } = await supabaseAdmin
+        .from('standing_orders')
+        .select('id, parent_id, linked_parent_id')
+        .eq('external_id', hokIdStr)
+        .limit(1)
+      if (soRows?.[0]) {
+        standingOrderDbId = soRows[0].id
+        // If the standing order has a linked_parent_id, use that for billing
+        billingParentId = soRows[0].linked_parent_id ?? soRows[0].parent_id ?? parentId
+        // If we didn't find the parent by Zeout, use the standing order's parent
+        if (!parentId) parentId = soRows[0].parent_id
+      }
+    }
+
     // dry run — find PP too then return diagnostic info without writing
     if (dryRun) {
       let dryPP = null
-      if (parentId) {
+      const ppParentId = billingParentId ?? parentId
+      if (ppParentId) {
         const { data: openPPs } = await supabaseAdmin
           .from('planned_payments')
           .select('id, amount, balance, month_year, name')
-          .contains('parent_ids', [parentId])
+          .contains('parent_ids', [ppParentId])
           .eq('pp_type', 'tuition')
           .gt('balance', 0)
           .order('month_year', { ascending: false })
@@ -121,6 +142,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true,
         zeout, parentFound, parentCreated, parentId,
+        hokId: hokIdStr || null, standingOrderDbId, billingParentId,
         amount, currencyNote, date, monthYear,
         txType:      String(TransactionType ?? '').trim() || 'נדרים',
         projectName: String(Groupe ?? '').trim() || 'בנין לדורות',
@@ -140,13 +162,15 @@ export async function POST(req: NextRequest) {
 
     // 5. Find open tuition PP to link (not משכורת)
     // Priority: current month first, then oldest open
+    // Uses billingParentId (may differ from parentId if הו"ק is paying for someone else)
     let linkedPPId: string | null = null
     let linkedPPBalance: number | null = null
-    if (parentId) {
+    const ppParentId = billingParentId ?? parentId
+    if (ppParentId) {
       const { data: openPPs } = await supabaseAdmin
         .from('planned_payments')
         .select('id, amount, balance, month_year, name')
-        .contains('parent_ids', [parentId])
+        .contains('parent_ids', [ppParentId])
         .neq('name', 'משכורת')
         .gt('balance', 0)
         .order('month_year', { ascending: false })
@@ -165,6 +189,12 @@ export async function POST(req: NextRequest) {
     const txType      = String(TransactionType ?? '').trim() || 'נדרים'
     const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
 
+    // Include both the payer (parentId) and the billed person (billingParentId) in parent_ids
+    const txParentIds = Array.from(new Set([
+      ...(parentId ? [parentId] : []),
+      ...(billingParentId && billingParentId !== parentId ? [billingParentId] : []),
+    ]))
+
     const { error: txErr } = await supabaseAdmin.from('transactions').insert({
       id:                 txId,
       amount,
@@ -172,10 +202,11 @@ export async function POST(req: NextRequest) {
       date,
       month_year:         monthYear,
       notes,
-      parent_ids:         parentId ? [parentId] : [],
+      parent_ids:         txParentIds,
       project_ids:        [],
       project_names:      [projectName],
       planned_payment_id: linkedPPId,
+      standing_order_id:  standingOrderDbId,
       synced_at:          '2099-12-31T23:59:59.999Z',
     })
     if (txErr) throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
@@ -200,8 +231,8 @@ export async function POST(req: NextRequest) {
         parent_name:   String(ClientName ?? ''),
         actions_count: 1,
         status:        'success',
-        summary:       `נדרים: ${ClientName || 'אנונימי'} · ₪${amount} · ${projectName} (${monthYear})`,
-        details:       { payload, txId, parentId, amount, currencyNote },
+        summary:       `נדרים: ${ClientName || 'אנונימי'} · ₪${amount} · ${projectName} (${monthYear})${hokIdStr ? ` · הו"ק ${hokIdStr}` : ''}`,
+        details:       { payload, txId, parentId, billingParentId, standingOrderDbId, hokIdStr, amount, currencyNote },
       })
     } catch { /* table may not exist yet */ }
 

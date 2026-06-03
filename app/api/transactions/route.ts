@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
     const plannedPaymentId = searchParams.get('plannedPaymentId') ?? ''
+    const standingOrderId  = searchParams.get('standingOrderId')  ?? ''
 
     // Simple path: fetch transactions linked to a specific planned payment
     if (plannedPaymentId) {
@@ -26,6 +27,28 @@ export async function GET(req: NextRequest) {
         parentIds:    (t.parent_ids as string[]) ?? [],
         projectNames: (t.project_names as string[]) ?? [],
         isCredit:     String(t.notes || '').startsWith('זיכוי'),
+      })))
+    }
+
+    // Fetch transactions linked to a specific standing order
+    if (standingOrderId) {
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id')
+        .eq('standing_order_id', standingOrderId)
+        .order('date', { ascending: false })
+      if (error) throw error
+      return NextResponse.json((data ?? []).map(t => ({
+        id:               t.id as string,
+        amount:           Number(t.amount) || 0,
+        type:             String(t.type || ''),
+        date:             String(t.date || ''),
+        monthYear:        String(t.month_year || ''),
+        notes:            String(t.notes || ''),
+        parentIds:        (t.parent_ids as string[]) ?? [],
+        projectNames:     (t.project_names as string[]) ?? [],
+        plannedPaymentId: t.planned_payment_id ?? null,
+        isCredit:         String(t.notes || '').startsWith('זיכוי'),
       })))
     }
 

@@ -153,7 +153,7 @@ export async function GET(
   try {
     const { id } = await params
 
-    const [parentRes, studentsRes, debtsRes, plannedRes, transactionsRes, classesRes, womenRes] =
+    const [parentRes, studentsRes, debtsRes, plannedRes, transactionsRes, classesRes, womenRes, standingOrdersRes] =
       await Promise.all([
         supabaseAdmin.from('parents').select('*').eq('id', id).single(),
         supabaseAdmin.from('students').select('*').contains('parent_ids', [id]),
@@ -171,6 +171,11 @@ export async function GET(
           .limit(30),
         supabaseAdmin.from('classes').select('class_name, framework'),
         supabaseAdmin.from('women').select('*').contains('parent_ids', [id]),
+        supabaseAdmin
+          .from('standing_orders')
+          .select('*, linked_parent:linked_parent_id(id, name)')
+          .eq('parent_id', id)
+          .order('created_at', { ascending: true }),
       ])
 
     if (parentRes.error) throw parentRes.error
@@ -309,6 +314,21 @@ export async function GET(
         notes: tx.notes ?? '',
         projectNames: (tx.project_names as string[]) ?? [],
         plannedPaymentId: tx.planned_payment_id ?? null,
+        standingOrderId: tx.standing_order_id ?? null,
+      })),
+
+      standingOrders: (standingOrdersRes.data ?? []).map(so => ({
+        id:                so.id,
+        externalId:        so.external_id ?? '',
+        standingOrderType: so.standing_order_type ?? '',
+        bankName:          so.bank_name ?? '',
+        bankBranch:        so.bank_branch ?? '',
+        bankAccount:       so.bank_account ?? '',
+        chargeDay:         so.charge_day ?? null,
+        linkedParentId:    so.linked_parent_id ?? null,
+        linkedParentName:  (so.linked_parent as { name?: string } | null)?.name ?? null,
+        notes:             so.notes ?? '',
+        createdAt:         so.created_at ?? '',
       })),
     })
   } catch (err) {

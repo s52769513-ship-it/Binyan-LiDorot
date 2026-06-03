@@ -53,6 +53,20 @@ export interface PlannedPaymentItem {
   balance: number
 }
 
+export interface StandingOrderItem {
+  id: string
+  externalId: string
+  standingOrderType: string
+  bankName: string
+  bankBranch: string
+  bankAccount: string
+  chargeDay: number | null
+  linkedParentId: string | null
+  linkedParentName: string | null
+  notes: string
+  createdAt: string
+}
+
 export interface WomanDetail {
   id: string
   name: string
@@ -108,6 +122,7 @@ export interface ParentDetail extends ParentSummary {
   ppCredit: number
   birthDate: string
   women: WomanDetail[]
+  standingOrders: StandingOrderItem[]
 }
 
 export interface MonthlyStat {
