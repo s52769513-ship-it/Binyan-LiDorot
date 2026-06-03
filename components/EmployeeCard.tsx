@@ -584,14 +584,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
-                  className={`px-3 py-2 text-xs font-semibold transition-colors rounded-t-lg whitespace-nowrap ${
+                  className={`px-2 py-2 text-xs font-semibold transition-colors rounded-t-lg whitespace-nowrap ${
                     tab === t.key ? 'bg-white text-[#1a3a7a]' : 'text-white/60 hover:text-white hover:bg-white/10'
                   }`}
                 >{t.label}</button>
               ))}
             </div>
-            {/* Quick actions */}
-            <div className="flex gap-1 shrink-0 pb-1">
+            {/* Quick actions – only on payments tab */}
+            <div className={`flex gap-1 shrink-0 pb-1 ${tab !== 'payments' ? 'hidden' : ''}`}>
               <button
                 onClick={() => setShowAddTx(true)}
                 className="px-2.5 py-1 text-xs rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium transition-colors whitespace-nowrap"
