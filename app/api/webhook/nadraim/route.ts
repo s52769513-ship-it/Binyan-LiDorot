@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       Amount, Currency, TransactionType,
       Groupe, TransactionTime, Makor,
       TransactionId, Comments,
-      HokId,  // standing order external ID from Nadraim
+      KevaId,  // standing order external ID from Nadraim
     } = payload as Record<string, string>
 
     const dryRun = req.nextUrl.searchParams.get('dryRun') === 'true'
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3b. Look up standing order by HokId (if provided)
-    const hokIdStr = String(HokId ?? '').trim()
+    const hokIdStr = String(KevaId ?? '').trim()
     let standingOrderDbId: string | null = null
     let billingParentId: string | null = parentId  // whose planned payments to link to
     if (hokIdStr) {
