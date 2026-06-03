@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
 
@@ -265,9 +265,56 @@ interface RecordsPanelProps {
   loading?: boolean
 }
 
+const MIN_PANEL_WIDTH = 260
+const MAX_PANEL_WIDTH = 560
+const DEFAULT_PANEL_WIDTH = 340
+
 function RecordsPanel({ title, records, total, totalLabel, onClose, onOpenParent, loading }: RecordsPanelProps) {
+  const [width, setWidth] = useState(DEFAULT_PANEL_WIDTH)
+  const dragging = useRef(false)
+  const startX = useRef(0)
+  const startW = useRef(0)
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true
+    startX.current = e.clientX
+    startW.current = width
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      // panel is on the right; dragging left (smaller clientX) = wider panel
+      const delta = startX.current - ev.clientX
+      const next = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, startW.current + delta))
+      setWidth(next)
+    }
+    const onUp = () => {
+      dragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   return (
-    <div className="fixed inset-y-0 right-0 w-[380px] z-[70] bg-white shadow-xl flex flex-col" dir="rtl">
+    <div
+      className="fixed inset-y-0 right-0 z-[70] bg-white shadow-xl flex flex-col"
+      style={{ width }}
+      dir="rtl"
+    >
+      {/* Resize handle – left edge */}
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute top-0 bottom-0 left-0 w-1.5 cursor-ew-resize group z-10"
+        title="גרור לשינוי רוחב"
+      >
+        <div className="absolute inset-y-0 left-0 w-0.5 bg-gray-200 group-hover:bg-[#1a3a7a] transition-colors" />
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <span className="text-sm font-semibold text-gray-800">{title}</span>
