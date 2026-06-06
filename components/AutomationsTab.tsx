@@ -304,8 +304,8 @@ function MissedMonthsModal({ months, onRun, onSkip }: {
 }
 
 /* ─── AutomationCard ──────────────────────────────────────────────────── */
-function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
-  def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void; scheduleDay?: number
+function AutomationCard({ def, enabled, onToggleEnabled }: {
+  def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void
 }) {
   const [monthYear, setMonthYear]           = useState(def.defaultMonth())
   const [phase, setPhase]                   = useState<Phase>('idle')
@@ -455,12 +455,6 @@ function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
             <h4 className={`font-bold text-base ${enabled ? 'text-gray-800' : 'text-gray-400'}`}>{def.name}</h4>
           </div>
           <p className={`text-xs mt-1 mr-7 ${enabled ? 'text-gray-500' : 'text-gray-400'}`}>{def.desc}</p>
-          {enabled && (
-            <p className="text-xs mt-1.5 mr-7 flex items-center gap-1 text-indigo-500 font-medium">
-              <span>🕐</span>
-              <span>ריצה אוטומטית הבאה: {nextRunLabel(scheduleDay)}</span>
-            </p>
-          )}
         </div>
         {/* ON/OFF toggle */}
         <button
@@ -477,6 +471,9 @@ function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
           {enabled ? 'פעיל' : 'כבוי'}
         </button>
       </div>
+
+      {/* ── Schedule bar ── */}
+      <ScheduleBar autoId={def.id} />
 
       {/* ── Flow diagram (always visible) ── */}
       <div className={`px-6 py-5 border-b border-gray-100 overflow-x-auto ${!enabled ? 'opacity-40' : ''}`} dir="ltr">
@@ -659,8 +656,9 @@ function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
   )
 }
 
-/* ─── ScheduleBar ─────────────────────────────────────────────────────── */
-function ScheduleBar({ onDayChange }: { onDayChange?: (d: number) => void }) {
+/* ─── ScheduleBar (per-automation) ───────────────────────────────────── */
+function ScheduleBar({ autoId }: { autoId: string }) {
+  const key = (f: string) => `${autoId.replace(/-/g, '_')}_${f}`
   const [day,  setDay]  = useState(1)
   const [hour, setHour] = useState(8)
   const [on,   setOn]   = useState(true)
@@ -671,56 +669,57 @@ function ScheduleBar({ onDayChange }: { onDayChange?: (d: number) => void }) {
     fetch('/api/settings')
       .then(r => r.json())
       .then(d => {
-        if (d.automation_day     != null) { setDay(Number(d.automation_day)); onDayChange?.(Number(d.automation_day)) }
-        if (d.automation_hour    != null) setHour(Number(d.automation_hour))
-        if (d.automation_enabled != null) setOn(!!d.automation_enabled)
+        if (d[key('day')]     != null) setDay(Number(d[key('day')]))
+        if (d[key('hour')]    != null) setHour(Number(d[key('hour')]))
+        if (d[key('enabled')] != null) setOn(!!d[key('enabled')])
       })
       .catch(() => {})
-  }, [])
+  }, [autoId])
 
   const save = async (newDay = day, newHour = hour, newOn = on) => {
     setSaving(true); setSaved(false)
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ automation_day: newDay, automation_hour: newHour, automation_enabled: newOn }),
+      body: JSON.stringify({ [key('day')]: newDay, [key('hour')]: newHour, [key('enabled')]: newOn }),
     }).catch(() => {})
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-xl text-sm" dir="rtl">
-      <span className="font-semibold text-indigo-700 shrink-0">🕐 תזמון אוטומטי:</span>
+  const toggle = () => { const next = !on; setOn(next); save(day, hour, next) }
 
-      <button onClick={() => { setOn(v => { save(day, hour, !v); return !v }) }}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${on ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 text-sm" dir="rtl">
+      <span className="font-semibold text-indigo-600 shrink-0 text-xs">🕐 תזמון אוטומטי</span>
+
+      <button onClick={toggle}
+        className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border transition-all ${on ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
         <span className={`w-6 h-3.5 rounded-full relative transition-colors ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}>
           <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow transition-all ${on ? 'right-0.5' : 'left-0.5'}`} />
         </span>
         {on ? 'פעיל' : 'כבוי'}
       </button>
 
-      <span className="text-indigo-400 shrink-0">יום</span>
-      <select value={day} disabled={!on}
-        onChange={e => { setDay(Number(e.target.value)); onDayChange?.(Number(e.target.value)) }}
-        className="px-2 py-1 rounded-lg border border-indigo-200 text-sm bg-white focus:outline-none disabled:opacity-40">
+      <span className="text-indigo-400 text-xs shrink-0">יום</span>
+      <select value={day} disabled={!on} onChange={e => setDay(Number(e.target.value))}
+        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none disabled:opacity-40">
         {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
       </select>
 
-      <span className="text-indigo-400 shrink-0">בשעה</span>
-      <select value={hour} disabled={!on}
-        onChange={e => setHour(Number(e.target.value))}
-        className="px-2 py-1 rounded-lg border border-indigo-200 text-sm bg-white focus:outline-none disabled:opacity-40">
+      <span className="text-indigo-400 text-xs shrink-0">שעה</span>
+      <select value={hour} disabled={!on} onChange={e => setHour(Number(e.target.value))}
+        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none disabled:opacity-40">
         {Array.from({ length: 24 }, (_, i) => i).map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00</option>)}
       </select>
 
       <button onClick={() => save()} disabled={saving || !on}
-        className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 transition-all"
+        className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all"
         style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
         {saving ? '...' : 'שמור'}
       </button>
-      {saved && <span className="text-xs text-emerald-600 font-medium">✓</span>}
+      {saved && <span className="text-xs text-emerald-600">✓</span>}
+      {on && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)}</span>}
     </div>
   )
 }
@@ -728,7 +727,6 @@ function ScheduleBar({ onDayChange }: { onDayChange?: (d: number) => void }) {
 /* ─── AutomationsTab (exported) ───────────────────────────────────────── */
 export default function AutomationsTab() {
   const [selectedId, setSelectedId] = useState(DEFS[0].id)
-  const [scheduleDay, setScheduleDay] = useState(1)
 
   // on/off state per automation, persisted in localStorage
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() => {
@@ -749,9 +747,6 @@ export default function AutomationsTab() {
 
   return (
     <div className="space-y-4" dir="rtl">
-      {/* Schedule bar */}
-      <ScheduleBar onDayChange={setScheduleDay} />
-
       {/* Automation selector pills */}
       <div className="flex gap-2 flex-wrap">
         {DEFS.map(d => (
@@ -777,7 +772,6 @@ export default function AutomationsTab() {
         def={selectedDef}
         enabled={enabled[selectedId] ?? true}
         onToggleEnabled={val => setAutomationEnabled(selectedId, val)}
-        scheduleDay={scheduleDay}
       />
     </div>
   )

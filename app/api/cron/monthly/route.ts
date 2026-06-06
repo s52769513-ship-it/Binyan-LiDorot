@@ -9,55 +9,65 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: settings } = await supabaseAdmin
+  const { data: s } = await supabaseAdmin
     .from('institution_settings')
-    .select('automation_day, automation_hour, automation_enabled')
+    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_enabled')
     .limit(1)
     .single()
 
-  if (!settings?.automation_enabled) {
-    return NextResponse.json({ skipped: true, reason: 'automations disabled' })
-  }
-
-  const today     = new Date()
-  const configDay = Number(settings?.automation_day ?? 1)
-  if (today.getDate() !== configDay) {
-    return NextResponse.json({ skipped: true, reason: `not day ${configDay}`, today: today.getDate() })
-  }
-
-  // Use request origin — works without any env var
-  const base    = new URL(req.url).origin
+  const today      = new Date()
+  const todayDate  = today.getDate()
+  const todayHour  = today.getUTCHours()
+  const base       = new URL(req.url).origin
   const results: Record<string, unknown> = {}
 
   const currentMY = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
   const prev      = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const prevMY    = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
 
-  // 1. קיזוז שכ"ל — חודש נוכחי
-  try {
-    const r1   = await fetch(`${base}/api/automations/tuition-offset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dryRun: false, monthYear: currentMY }),
-    })
-    const text = await r1.text()
-    const done = text.trim().split('\n').map(l => { try { return JSON.parse(l) } catch { return null } })
-      .find((l: { type?: string } | null) => l?.type === 'complete')
-    results.tuitionOffset = done ?? { raw: text.slice(0, 200) }
-  } catch (err) { results.tuitionOffset = { error: String(err) } }
+  // קיזוז שכ"ל — רץ לפי ההגדרות של האוטומציה הזו
+  const toDay  = Number(s?.tuition_offset_day  ?? 1)
+  const toHour = Number(s?.tuition_offset_hour ?? 8)
+  const toOn   = s?.tuition_offset_enabled !== false
 
-  // 2. PP משכורת — חודש קודם
-  try {
-    const r2   = await fetch(`${base}/api/automations/salary-pp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dryRun: false, monthYear: prevMY }),
-    })
-    const text = await r2.text()
-    const done = text.trim().split('\n').map(l => { try { return JSON.parse(l) } catch { return null } })
-      .find((l: { type?: string } | null) => l?.type === 'complete')
-    results.salaryPP = done ?? { raw: text.slice(0, 200) }
-  } catch (err) { results.salaryPP = { error: String(err) } }
+  if (toOn && todayDate === toDay) {
+    try {
+      const r    = await fetch(`${base}/api/automations/tuition-offset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false, monthYear: currentMY }),
+      })
+      const text = await r.text()
+      const done = text.trim().split('\n')
+        .map(l => { try { return JSON.parse(l) } catch { return null } })
+        .find((l: { type?: string } | null) => l?.type === 'complete')
+      results.tuitionOffset = done ?? { raw: text.slice(0, 200) }
+    } catch (err) { results.tuitionOffset = { error: String(err) } }
+  } else {
+    results.tuitionOffset = { skipped: true, reason: !toOn ? 'disabled' : `day ${toDay} ≠ ${todayDate}` }
+  }
+
+  // PP משכורת — רץ לפי ההגדרות של האוטומציה הזו
+  const spDay  = Number(s?.salary_pp_day  ?? 1)
+  const spHour = Number(s?.salary_pp_hour ?? 8)
+  const spOn   = s?.salary_pp_enabled !== false
+
+  if (spOn && todayDate === spDay) {
+    try {
+      const r    = await fetch(`${base}/api/automations/salary-pp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false, monthYear: prevMY }),
+      })
+      const text = await r.text()
+      const done = text.trim().split('\n')
+        .map(l => { try { return JSON.parse(l) } catch { return null } })
+        .find((l: { type?: string } | null) => l?.type === 'complete')
+      results.salaryPP = done ?? { raw: text.slice(0, 200) }
+    } catch (err) { results.salaryPP = { error: String(err) } }
+  } else {
+    results.salaryPP = { skipped: true, reason: !spOn ? 'disabled' : `day ${spDay} ≠ ${todayDate}` }
+  }
 
   try {
     await supabaseAdmin.from('automation_logs').insert({
@@ -69,10 +79,10 @@ export async function GET(req: NextRequest) {
       parent_name:   null,
       actions_count: 0,
       status:        'success',
-      summary:       `ריצה אוטומטית — קיזוז ${currentMY} · משכורת ${prevMY}`,
-      details:       results,
+      summary:       `Cron יומי — קיזוז ${currentMY} (יום ${toDay}) · משכורת ${prevMY} (יום ${spDay})`,
+      details:       { todayDate, todayHour, ...results },
     })
   } catch { /* best effort */ }
 
-  return NextResponse.json({ success: true, currentMY, prevMY, ...results })
+  return NextResponse.json({ success: true, todayDate, currentMY, prevMY, ...results })
 }

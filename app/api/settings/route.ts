@@ -14,7 +14,12 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
-    const allowed = ['institution_name', 'address', 'phone', 'primary_color', 'logo_url', 'automation_day', 'automation_hour', 'automation_enabled']
+    const allowed = [
+      'institution_name', 'address', 'phone', 'primary_color', 'logo_url',
+      'automation_day', 'automation_hour', 'automation_enabled',
+      'tuition_offset_day', 'tuition_offset_hour', 'tuition_offset_enabled',
+      'salary_pp_day',     'salary_pp_hour',     'salary_pp_enabled',
+    ]
     const update: Record<string, unknown> = {}
     for (const key of allowed) {
       if (key in body) update[key] = body[key]
