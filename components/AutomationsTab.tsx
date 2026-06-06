@@ -15,10 +15,12 @@ const fmtN    = (n: number)  => new Intl.NumberFormat('he-IL',{maximumFractionDi
 function currentMY() {
   const d=new Date(); return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
 }
-function nextRunLabel(): string {
-  const d = new Date()
-  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1)
-  return `1 ל${HM[String(next.getMonth()+1).padStart(2,'0')]} ${next.getFullYear()}`
+function nextRunLabel(day = 1): string {
+  const d    = new Date()
+  const next = d.getDate() >= day
+    ? new Date(d.getFullYear(), d.getMonth() + 1, day)
+    : new Date(d.getFullYear(), d.getMonth(), day)
+  return `${day} ל${HM[String(next.getMonth()+1).padStart(2,'0')]} ${next.getFullYear()}`
 }
 function prevMY() {
   const d=new Date(); d.setMonth(d.getMonth()-1)
@@ -302,8 +304,8 @@ function MissedMonthsModal({ months, onRun, onSkip }: {
 }
 
 /* ─── AutomationCard ──────────────────────────────────────────────────── */
-function AutomationCard({ def, enabled, onToggleEnabled }: {
-  def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void
+function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
+  def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void; scheduleDay?: number
 }) {
   const [monthYear, setMonthYear]           = useState(def.defaultMonth())
   const [phase, setPhase]                   = useState<Phase>('idle')
@@ -456,7 +458,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
           {enabled && (
             <p className="text-xs mt-1.5 mr-7 flex items-center gap-1 text-indigo-500 font-medium">
               <span>🕐</span>
-              <span>ריצה אוטומטית הבאה: {nextRunLabel()}</span>
+              <span>ריצה אוטומטית הבאה: {nextRunLabel(scheduleDay)}</span>
             </p>
           )}
         </div>
@@ -658,7 +660,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
 }
 
 /* ─── ScheduleSettings ────────────────────────────────────────────────── */
-function ScheduleSettings() {
+function ScheduleSettings({ onDayChange }: { onDayChange?: (d: number) => void }) {
   const [day,  setDay]  = useState(1)
   const [hour, setHour] = useState(8)
   const [globalEnabled, setGlobalEnabled] = useState(true)
@@ -669,7 +671,7 @@ function ScheduleSettings() {
     fetch('/api/settings')
       .then(r => r.json())
       .then(d => {
-        if (d.automation_day  != null) setDay(Number(d.automation_day))
+        if (d.automation_day  != null) { setDay(Number(d.automation_day)); onDayChange?.(Number(d.automation_day)) }
         if (d.automation_hour != null) setHour(Number(d.automation_hour))
         if (d.automation_enabled != null) setGlobalEnabled(!!d.automation_enabled)
       })
@@ -716,7 +718,7 @@ function ScheduleSettings() {
       <div className={`flex flex-wrap gap-4 items-end transition-opacity ${!globalEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
         <div>
           <label className="block text-xs text-gray-500 mb-1">יום בחודש</label>
-          <select value={day} onChange={e => setDay(Number(e.target.value))}
+          <select value={day} onChange={e => { setDay(Number(e.target.value)); onDayChange?.(Number(e.target.value)) }}
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
             {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
               <option key={d} value={d}>{d}</option>
@@ -756,6 +758,7 @@ function ScheduleSettings() {
 /* ─── AutomationsTab (exported) ───────────────────────────────────────── */
 export default function AutomationsTab() {
   const [selectedId, setSelectedId] = useState(DEFS[0].id)
+  const [scheduleDay, setScheduleDay] = useState(1)
 
   // on/off state per automation, persisted in localStorage
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() => {
@@ -777,7 +780,7 @@ export default function AutomationsTab() {
   return (
     <div className="space-y-4" dir="rtl">
       {/* Schedule settings */}
-      <ScheduleSettings />
+      <ScheduleSettings onDayChange={setScheduleDay} />
 
       {/* Automation selector pills */}
       <div className="flex gap-2 flex-wrap">
@@ -804,6 +807,7 @@ export default function AutomationsTab() {
         def={selectedDef}
         enabled={enabled[selectedId] ?? true}
         onToggleEnabled={val => setAutomationEnabled(selectedId, val)}
+        scheduleDay={scheduleDay}
       />
     </div>
   )

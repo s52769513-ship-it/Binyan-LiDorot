@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       // Find salary PP for this parent + month
       const { data: pps } = await supabaseAdmin
         .from('planned_payments')
-        .select('id, balance')
+        .select('id, amount, balance, pp_type, parent_ids, month_year')
         .contains('parent_ids', [parentId])
         .eq('month_year', monthYear)
         .eq('pp_type', 'salary')
@@ -61,15 +61,9 @@ export async function POST(req: NextRequest) {
       const pp = pps?.[0] ?? null
 
       // If Excel salary differs from PP amount → update PP and recalculate offset
-      if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.balance)) {
-        // Fetch full PP to get current amount
-        const { data: fullPP } = await supabaseAdmin
-          .from('planned_payments')
-          .select('id, amount, balance, pp_type, parent_ids, month_year')
-          .eq('id', pp.id)
-          .single()
-
-        if (fullPP && actualSalary !== Number(fullPP.amount)) {
+      if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.amount)) {
+        const fullPP = pp
+        if (true) {
           const oldAmount  = Number(fullPP.amount)
           const newAmount  = actualSalary
           const delta      = newAmount - oldAmount
