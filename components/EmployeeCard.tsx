@@ -1657,13 +1657,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </div>
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">סוג הו"ק</label>
-                      <input
-                        type="text"
+                      <select
                         value={soDraft.standingOrderType ?? ''}
                         onChange={e => setSoDraft(d => ({ ...d, standingOrderType: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='סוג'
-                      />
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white"
+                      >
+                        <option value="">— בחר סוג —</option>
+                        <option value="בנקאי">בנקאי</option>
+                        <option value="אשראי">אשראי</option>
+                      </select>
                     </div>
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">בנק</label>
@@ -1822,7 +1824,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                       <div className="text-right">
                         <div className="flex items-center gap-2 justify-end">
                           <span className="font-semibold text-sm text-gray-900 font-mono" dir="ltr">{so.externalId || '—'}</span>
-                          {so.standingOrderType && <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{so.standingOrderType}</span>}
+                          {so.standingOrderType && (
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full ${so.standingOrderType === 'אשראי' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                              {so.standingOrderType}
+                            </span>
+                          )}
                         </div>
                         {(so.bankName || so.bankBranch || so.bankAccount) && (
                           <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
