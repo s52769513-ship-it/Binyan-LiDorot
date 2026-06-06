@@ -276,8 +276,7 @@ export async function POST() {
     let standingOrdersCount = 0
     try {
       const soRows: Array<{
-        id: string; parent_id: string; external_id: string
-        standing_order_type: string; synced_at: string
+        id: string; parent_id: string; external_id: string; standing_order_type: string
       }> = []
 
       for (const r of rawParents) {
@@ -302,15 +301,8 @@ export async function POST() {
 
         for (const externalId of ids) {
           if (!externalId || externalId === '0') continue
-          // Deterministic ID so re-sync is idempotent
           const soId = `airtable-${parentId}-${externalId}`
-          soRows.push({
-            id: soId,
-            parent_id: parentId,
-            external_id: externalId,
-            standing_order_type: orderType,
-            synced_at: syncedAt,
-          })
+          soRows.push({ id: soId, parent_id: parentId, external_id: externalId, standing_order_type: orderType })
         }
       }
 
