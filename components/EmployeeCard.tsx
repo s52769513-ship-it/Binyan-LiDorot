@@ -1063,16 +1063,19 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         const salaryTxs = transactions.filter(t =>
                           (t.projectNames ?? []).includes('משכורת') ||
                           t.type === 'קיזוז משכר לימוד' ||
-                          t.type === 'קיזוז ממשכורת'
+                          t.type === 'קיזוז ממשכורת' ||
+                          t.type === 'ניכוי שכ"ל' ||
+                          t.type === 'קיזוז שכ"ל'
                         )
                         if (salaryTxs.length === 0) return null
                         const months = [...new Set(salaryTxs.map(t => t.monthYear).filter(Boolean))].sort().reverse()
+                        const OFFSET_TYPES = ['קיזוז משכר לימוד', 'קיזוז ממשכורת', 'ניכוי שכ"ל', 'קיזוז שכ"ל']
                         return (
                           <SectionCard title="תשלומי משכורת ששולמו">
                             <div className="divide-y divide-gray-100">
                               {months.map(my => {
                                 const mTxs = salaryTxs.filter(t => t.monthYear === my)
-                                const total = mTxs.filter(t => t.type !== 'קיזוז משכר לימוד' && t.type !== 'קיזוז ממשכורת')
+                                const total = mTxs.filter(t => !OFFSET_TYPES.includes(t.type))
                                   .reduce((s, t) => s + Math.abs(t.amount), 0)
                                 return (
                                   <div key={my} className="px-4 py-2.5">
@@ -1082,7 +1085,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                                     </div>
                                     <div className="space-y-1">
                                       {mTxs.map(t => {
-                                        const isOffset = t.type === 'קיזוז משכר לימוד' || t.type === 'קיזוז ממשכורת'
+                                        const isOffset = OFFSET_TYPES.includes(t.type)
                                         return (
                                           <div key={t.id} className="flex justify-between items-center text-sm">
                                             <span className={`tabular-nums font-semibold ${isOffset ? 'text-red-500' : 'text-emerald-700'}`}>

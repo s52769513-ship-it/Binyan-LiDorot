@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
             .select('id, amount')
             .contains('parent_ids', [parent.id])
             .eq('month_year', targetMY)
-            .eq('type', 'קיזוז ממשכורת')
+            .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
 
           const offsetTotal = (offsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
@@ -132,8 +132,8 @@ export async function POST(req: NextRequest) {
               parent_ids:         [parent.id],
               date:               today.toISOString().split('T')[0],
               month_year:         targetMY,
-              notes:              'קיזוז משכר לימוד',
-              type:               'קיזוז משכר לימוד',
+              notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
+              type:               'ניכוי שכ"ל',
               project_ids:        [],
               project_names:      [],
               synced_at:          '2099-12-31T23:59:59.999Z',

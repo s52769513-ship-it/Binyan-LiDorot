@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
             .select('id, amount, balance')
             .contains('parent_ids', [parent.id])
             .eq('month_year', targetMY)
+            .eq('pp_type', 'tuition')
             .gt('balance', 0)
             .limit(1)
 
@@ -103,8 +104,8 @@ export async function POST(req: NextRequest) {
               parent_ids:         [parent.id],
               date:               today.toISOString().split('T')[0],
               month_year:         targetMY,
-              notes:              'קיזוז שכ"ל ממשכורת',
-              type:               'קיזוז ממשכורת',
+              notes:              'שולם שכ"ל מקיזוז משכורת',
+              type:               'קיזוז שכ"ל',
               project_ids:        [],
               project_names:      [],
               synced_at:          '2099-12-31T23:59:59.999Z',
