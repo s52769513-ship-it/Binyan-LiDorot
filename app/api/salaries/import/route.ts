@@ -5,10 +5,11 @@ import * as XLSX from 'xlsx'
 // Must match export column order
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', "צ'ק"]
 const COL = {
-  id:       0,
-  name:     1,
-  // 2 husband, 3 wife, 4 family total, 5 offset, 6 toPay (formulas — skip)
-  payStart: 7,  // H
+  id:          0,
+  name:        1,
+  husbandSalary: 2,  // C — actual salary this month
+  // 3 wife, 4 family total, 5 offset, 6 toPay
+  payStart:    7,    // H
 }
 
 export async function POST(req: NextRequest) {
@@ -35,8 +36,9 @@ export async function POST(req: NextRequest) {
       const row = rows[i]
       if (!row || row.length === 0) continue
 
-      const parentId   = String(row[COL.id]   || '').trim()
-      const parentName = String(row[COL.name]  || '').trim()
+      const parentId      = String(row[COL.id]   || '').trim()
+      const parentName    = String(row[COL.name]  || '').trim()
+      const actualSalary  = Number(row[COL.husbandSalary] || 0)
       if (!parentId || !parentName) continue
 
       // Collect payment method amounts (columns H–L)
@@ -57,6 +59,85 @@ export async function POST(req: NextRequest) {
         .limit(1)
 
       const pp = pps?.[0] ?? null
+
+      // If Excel salary differs from PP amount → update PP and recalculate offset
+      if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.balance)) {
+        // Fetch full PP to get current amount
+        const { data: fullPP } = await supabaseAdmin
+          .from('planned_payments')
+          .select('id, amount, balance, pp_type, parent_ids, month_year')
+          .eq('id', pp.id)
+          .single()
+
+        if (fullPP && actualSalary !== Number(fullPP.amount)) {
+          const oldAmount  = Number(fullPP.amount)
+          const newAmount  = actualSalary
+          const delta      = newAmount - oldAmount
+          const newBalance = Math.max(0, Number(fullPP.balance) + delta)
+
+          await supabaseAdmin.from('planned_payments')
+            .update({ amount: newAmount, balance: newBalance })
+            .eq('id', pp.id)
+
+          // If salary decreased — reduce existing offset accordingly
+          if (delta < 0) {
+            const { data: salaryOffsetTxs } = await supabaseAdmin
+              .from('transactions')
+              .select('id, amount')
+              .eq('planned_payment_id', pp.id)
+              .eq('type', 'קיזוז משכר לימוד')
+
+            if ((salaryOffsetTxs ?? []).length > 0) {
+              const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+
+              const { data: tuitionPPs } = await supabaseAdmin
+                .from('planned_payments')
+                .select('id, amount, balance')
+                .contains('parent_ids', [parentId])
+                .eq('month_year', monthYear)
+                .eq('pp_type', 'tuition')
+                .limit(1)
+
+              const tuitionPP  = tuitionPPs?.[0]
+              const tuitionAmt = tuitionPP ? Number(tuitionPP.amount) : oldOffset
+              const newOffset  = Math.min(newAmount, tuitionAmt)
+              const offsetDelta = newOffset - oldOffset
+
+              if (offsetDelta < 0 && tuitionPP) {
+                const mainTx = (salaryOffsetTxs ?? [])[0]
+                await supabaseAdmin.from('transactions')
+                  .update({ amount: Math.max(0, Number(mainTx.amount) + offsetDelta) })
+                  .eq('id', mainTx.id)
+
+                const { data: tuitionOffsetTxs } = await supabaseAdmin
+                  .from('transactions')
+                  .select('id, amount')
+                  .contains('parent_ids', [parentId])
+                  .eq('month_year', monthYear)
+                  .eq('type', 'קיזוז ממשכורת')
+
+                if ((tuitionOffsetTxs ?? []).length > 0) {
+                  await supabaseAdmin.from('transactions')
+                    .update({ amount: Math.max(0, Number((tuitionOffsetTxs ?? [])[0].amount) + offsetDelta) })
+                    .eq('id', (tuitionOffsetTxs ?? [])[0].id)
+                }
+
+                await supabaseAdmin.from('planned_payments')
+                  .update({ balance: Math.min(tuitionAmt, Number(tuitionPP.balance) - offsetDelta) })
+                  .eq('id', tuitionPP.id)
+
+                const { data: par } = await supabaseAdmin.from('parents').select('tuition_balance').eq('id', parentId).single()
+                if (par) {
+                  await supabaseAdmin.from('parents')
+                    .update({ tuition_balance: Math.max(0, Number(par.tuition_balance) - offsetDelta) })
+                    .eq('id', parentId)
+                }
+              }
+            }
+          }
+        }
+      }
+
       const txIds: string[] = []
 
       for (const { method, amount } of payments) {
