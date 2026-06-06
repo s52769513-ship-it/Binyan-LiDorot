@@ -660,7 +660,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
 function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) {
   const key = (f: string) => `${autoId.replace(/-/g, '_')}_${f}`
   const [day,  setDay]  = useState(1)
-  const [hour, setHour] = useState(8)
+  const [time, setTime] = useState('08:00')  // HH:MM
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -669,17 +669,18 @@ function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) 
       .then(r => r.json())
       .then(d => {
         if (d[key('day')]  != null) setDay(Number(d[key('day')]))
-        if (d[key('hour')] != null) setHour(Number(d[key('hour')]))
+        if (d[key('time')] != null) setTime(String(d[key('time')]))
+        else if (d[key('hour')] != null) setTime(`${String(Number(d[key('hour')])).padStart(2,'0')}:00`)
       })
       .catch(() => {})
   }, [autoId])
 
-  const save = async (newDay = day, newHour = hour) => {
+  const save = async () => {
     setSaving(true); setSaved(false)
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key('day')]: newDay, [key('hour')]: newHour }),
+      body: JSON.stringify({ [key('day')]: day, [key('time')]: time, [key('hour')]: Number(time.split(':')[0]) }),
     }).catch(() => {})
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -696,18 +697,20 @@ function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) 
       </select>
 
       <span className="text-indigo-400 text-xs shrink-0">שעה</span>
-      <select value={hour} onChange={e => setHour(Number(e.target.value))}
-        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none">
-        {Array.from({ length: 24 }, (_, i) => i).map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00</option>)}
-      </select>
+      <input
+        type="time" value={time}
+        onChange={e => setTime(e.target.value)}
+        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none"
+        dir="ltr"
+      />
 
-      <button onClick={() => save()} disabled={saving}
+      <button onClick={save} disabled={saving}
         className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all"
         style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
         {saving ? '...' : 'שמור'}
       </button>
       {saved && <span className="text-xs text-emerald-600">✓</span>}
-      {enabled && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)}</span>}
+      {enabled && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)} בשעה {time}</span>}
       {!enabled && <span className="text-xs text-gray-400 mr-auto">כבוי — הפעל עם המתג למעלה</span>}
     </div>
   )

@@ -17,8 +17,8 @@ export async function PATCH(req: NextRequest) {
     const allowed = [
       'institution_name', 'address', 'phone', 'primary_color', 'logo_url',
       'automation_day', 'automation_hour', 'automation_enabled',
-      'tuition_offset_day', 'tuition_offset_hour', 'tuition_offset_enabled',
-      'salary_pp_day',     'salary_pp_hour',     'salary_pp_enabled',
+      'tuition_offset_day', 'tuition_offset_hour', 'tuition_offset_time', 'tuition_offset_enabled',
+      'salary_pp_day',     'salary_pp_hour',     'salary_pp_time',     'salary_pp_enabled',
     ]
     const update: Record<string, unknown> = {}
     for (const key of allowed) {

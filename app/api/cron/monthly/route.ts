@@ -11,26 +11,34 @@ export async function GET(req: NextRequest) {
 
   const { data: s } = await supabaseAdmin
     .from('institution_settings')
-    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_enabled')
+    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_time, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_time, salary_pp_enabled')
     .limit(1)
     .single()
 
-  const today      = new Date()
-  const todayDate  = today.getDate()
-  const todayHour  = today.getUTCHours()
-  const base       = new URL(req.url).origin
+  const today     = new Date()
+  const todayDate = today.getDate()
+  const todayHour = today.getUTCHours()
+  const todayMin  = today.getUTCMinutes()
+  const base      = new URL(req.url).origin
   const results: Record<string, unknown> = {}
 
   const currentMY = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
   const prev      = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const prevMY    = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
 
+  const matchTime = (timeStr: string | null | undefined, fallbackHour: number) => {
+    if (timeStr) {
+      const [h, m] = timeStr.split(':').map(Number)
+      return todayHour === h && todayMin >= m && todayMin < m + 5
+    }
+    return todayHour === fallbackHour
+  }
+
   // קיזוז שכ"ל — רץ לפי ההגדרות של האוטומציה הזו
   const toDay  = Number(s?.tuition_offset_day  ?? 1)
-  const toHour = Number(s?.tuition_offset_hour ?? 8)
   const toOn   = s?.tuition_offset_enabled !== false
 
-  if (toOn && todayDate === toDay) {
+  if (toOn && todayDate === toDay && matchTime(s?.tuition_offset_time, Number(s?.tuition_offset_hour ?? 8))) {
     try {
       const r    = await fetch(`${base}/api/automations/tuition-offset`, {
         method: 'POST',
@@ -48,11 +56,10 @@ export async function GET(req: NextRequest) {
   }
 
   // PP משכורת — רץ לפי ההגדרות של האוטומציה הזו
-  const spDay  = Number(s?.salary_pp_day  ?? 1)
-  const spHour = Number(s?.salary_pp_hour ?? 8)
-  const spOn   = s?.salary_pp_enabled !== false
+  const spDay = Number(s?.salary_pp_day ?? 1)
+  const spOn  = s?.salary_pp_enabled !== false
 
-  if (spOn && todayDate === spDay) {
+  if (spOn && todayDate === spDay && matchTime(s?.salary_pp_time, Number(s?.salary_pp_hour ?? 8))) {
     try {
       const r    = await fetch(`${base}/api/automations/salary-pp`, {
         method: 'POST',
@@ -80,9 +87,9 @@ export async function GET(req: NextRequest) {
       actions_count: 0,
       status:        'success',
       summary:       `Cron יומי — קיזוז ${currentMY} (יום ${toDay}) · משכורת ${prevMY} (יום ${spDay})`,
-      details:       { todayDate, todayHour, ...results },
+      details:       { todayDate, todayHour, todayMin, ...results },
     })
   } catch { /* best effort */ }
 
-  return NextResponse.json({ success: true, todayDate, currentMY, prevMY, ...results })
+  return NextResponse.json({ success: true, todayDate, todayHour, todayMin, currentMY, prevMY, ...results })
 }
