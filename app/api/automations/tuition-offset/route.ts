@@ -43,13 +43,28 @@ export async function POST(req: NextRequest) {
           .gt('salary_gross', 0)
         if (parentId) q = q.eq('id', parentId)
         const { data: parents } = await q
+
+        // Fetch wife salaries for all parents
+        const parentIds = (parents ?? []).map((p: { id: string }) => p.id)
+        const { data: womenRows } = parentIds.length > 0
+          ? await supabaseAdmin.from('women').select('parent_ids, salary_gross').overlaps('parent_ids', parentIds)
+          : { data: [] }
+
+        const wifeSalaryMap: Record<string, number> = {}
+        for (const w of womenRows ?? []) {
+          const gross = Number(w.salary_gross) || 0
+          for (const pid of (w.parent_ids as string[]) ?? []) {
+            wifeSalaryMap[pid] = (wifeSalaryMap[pid] || 0) + gross
+          }
+        }
+
         e({ type: 'step', step: 1, msg: `נמצאו ${(parents ?? []).length} הורים עם משכורת` })
 
         // Step 2 — calculate
         e({ type: 'step', step: 2, msg: 'מחשב קיזוזים...' })
 
         for (const parent of parents ?? []) {
-          const salary = Number(parent.salary_gross) || 0
+          const salary = (Number(parent.salary_gross) || 0) + (wifeSalaryMap[parent.id] || 0)
 
           const { data: pps } = await supabaseAdmin
             .from('planned_payments')

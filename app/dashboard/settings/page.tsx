@@ -424,6 +424,9 @@ export default function SettingsPage() {
   address TEXT,
   phone TEXT,
   primary_color TEXT DEFAULT '#1a3a7a',
+  automation_day INTEGER DEFAULT 1,
+  automation_hour INTEGER DEFAULT 8,
+  automation_enabled BOOLEAN DEFAULT true,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -432,7 +435,12 @@ INSERT INTO institution_settings (id) VALUES (1);
 ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "service_role_all" ON institution_settings
-  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- If the table already exists, run these to add the new columns:
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_day INTEGER DEFAULT 1;
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_hour INTEGER DEFAULT 8;
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT true;`}</pre>
         <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
       </>}

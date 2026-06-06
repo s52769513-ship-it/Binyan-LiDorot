@@ -88,13 +88,14 @@ export async function PATCH(req: NextRequest) {
 
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('planned_payments')
-      .select('amount, balance')
+      .select('amount, balance, pp_type, parent_ids, month_year')
       .eq('id', id)
       .single()
     if (fetchErr || !existing) throw fetchErr ?? new Error('לא נמצא')
 
     const newAmount = Number(amount)
-    const delta = newAmount - (existing.amount ?? 0)
+    const oldAmount = Number(existing.amount) || 0
+    const delta = newAmount - oldAmount
     const newBalance = Math.max(0, (existing.balance ?? 0) + delta)
 
     const { error } = await supabaseAdmin
@@ -102,6 +103,75 @@ export async function PATCH(req: NextRequest) {
       .update({ amount: newAmount, balance: newBalance })
       .eq('id', id)
     if (error) throw error
+
+    // If this is a salary PP and the amount decreased, recalculate offsets
+    if (existing.pp_type === 'salary' && delta < 0) {
+      try {
+        const parentId = (existing.parent_ids as string[])?.[0]
+        const monthYear = existing.month_year as string
+
+        // Find existing salary-side offset transactions linked to this PP
+        const { data: salaryOffsetTxs } = await supabaseAdmin
+          .from('transactions')
+          .select('id, amount')
+          .eq('planned_payment_id', id)
+          .eq('type', 'קיזוז משכר לימוד')
+
+        if ((salaryOffsetTxs ?? []).length > 0 && parentId) {
+          const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+
+          // Find tuition PP for this parent/month to know tuition amount
+          const { data: tuitionPPs } = await supabaseAdmin
+            .from('planned_payments')
+            .select('id, amount, balance')
+            .contains('parent_ids', [parentId])
+            .eq('month_year', monthYear)
+            .eq('pp_type', 'tuition')
+            .limit(1)
+
+          const tuitionPP = tuitionPPs?.[0]
+          const tuitionAmount = tuitionPP ? Number(tuitionPP.amount) : oldOffset
+
+          const newOffset = Math.min(newAmount, tuitionAmount)
+          const offsetDelta = newOffset - oldOffset  // negative = we owe back to tuition
+
+          if (offsetDelta < 0 && tuitionPP) {
+            // Update salary-side offset transaction (take the first one, adjust)
+            const mainTx = (salaryOffsetTxs ?? [])[0]
+            await supabaseAdmin.from('transactions')
+              .update({ amount: Math.max(0, Number(mainTx.amount) + offsetDelta) })
+              .eq('id', mainTx.id)
+
+            // Update tuition-side offset transactions
+            const { data: tuitionOffsetTxs } = await supabaseAdmin
+              .from('transactions')
+              .select('id, amount')
+              .contains('parent_ids', [parentId])
+              .eq('month_year', monthYear)
+              .eq('type', 'קיזוז ממשכורת')
+            if ((tuitionOffsetTxs ?? []).length > 0) {
+              const mainTuitionTx = (tuitionOffsetTxs ?? [])[0]
+              await supabaseAdmin.from('transactions')
+                .update({ amount: Math.max(0, Number(mainTuitionTx.amount) + offsetDelta) })
+                .eq('id', mainTuitionTx.id)
+            }
+
+            // Return difference to tuition PP balance
+            await supabaseAdmin.from('planned_payments')
+              .update({ balance: Math.min(tuitionAmount, Number(tuitionPP.balance) - offsetDelta) })
+              .eq('id', tuitionPP.id)
+
+            // Return difference to parent tuition_balance
+            const { data: par } = await supabaseAdmin.from('parents').select('tuition_balance').eq('id', parentId).single()
+            if (par) {
+              await supabaseAdmin.from('parents')
+                .update({ tuition_balance: Math.max(0, Number(par.tuition_balance) - offsetDelta) })
+                .eq('id', parentId)
+            }
+          }
+        }
+      } catch { /* offset recalc is best-effort */ }
+    }
 
     return NextResponse.json({ success: true, amount: newAmount, balance: newBalance })
   } catch (err) {
