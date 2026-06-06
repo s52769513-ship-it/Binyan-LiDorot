@@ -473,7 +473,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       </div>
 
       {/* ── Schedule bar ── */}
-      <ScheduleBar autoId={def.id} />
+      <ScheduleBar autoId={def.id} enabled={enabled} />
 
       {/* ── Flow diagram (always visible) ── */}
       <div className={`px-6 py-5 border-b border-gray-100 overflow-x-auto ${!enabled ? 'opacity-40' : ''}`} dir="ltr">
@@ -657,11 +657,10 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
 }
 
 /* ─── ScheduleBar (per-automation) ───────────────────────────────────── */
-function ScheduleBar({ autoId }: { autoId: string }) {
+function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) {
   const key = (f: string) => `${autoId.replace(/-/g, '_')}_${f}`
   const [day,  setDay]  = useState(1)
   const [hour, setHour] = useState(8)
-  const [on,   setOn]   = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -669,57 +668,47 @@ function ScheduleBar({ autoId }: { autoId: string }) {
     fetch('/api/settings')
       .then(r => r.json())
       .then(d => {
-        if (d[key('day')]     != null) setDay(Number(d[key('day')]))
-        if (d[key('hour')]    != null) setHour(Number(d[key('hour')]))
-        if (d[key('enabled')] != null) setOn(!!d[key('enabled')])
+        if (d[key('day')]  != null) setDay(Number(d[key('day')]))
+        if (d[key('hour')] != null) setHour(Number(d[key('hour')]))
       })
       .catch(() => {})
   }, [autoId])
 
-  const save = async (newDay = day, newHour = hour, newOn = on) => {
+  const save = async (newDay = day, newHour = hour) => {
     setSaving(true); setSaved(false)
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key('day')]: newDay, [key('hour')]: newHour, [key('enabled')]: newOn }),
+      body: JSON.stringify({ [key('day')]: newDay, [key('hour')]: newHour }),
     }).catch(() => {})
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const toggle = () => { const next = !on; setOn(next); save(day, hour, next) }
-
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 text-sm" dir="rtl">
-      <span className="font-semibold text-indigo-600 shrink-0 text-xs">🕐 תזמון אוטומטי</span>
-
-      <button onClick={toggle}
-        className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border transition-all ${on ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
-        <span className={`w-6 h-3.5 rounded-full relative transition-colors ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-          <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow transition-all ${on ? 'right-0.5' : 'left-0.5'}`} />
-        </span>
-        {on ? 'פעיל' : 'כבוי'}
-      </button>
+    <div className={`flex flex-wrap items-center gap-2 px-4 py-2.5 border-b text-sm transition-opacity ${enabled ? 'bg-indigo-50 border-indigo-100' : 'bg-gray-50 border-gray-100 opacity-50 pointer-events-none'}`} dir="rtl">
+      <span className="font-semibold text-indigo-600 shrink-0 text-xs">🕐 תזמון אוטומטי:</span>
 
       <span className="text-indigo-400 text-xs shrink-0">יום</span>
-      <select value={day} disabled={!on} onChange={e => setDay(Number(e.target.value))}
-        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none disabled:opacity-40">
+      <select value={day} onChange={e => setDay(Number(e.target.value))}
+        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none">
         {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
       </select>
 
       <span className="text-indigo-400 text-xs shrink-0">שעה</span>
-      <select value={hour} disabled={!on} onChange={e => setHour(Number(e.target.value))}
-        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none disabled:opacity-40">
+      <select value={hour} onChange={e => setHour(Number(e.target.value))}
+        className="px-2 py-0.5 rounded border border-indigo-200 text-xs bg-white focus:outline-none">
         {Array.from({ length: 24 }, (_, i) => i).map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00</option>)}
       </select>
 
-      <button onClick={() => save()} disabled={saving || !on}
+      <button onClick={() => save()} disabled={saving}
         className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all"
         style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
         {saving ? '...' : 'שמור'}
       </button>
       {saved && <span className="text-xs text-emerald-600">✓</span>}
-      {on && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)}</span>}
+      {enabled && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)}</span>}
+      {!enabled && <span className="text-xs text-gray-400 mr-auto">כבוי — הפעל עם המתג למעלה</span>}
     </div>
   )
 }
@@ -741,6 +730,13 @@ export default function AutomationsTab() {
     const next = { ...enabled, [id]: val }
     setEnabled(next)
     try { localStorage.setItem('automation_enabled', JSON.stringify(next)) } catch {}
+    // Save to DB so Cron knows about it too
+    const dbKey = `${id.replace(/-/g, '_')}_enabled`
+    fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [dbKey]: val }),
+    }).catch(() => {})
   }
 
   const selectedDef = DEFS.find(d => d.id === selectedId) ?? DEFS[0]
