@@ -272,6 +272,57 @@ export async function POST() {
     const plannedCount       = await upsertAndPrune('planned_payments', plannedPayments, syncedAt)
     const womenCount         = await upsertAndPrune('women', women, syncedAt)
 
+    // Sync standing_orders from parent הו"ק field (handles single number or multi-select array)
+    let standingOrdersCount = 0
+    try {
+      const soRows: Array<{
+        id: string; parent_id: string; external_id: string
+        standing_order_type: string; synced_at: string
+      }> = []
+
+      for (const r of rawParents) {
+        const parentId = r.id
+        const rawField = r.fields[P.STANDING_ORDER_ID]
+        const orderType = String(
+          r.fields[P.STANDING_ORDER_TYPE] &&
+          typeof r.fields[P.STANDING_ORDER_TYPE] === 'object' &&
+          'name' in (r.fields[P.STANDING_ORDER_TYPE] as object)
+            ? (r.fields[P.STANDING_ORDER_TYPE] as { name: string }).name
+            : r.fields[P.STANDING_ORDER_TYPE] || ''
+        )
+
+        // Multi-select → array of {name} objects or strings; single number → wrap in array
+        const ids: string[] = Array.isArray(rawField)
+          ? rawField.map(v =>
+              v && typeof v === 'object' && 'name' in v
+                ? String((v as { name: string }).name)
+                : String(v)
+            ).filter(Boolean)
+          : rawField ? [String(rawField)] : []
+
+        for (const externalId of ids) {
+          if (!externalId || externalId === '0') continue
+          // Deterministic ID so re-sync is idempotent
+          const soId = `airtable-${parentId}-${externalId}`
+          soRows.push({
+            id: soId,
+            parent_id: parentId,
+            external_id: externalId,
+            standing_order_type: orderType,
+            synced_at: syncedAt,
+          })
+        }
+      }
+
+      if (soRows.length > 0) {
+        await supabaseAdmin.from('standing_orders')
+          .upsert(soRows, { onConflict: 'id' })
+        standingOrdersCount = soRows.length
+      }
+    } catch (soErr) {
+      console.warn('standing_orders sync skipped:', soErr)
+    }
+
     // Payment allocation: split "בנין לדורות" income transactions across active children
     let allocationsCount = 0
     try {
@@ -337,6 +388,7 @@ export async function POST() {
         plannedPayments: plannedCount,
         allocations: allocationsCount,
         women: womenCount,
+        standingOrders: standingOrdersCount,
       },
     })
   } catch (err) {
