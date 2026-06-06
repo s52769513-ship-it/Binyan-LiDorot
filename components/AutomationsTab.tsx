@@ -659,11 +659,11 @@ function AutomationCard({ def, enabled, onToggleEnabled, scheduleDay }: {
   )
 }
 
-/* ─── ScheduleSettings ────────────────────────────────────────────────── */
-function ScheduleSettings({ onDayChange }: { onDayChange?: (d: number) => void }) {
+/* ─── ScheduleBar ─────────────────────────────────────────────────────── */
+function ScheduleBar({ onDayChange }: { onDayChange?: (d: number) => void }) {
   const [day,  setDay]  = useState(1)
   const [hour, setHour] = useState(8)
-  const [globalEnabled, setGlobalEnabled] = useState(true)
+  const [on,   setOn]   = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -671,86 +671,56 @@ function ScheduleSettings({ onDayChange }: { onDayChange?: (d: number) => void }
     fetch('/api/settings')
       .then(r => r.json())
       .then(d => {
-        if (d.automation_day  != null) { setDay(Number(d.automation_day)); onDayChange?.(Number(d.automation_day)) }
-        if (d.automation_hour != null) setHour(Number(d.automation_hour))
-        if (d.automation_enabled != null) setGlobalEnabled(!!d.automation_enabled)
+        if (d.automation_day     != null) { setDay(Number(d.automation_day)); onDayChange?.(Number(d.automation_day)) }
+        if (d.automation_hour    != null) setHour(Number(d.automation_hour))
+        if (d.automation_enabled != null) setOn(!!d.automation_enabled)
       })
       .catch(() => {})
   }, [])
 
-  const save = async () => {
+  const save = async (newDay = day, newHour = hour, newOn = on) => {
     setSaving(true); setSaved(false)
-    try {
-      await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ automation_day: day, automation_hour: hour, automation_enabled: globalEnabled }),
-      })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
-    } catch {}
-    finally { setSaving(false) }
+    await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ automation_day: newDay, automation_hour: newHour, automation_enabled: newOn }),
+    }).catch(() => {})
+    setSaving(false); setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4" dir="rtl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-semibold text-gray-700 text-sm">תזמון אוטומטי חודשי</h4>
-          <p className="text-xs text-gray-400 mt-0.5">הריצה מתבצעת פעם בחודש דרך Vercel Cron</p>
-        </div>
-        {/* Global on/off */}
-        <button
-          onClick={() => setGlobalEnabled(v => !v)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-            globalEnabled
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-              : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200'
-          }`}
-        >
-          <span className={`w-7 h-4 rounded-full relative transition-colors duration-200 ${globalEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-            <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-all duration-200 ${globalEnabled ? 'right-0.5' : 'left-0.5'}`} />
-          </span>
-          {globalEnabled ? 'פעיל' : 'כבוי'}
-        </button>
-      </div>
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-xl text-sm" dir="rtl">
+      <span className="font-semibold text-indigo-700 shrink-0">🕐 תזמון אוטומטי:</span>
 
-      <div className={`flex flex-wrap gap-4 items-end transition-opacity ${!globalEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">יום בחודש</label>
-          <select value={day} onChange={e => { setDay(Number(e.target.value)); onDayChange?.(Number(e.target.value)) }}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
-            {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">שעה</label>
-          <select value={hour} onChange={e => setHour(Number(e.target.value))}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
-            {Array.from({ length: 24 }, (_, i) => i).map(h => (
-              <option key={h} value={h}>{String(h).padStart(2,'0')}:00</option>
-            ))}
-          </select>
-        </div>
-        <div className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
-          בכל <strong>{day}</strong> לחודש בשעה <strong>{String(hour).padStart(2,'0')}:00</strong> —
-          קיזוז שכ&quot;ל חודש נוכחי + PP משכורת חודש קודם
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 pt-1">
-        <button onClick={save} disabled={saving}
-          className="px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50 transition-all"
-          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
-          {saving ? 'שומר...' : 'שמור תזמון'}
-        </button>
-        {saved && <span className="text-xs text-emerald-600 font-medium">✓ נשמר</span>}
-        <span className="text-xs text-gray-400 mr-auto">
-          הוסף <code className="bg-gray-100 px-1 rounded">CRON_SECRET</code> ב-Vercel Environment Variables לאבטחה
+      <button onClick={() => { setOn(v => { save(day, hour, !v); return !v }) }}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${on ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+        <span className={`w-6 h-3.5 rounded-full relative transition-colors ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+          <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow transition-all ${on ? 'right-0.5' : 'left-0.5'}`} />
         </span>
-      </div>
+        {on ? 'פעיל' : 'כבוי'}
+      </button>
+
+      <span className="text-indigo-400 shrink-0">יום</span>
+      <select value={day} disabled={!on}
+        onChange={e => { setDay(Number(e.target.value)); onDayChange?.(Number(e.target.value)) }}
+        className="px-2 py-1 rounded-lg border border-indigo-200 text-sm bg-white focus:outline-none disabled:opacity-40">
+        {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+
+      <span className="text-indigo-400 shrink-0">בשעה</span>
+      <select value={hour} disabled={!on}
+        onChange={e => setHour(Number(e.target.value))}
+        className="px-2 py-1 rounded-lg border border-indigo-200 text-sm bg-white focus:outline-none disabled:opacity-40">
+        {Array.from({ length: 24 }, (_, i) => i).map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00</option>)}
+      </select>
+
+      <button onClick={() => save()} disabled={saving || !on}
+        className="px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-40 transition-all"
+        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
+        {saving ? '...' : 'שמור'}
+      </button>
+      {saved && <span className="text-xs text-emerald-600 font-medium">✓</span>}
     </div>
   )
 }
@@ -779,8 +749,8 @@ export default function AutomationsTab() {
 
   return (
     <div className="space-y-4" dir="rtl">
-      {/* Schedule settings */}
-      <ScheduleSettings onDayChange={setScheduleDay} />
+      {/* Schedule bar */}
+      <ScheduleBar onDayChange={setScheduleDay} />
 
       {/* Automation selector pills */}
       <div className="flex gap-2 flex-wrap">
