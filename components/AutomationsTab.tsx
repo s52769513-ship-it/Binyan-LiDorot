@@ -526,8 +526,9 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
     setParentsLoading(true)
     try {
       // nedarim-bank-hok-pull: load parents via standing orders (not salary endpoint)
-      if (def.id === 'nedarim-bank-hok-pull') {
-        const r = await fetch('/api/standing-orders?type=בנקאי&limit=500')
+      if (def.id === 'nedarim-bank-hok-pull' || def.id === 'nedarim-credit-hok-pull') {
+        const soType = def.id === 'nedarim-bank-hok-pull' ? 'בנקאי' : 'אשראי'
+        const r = await fetch(`/api/standing-orders?type=${encodeURIComponent(soType)}&limit=500`)
         const d = await r.json()
         const seen = new Set<string>()
         const opts: ParentOpt[] = []
@@ -619,6 +620,8 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             ? { dryRun: isDry, fromMonth, toMonth }
             : def.id === 'nedarim-bank-hok-pull'
             ? { dryRun: isDry, from: dateFrom, to: dateTo, ...(pid ? { parentId: pid } : {}) }
+            : def.id === 'nedarim-credit-hok-pull'
+            ? { dryRun: isDry, ...(pid ? { parentId: pid } : {}) }
             : { dryRun: isDry, parentId: pid, monthYear: targetMY }
         ),
       })
@@ -828,8 +831,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
               ▶ הרץ לכולם
             </button>
-            {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
-             def.id !== 'nedarim-credit-hok-pull' && (
+            {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' && (
               <button onClick={() => openPick(false)}
                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
                 👤 הרץ להורה בודד
@@ -842,8 +844,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               </button>
             )}
           </>}
-          {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
-           def.id !== 'nedarim-credit-hok-pull' && (
+          {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' && (
             <button onClick={() => openPick(true)}
               className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
               🧪 בדיקה להורה

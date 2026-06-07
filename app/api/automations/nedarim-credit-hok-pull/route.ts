@@ -44,7 +44,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const dryRun = body.dryRun === true
+  const dryRun   = body.dryRun === true
+  const parentId: string | null = body.parentId ?? null
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -62,12 +63,16 @@ export async function POST(req: NextRequest) {
           (logs ?? []).flatMap(l => (l.details?.txIds as string[]) ?? [])
         )
 
-        // 2. Load all credit standing orders
-        const { data: soList, error } = await supabaseAdmin
+        // 2. Load credit standing orders (optionally filtered by parent)
+        let soQuery = supabaseAdmin
           .from('standing_orders')
           .select('id, external_id, parent_id, linked_parent_id, project_name')
           .eq('standing_order_type', 'אשראי')
           .neq('external_id', '')
+        if (parentId) {
+          soQuery = soQuery.or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+        }
+        const { data: soList, error } = await soQuery
 
         if (error) throw error
         const creditSOs = (soList ?? []).filter(s => s.external_id)
