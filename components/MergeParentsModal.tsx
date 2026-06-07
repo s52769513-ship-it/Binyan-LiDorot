@@ -112,7 +112,7 @@ async function fetchParentData(id: string): Promise<ParentData> {
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
-export default function MergeParentsTab() {
+export default function MergeParentsTab({ onOpenParent }: { onOpenParent?: (id: string) => void }) {
   const [searchBy, setSearchBy] = useState<SearchMode>('tz')
   const [query, setQuery]       = useState('')
   const [groups, setGroups]     = useState<{ id: string; name: string; id_number?: string; father_phone?: string }[][]>([])
@@ -207,6 +207,7 @@ export default function MergeParentsTab() {
       }
       setDone(true); setActiveGroupIds(null); setAllData([]); setExcludedLinked(new Set())
       setGroups(prev => prev.filter(g => !g.some(p => p.id === primaryId || loserIds.includes(p.id))))
+      if (onOpenParent) onOpenParent(primaryId)
     } catch (e) { setMergeError(String(e)) }
     finally { setMerging(false) }
   }

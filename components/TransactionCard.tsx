@@ -343,6 +343,49 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   const [ppError, setPpError]   = useState(false)
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
+  // Link-to-PP UI
+  const [showLinkPP, setShowLinkPP]     = useState(false)
+  const [linkCategory, setLinkCategory] = useState<'tuition' | 'salary'>('tuition')
+  const [openPPs, setOpenPPs]           = useState<{ id: string; name: string; monthYear: string; balance: number; amount: number }[]>([])
+  const [ppListLoading, setPpListLoading] = useState(false)
+  const [linking, setLinking]           = useState(false)
+
+  const loadOpenPPs = async (category: 'tuition' | 'salary') => {
+    const parentId = tx.parentIds?.[0]
+    if (!parentId) return
+    setPpListLoading(true)
+    try {
+      const r = await fetch(`/api/planned-payments?parentId=${parentId}&ppType=${category}&open=true`)
+      const d = await r.json()
+      const arr = Array.isArray(d) ? d : (d.data ?? [])
+      setOpenPPs(arr.map((p: Record<string,unknown>) => ({
+        id: String(p.id), name: String(p.name ?? p.type ?? ''),
+        monthYear: String(p.monthYear ?? p.month_year ?? ''),
+        balance: Number(p.balance), amount: Number(p.amount),
+      })))
+    } catch { setOpenPPs([]) }
+    finally { setPpListLoading(false) }
+  }
+
+  const handleLinkPP = async (ppId: string) => {
+    setLinking(true)
+    try {
+      const r = await fetch(`/api/transactions/${tx.id}/link-pp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ppId }),
+      })
+      const d = await r.json()
+      if (d.error) { alert(d.error); return }
+      onSaved?.({ ...draft, plannedPaymentId: ppId })
+      onClose()
+    } catch { alert('שגיאת רשת') }
+    finally { setLinking(false) }
+  }
+
+  useEffect(() => {
+    if (showLinkPP) loadOpenPPs(linkCategory)
+  }, [showLinkPP, linkCategory])
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
 
   // Load PP info by direct ID lookup + compute paid amount from linked transactions
@@ -471,6 +514,49 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
               rows={2} className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent resize-none" />
             <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
           </div>
+
+          {/* Link to PP */}
+          {!tx.plannedPaymentId && !unlinking && tx.amount > 0 && (
+            <div className="border-t border-gray-100 pt-3">
+              {!showLinkPP
+                ? <button onClick={() => setShowLinkPP(true)}
+                    className="text-xs text-indigo-600 hover:underline font-medium">
+                    + קשר לתשלום מתוכנן
+                  </button>
+                : <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => setShowLinkPP(false)} className="text-xs text-gray-400 hover:text-gray-600">ביטול</button>
+                      <span className="text-xs font-semibold text-gray-600">קישור לתשלום מתוכנן</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(['tuition', 'salary'] as const).map(cat => (
+                        <button key={cat} onClick={() => setLinkCategory(cat)}
+                          className={`flex-1 py-1.5 text-xs rounded-lg font-medium border transition-colors ${linkCategory === cat ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                          {cat === 'tuition' ? 'שכר לימוד' : 'משכורת'}
+                        </button>
+                      ))}
+                    </div>
+                    {ppListLoading
+                      ? <div className="text-xs text-gray-400 text-center py-2">טוען...</div>
+                      : openPPs.length === 0
+                        ? <div className="text-xs text-gray-400 text-center py-2">אין תשלומים פתוחים</div>
+                        : <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {openPPs.map(pp => (
+                              <button key={pp.id} onClick={() => handleLinkPP(pp.id)} disabled={linking}
+                                className="w-full text-right px-3 py-2 rounded-lg border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-50">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-semibold text-amber-600">₪{pp.balance.toLocaleString('he-IL', {maximumFractionDigits:0})} נשאר</span>
+                                  <span className="text-xs text-gray-700 font-medium">{pp.name || pp.monthYear}</span>
+                                </div>
+                                {pp.monthYear && <div className="text-xs text-gray-400 text-left">{pp.monthYear}</div>}
+                              </button>
+                            ))}
+                          </div>
+                    }
+                  </div>
+              }
+            </div>
+          )}
 
           {/* Linked PP */}
           {tx.plannedPaymentId && !unlinking && (

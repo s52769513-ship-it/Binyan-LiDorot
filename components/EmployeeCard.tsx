@@ -255,6 +255,21 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [tab, setTab]             = useState<TabKey>('details')
+  const [recalcPPRunning, setRecalcPPRunning] = useState(false)
+  const [recalcPPResult, setRecalcPPResult]   = useState<string | null>(null)
+
+  const runRecalcPP = async () => {
+    if (!parent) return
+    setRecalcPPRunning(true); setRecalcPPResult(null)
+    try {
+      const r = await fetch(`/api/parents/${parent.id}/recalc-pp`, { method: 'POST' })
+      const d = await r.json()
+      if (d.error) { setRecalcPPResult(`שגיאה: ${d.error}`); return }
+      setRecalcPPResult(`✓ ${d.unlinkedMatched} תנועות קושרו · זיכוי: ₪${d.leftoverCredit ?? 0} · חוב: ₪${d.tuitionBalance ?? 0}`)
+      load()
+    } catch { setRecalcPPResult('שגיאת רשת') }
+    finally { setRecalcPPRunning(false) }
+  }
 
   // Planned payments
   const [selectedPP, setSelectedPP]         = useState<PlannedPaymentItem | null>(null)
@@ -815,6 +830,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {/* ── PAYMENTS TAB ── */}
           {parent && tab === 'payments' && (
             <div className="p-4 space-y-4">
+              {/* Recalc PP button */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={runRecalcPP} disabled={recalcPPRunning}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 font-medium">
+                  {recalcPPRunning ? '⟳ מחשב...' : '🔗 תקן קישורי PP'}
+                </button>
+                {recalcPPResult && <span className="text-xs text-gray-500">{recalcPPResult}</span>}
+              </div>
               {/* Summary chips */}
               <div className="grid grid-cols-3 gap-2">
                 <SummaryNum label="חוב פתוח כולל" value={fmt(totalDebt)}       color="text-red-600"     bg="bg-red-50" />

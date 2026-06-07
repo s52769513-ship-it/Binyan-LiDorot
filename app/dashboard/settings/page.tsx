@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 
@@ -262,6 +263,7 @@ function SyncSection() {
 
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
+  const router = useRouter()
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
@@ -340,7 +342,7 @@ export default function SettingsPage() {
       </div>
 
       {settingsTab === 'automations' && <AutomationsTab />}
-      {settingsTab === 'merge'       && <MergeParentsTab />}
+      {settingsTab === 'merge'       && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}

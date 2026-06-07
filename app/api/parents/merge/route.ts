@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 
 /** Replace mergeId with keepId in a postgres array column, skipping excluded row IDs */
 async function repoint(table: string, col: string, mergeId: string, keepId: string, excludeIds: Set<string> = new Set()) {
@@ -81,73 +82,11 @@ export async function POST(req: NextRequest) {
 
     // ── Post-merge recalc ────────────────────────────────────────────────────
     // Recalculate each PP balance for the winner from its linked transactions
-    await recalcParentPPs(keepId, mergeId)
+    await recalcPPs(keepId)
 
-    return NextResponse.json({ success: true, summary })
+    return NextResponse.json({ success: true, summary, keepId })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
 
-/** Recalculate balance on every PP belonging to keepId based on linked transaction amounts,
- *  and match unlinked tuition transactions to open PPs by month_year */
-async function recalcParentPPs(keepId: string, mergeId: string) {
-  // 1. Find transactions that came from mergeId and have no planned_payment_id
-  const { data: unlinkedTxs } = await supabaseAdmin
-    .from('transactions')
-    .select('id, amount, month_year, type')
-    .contains('parent_ids', [keepId])
-    .is('planned_payment_id', null)
-    .gt('amount', 0)
-
-  // 2. For each unlinked positive transaction, find the best open tuition PP and link it
-  for (const tx of unlinkedTxs ?? []) {
-    const { data: openPPs } = await supabaseAdmin
-      .from('planned_payments')
-      .select('id, balance, month_year')
-      .contains('parent_ids', [keepId])
-      .eq('pp_type', 'tuition')
-      .gt('balance', 0)
-      .order('month_year', { ascending: true })
-
-    if (!openPPs || openPPs.length === 0) continue
-
-    const match = openPPs.find(p => p.month_year === tx.month_year) ?? openPPs[0]
-    const newBalance = Math.max(0, Number(match.balance) - Number(tx.amount))
-
-    await supabaseAdmin.from('transactions').update({ planned_payment_id: match.id }).eq('id', tx.id)
-    await supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', match.id)
-    // Refresh balance for next iteration
-    match.balance = newBalance
-  }
-
-  // 3. Recalculate all explicitly linked PPs (for safety)
-  const { data: pps } = await supabaseAdmin
-    .from('planned_payments')
-    .select('id, amount')
-    .contains('parent_ids', [keepId])
-
-  for (const pp of pps ?? []) {
-    const { data: txs } = await supabaseAdmin
-      .from('transactions')
-      .select('amount')
-      .eq('planned_payment_id', pp.id)
-      .gt('amount', 0)
-
-    const paid = (txs ?? []).reduce((sum, t) => sum + Number(t.amount ?? 0), 0)
-    const balance = Math.max(0, Number(pp.amount) - paid)
-    await supabaseAdmin.from('planned_payments').update({ balance }).eq('id', pp.id)
-  }
-
-  // 4. Recalculate parent tuition_balance
-  const { data: allPps } = await supabaseAdmin
-    .from('planned_payments')
-    .select('balance, pp_type')
-    .contains('parent_ids', [keepId])
-
-  const tuitionBalance = (allPps ?? [])
-    .filter(p => (p.pp_type ?? '') !== 'משכורת')
-    .reduce((sum, p) => sum + Number(p.balance ?? 0), 0)
-
-  await supabaseAdmin.from('parents').update({ tuition_balance: tuitionBalance }).eq('id', keepId)
-}
