@@ -81,6 +81,40 @@ export async function GET(req: NextRequest) {
       tuitionBalance: p.tuition_balance ?? 0,
     }))
 
+    // Recalc tuition_balance for returned parents from actual PP data (background, non-blocking)
+    const parentIds = (data ?? []).map(p => p.id)
+    if (parentIds.length > 0) {
+      void (async () => {
+        try {
+          const { data: pps } = await supabaseAdmin
+            .from('planned_payments')
+            .select('parent_ids, balance, pp_type')
+            .overlaps('parent_ids', parentIds)
+
+          // Sum open PP balances per parent (exclude salary PPs)
+          const balanceMap: Record<string, number> = {}
+          for (const pp of pps ?? []) {
+            if (pp.pp_type === 'משכורת') continue
+            for (const pid of (pp.parent_ids as string[]) ?? []) {
+              if (!parentIds.includes(pid)) continue
+              balanceMap[pid] = (balanceMap[pid] ?? 0) + Number(pp.balance ?? 0)
+            }
+          }
+
+          // Update each parent where value differs
+          for (const p of data ?? []) {
+            const computed = balanceMap[p.id] ?? 0
+            if (Math.abs(computed - Number(p.tuition_balance ?? 0)) > 0.5) {
+              await supabaseAdmin.from('parents').update({ tuition_balance: computed }).eq('id', p.id)
+              // Also update the mapped response value
+              const mp = mapped.find(m => m.id === p.id)
+              if (mp) mp.tuitionBalance = computed
+            }
+          }
+        } catch { /* best-effort */ }
+      })()
+    }
+
     return NextResponse.json({ data: mapped, total: count ?? 0, statusOptions })
   } catch (err) {
     console.error('parents error:', err)
