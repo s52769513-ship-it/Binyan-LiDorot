@@ -53,17 +53,26 @@ export async function POST(req: NextRequest) {
         let lastId = ''
 
         // Paginate: keep calling until we get fewer than 2000 records
-        // Try multiple action/param name variants — Nedarim API is inconsistent
-        const actionsToTry = [
-          `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
-          `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
-          `Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
-          `Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
+        // Try multiple action/param/endpoint variants — Nedarim API is inconsistent
+        type ActionCandidate = { base: string; params: string }
+        const actionsToTry: ActionCandidate[] = [
+          // GetKeva.Json — has named fields with Zeout/LastNum/Tokef
+          { base: 'Manage3.aspx',  params: `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          { base: 'Manage3.aspx',  params: `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          { base: 'Manage.aspx',   params: `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          { base: 'Manage.aspx',   params: `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          // GetKeva (without .Json)
+          { base: 'Manage3.aspx',  params: `Action=GetKeva&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          { base: 'Manage3.aspx',  params: `Action=GetKeva&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          // GetKevaNew fallback — numbered fields only
+          { base: 'Manage3.aspx',  params: `Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
+          { base: 'Manage3.aspx',  params: `Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
         ]
         let workingAction = ''
+        let workingBase   = ''
         let hasNamedFields = false
         for (const candidate of actionsToTry) {
-          const testUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?${candidate}`
+          const testUrl = `https://matara.pro/nedarimplus/Reports/${candidate.base}?${candidate.params}`
           const testResp = await fetch(testUrl)
           if (!testResp.ok) continue
           const testJson = await testResp.json().catch(() => null)
@@ -71,18 +80,19 @@ export async function POST(req: NextRequest) {
           const isError = testJson.Result != null && testJson.Result !== 0
           if (isError) continue
           const page = Array.isArray(testJson) ? testJson : (testJson.data ?? testJson.Data ?? [])
-          // Prefer GetKeva.Json (named fields with Zeout/card details)
           const firstRecord = page[0] as Record<string, unknown> | undefined
-          hasNamedFields = !!(firstRecord && ('Kevald' in firstRecord || 'Zeout' in firstRecord))
-          workingAction = candidate
-          if (hasNamedFields) break  // found the preferred named-field variant
+          const named = !!(firstRecord && ('Kevald' in firstRecord || 'Zeout' in firstRecord))
+          workingAction = candidate.params
+          workingBase   = candidate.base
+          hasNamedFields = named
+          if (named) break  // found preferred named-field variant — stop searching
         }
         if (!workingAction) throw new Error('כל שמות הפעולה של GetKeva נדחו על ידי נדרים')
-        send({ type: 'log', message: `פעולה: ${workingAction.split('&')[0]} · שדות: ${hasNamedFields ? 'named (Kevald/Zeout)' : 'numbered (DT_RowId)'}` })
+        send({ type: 'log', message: `פעולה: ${workingAction.split('&')[0]} (${workingBase}) · שדות: ${hasNamedFields ? 'named ✓' : 'numbered (ללא פרטי כרטיס)'}` })
         send({ type: 'log', message: `פעולה פעילה: ${workingAction.split('&')[0]}` })
 
         while (true) {
-          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?${workingAction}`
+          let url = `https://matara.pro/nedarimplus/Reports/${workingBase}?${workingAction}`
           if (lastId) url += `&LastId=${encodeURIComponent(lastId)}`
 
           const resp = await fetch(url)
