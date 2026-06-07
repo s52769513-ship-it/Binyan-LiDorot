@@ -25,73 +25,117 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        // Load all bank standing orders — fetch all then filter in JS to avoid Hebrew in PostgREST filter
-        send({ type: 'log', message: 'טוען רשימת הו"ק מהמערכת...' })
+        // Step 1: Pull full list from Nedarim GetMasavKevaNew
+        send({ type: 'log', message: 'משך רשימת הו"ק בנקאי מנדרים...' })
+        const listUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}`
+        const listResp = await fetch(listUrl)
+        if (!listResp.ok) throw new Error(`Nedarim returned ${listResp.status}`)
+        const listJson = await listResp.json()
+        if (listJson.Result !== 0) throw new Error(listJson.Message ?? 'Nedarim error')
+
+        const nedarimIds: string[] = (listJson.data ?? [])
+          .map((r: Record<string, string>) => String(r.DT_RowId ?? '').trim())
+          .filter(Boolean)
+
+        send({ type: 'log', message: `קיבלנו ${nedarimIds.length} הו"ק בנקאי מנדרים` })
+
+        // Step 2: Load existing standing_orders from DB (all, filter in JS)
         const { data: soList, error } = await supabaseAdmin
           .from('standing_orders')
           .select('id, external_id, parent_id, standing_order_type')
-          .not('external_id', 'is', null)
 
         if (error) throw error
-        const bankSOs = (soList ?? []).filter(s =>
-          s.external_id &&
-          s.external_id.trim() !== '' &&
-          s.standing_order_type !== 'אשראי'
+        const existingByExtId = new Map(
+          (soList ?? [])
+            .filter(s => s.external_id && s.standing_order_type !== 'אשראי')
+            .map(s => [s.external_id, s])
         )
-        send({ type: 'log', message: `נמצאו ${bankSOs.length} הו"ק בנקאי לעדכון` })
 
-        let updated = 0, skipped = 0, deleted = 0
+        send({ type: 'log', message: `${existingByExtId.size} הו"ק בנקאי קיימים בDB` })
 
-        for (let i = 0; i < bankSOs.length; i++) {
-          const so = bankSOs[i]
-          send({ type: 'progress', current: i + 1, total: bankSOs.length })
+        let updated = 0, created = 0, skipped = 0, deleted = 0
+
+        for (let i = 0; i < nedarimIds.length; i++) {
+          const externalId = nedarimIds[i]
+          send({ type: 'progress', current: i + 1, total: nedarimIds.length })
 
           try {
-            const url = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MasavId=${encodeURIComponent(so.external_id)}`
+            const url = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MasavId=${encodeURIComponent(externalId)}`
             const resp = await fetch(url)
             if (!resp.ok) { skipped++; continue }
             const json = await resp.json()
             if (json.Result !== 0) { skipped++; continue }
 
-            const isDeleted = String(json.Deleted) === '1'
+            const isDeleted    = String(json.Deleted) === '1'
             const chargeAmount = Number(String(json.Amount ?? '').replace(/[^\d.]/g, '')) || null
-            const projectName  = String(json.Groupe   ?? '').trim() || null
-            const bankName     = String(json.Bank     ?? '').trim() || null
-            const bankBranch   = String(json.Agency   ?? '').trim() || null
-            const bankAccount  = String(json.Account  ?? '').trim() || null
+            const projectName  = String(json.Groupe      ?? '').trim() || null
+            const bankName     = String(json.Bank        ?? '').trim() || null
+            const bankBranch   = String(json.Agency      ?? '').trim() || null
+            const bankAccount  = String(json.Account     ?? '').trim() || null
             const soStatus     = isDeleted ? 'מבוטל' : String(json.StatusText ?? '').trim() || 'פעיל'
             const clientZeout  = String(json.ClientZeout ?? '').trim()
-            const notes        = String(json.Comments   ?? '').trim()
+            const clientName   = String(json.ClientName  ?? '').trim()
+            const notes        = String(json.Comments    ?? '').trim()
 
             send({
               type: 'log',
-              message: `${so.external_id}: ${json.ClientName ?? ''} — ${soStatus}${isDeleted ? ' 🗑' : ''}${dryRun ? ' [dry]' : ''}`,
+              message: `${externalId}: ${clientName} — ${soStatus}${isDeleted ? ' 🗑' : ''}${dryRun ? ' [dry]' : ''}`,
             })
 
-            if (!dryRun) {
-              const updatePayload: Record<string, unknown> = {
-                standing_order_type: 'בנקאי',
-                charge_amount:  chargeAmount,
-                project_name:   projectName,
-                bank_name:      bankName,
-                bank_branch:    bankBranch,
-                bank_account:   bankAccount,
-                so_status:      soStatus,
-              }
-              if (notes) updatePayload.notes = notes
-              await supabaseAdmin.from('standing_orders').update(updatePayload).eq('id', so.id)
+            const existing = existingByExtId.get(externalId)
 
-              // If ת"ז found and parent not yet known, try to match
-              if (clientZeout && so.parent_id) {
-                // Already has parent — optionally update id_number on parent
-                await supabaseAdmin.from('parents')
-                  .update({ id_number: clientZeout })
-                  .eq('id', so.parent_id)
-                  .is('id_number', null)
+            if (!dryRun) {
+              const payload: Record<string, unknown> = {
+                external_id:          externalId,
+                standing_order_type:  'בנקאי',
+                charge_amount:        chargeAmount,
+                project_name:         projectName,
+                bank_name:            bankName,
+                bank_branch:          bankBranch,
+                bank_account:         bankAccount,
+                so_status:            soStatus,
+              }
+              if (notes) payload.notes = notes
+
+              if (existing) {
+                // Update existing record
+                await supabaseAdmin.from('standing_orders').update(payload).eq('id', existing.id)
+
+                // Update parent ת"ז if found and missing
+                if (clientZeout && existing.parent_id) {
+                  await supabaseAdmin.from('parents')
+                    .update({ id_number: clientZeout })
+                    .eq('id', existing.parent_id)
+                    .is('id_number', null)
+                }
+              } else {
+                // Try to find parent by ת"ז
+                let parentId: string | null = null
+                if (clientZeout) {
+                  const { data: matched } = await supabaseAdmin
+                    .from('parents')
+                    .select('id')
+                    .eq('id_number', clientZeout)
+                    .limit(1)
+                  if (matched && matched.length > 0) parentId = matched[0].id
+                }
+
+                // Create new standing order
+                await supabaseAdmin.from('standing_orders').insert({
+                  id:         crypto.randomUUID(),
+                  parent_id:  parentId,
+                  ...payload,
+                })
+                created++
+                send({ type: 'log', message: `  → נוצר חדש${parentId ? ' (קושר להורה)' : ' (ללא הורה)'}` })
               }
             }
 
-            isDeleted ? deleted++ : updated++
+            if (existing) {
+              isDeleted ? deleted++ : updated++
+            } else if (dryRun) {
+              created++
+            }
           } catch {
             skipped++
           }
@@ -102,11 +146,11 @@ export async function POST(req: NextRequest) {
             id:         crypto.randomUUID(),
             automation: 'nedarim-bank-hok-enrich',
             ran_at:     new Date().toISOString(),
-            details:    { updated, deleted, skipped, total: bankSOs.length },
+            details:    { updated, created, deleted, skipped, total: nedarimIds.length },
           })
         }
 
-        send({ type: 'done', updated, deleted, skipped, total: bankSOs.length, dryRun })
+        send({ type: 'done', updated, created, deleted, skipped, total: nedarimIds.length, dryRun })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {

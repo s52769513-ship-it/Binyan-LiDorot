@@ -246,6 +246,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                     ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
                     : isHok
                       ? <>
+                          {(result as {created?:number}).created != null && (result as {created?:number}).created! > 0 && <span className="text-blue-700 font-semibold">נוצרו: {(result as {created?:number}).created}</span>}
                           {(result as {updated?:number}).updated != null && <span className="text-emerald-700 font-semibold">עודכנו: {(result as {updated?:number}).updated}</span>}
                           {(result as {imported?:number}).imported != null && <span className="text-emerald-700 font-semibold">יובאו: {(result as {imported?:number}).imported}</span>}
                           {(result.totalOffset ?? 0) > 0 && <span className="font-bold">₪{fmtN(result.totalOffset)}</span>}

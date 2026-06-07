@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       try {
         send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים...' })
 
-        const url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}`
+        const url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}`
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
         const json = await resp.json()
