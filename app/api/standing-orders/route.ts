@@ -29,6 +29,25 @@ function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = n
 export async function GET(req: NextRequest) {
   try {
     const parentId = req.nextUrl.searchParams.get('parentId') ?? ''
+    const byType   = req.nextUrl.searchParams.get('byType') ?? ''
+
+    // List distinct parents who have SOs of a given type
+    if (byType && !parentId) {
+      const { data, error } = await supabaseAdmin
+        .from('standing_orders')
+        .select('parent_id, parent:parent_id(id, name)')
+        .eq('standing_order_type', byType)
+        .not('parent_id', 'is', null)
+      if (error) throw error
+      const seen = new Set<string>()
+      const parents: { id: string; name: string }[] = []
+      for (const row of data ?? []) {
+        const p = row.parent as { id: string; name: string } | null
+        if (p && !seen.has(p.id)) { seen.add(p.id); parents.push(p) }
+      }
+      return NextResponse.json(parents.sort((a, b) => a.name.localeCompare(b.name, 'he')))
+    }
+
     if (!parentId) return NextResponse.json({ error: 'parentId required' }, { status: 400 })
 
     const { data, error } = await supabaseAdmin

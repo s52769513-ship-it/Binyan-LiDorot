@@ -529,15 +529,9 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       if (def.id === 'nedarim-bank-hok-pull' || def.id === 'nedarim-credit-hok-pull' ||
           def.id === 'nedarim-bank-hok-enrich' || def.id === 'nedarim-credit-hok-sync') {
         const soType = (def.id === 'nedarim-bank-hok-pull' || def.id === 'nedarim-bank-hok-enrich') ? 'בנקאי' : 'אשראי'
-        const r = await fetch(`/api/standing-orders?type=${encodeURIComponent(soType)}&limit=500`)
+        const r = await fetch(`/api/standing-orders?byType=${encodeURIComponent(soType)}`)
         const d = await r.json()
-        const seen = new Set<string>()
-        const opts: ParentOpt[] = []
-        for (const so of (d.data ?? d ?? [])) {
-          const pid = so.parentId ?? so.parent_id
-          const name = so.parentName ?? so.parent_name ?? so.name ?? ''
-          if (pid && !seen.has(pid)) { seen.add(pid); opts.push({ id: pid, name, salary_gross: 0 }) }
-        }
+        const opts: ParentOpt[] = (Array.isArray(d) ? d : []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name, salary_gross: 0 }))
         setParentOptions(opts)
       } else {
         const r = await fetch(def.endpoint)
@@ -940,11 +934,11 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               {parentsLoading
                 ? <div className="p-6 text-center text-gray-400 text-sm">טוען...</div>
                 : filteredParents.length === 0
-                  ? <div className="p-6 text-center text-gray-400 text-sm">לא נמצאו הורים עם משכורת</div>
+                  ? <div className="p-6 text-center text-gray-400 text-sm">לא נמצאו הורים</div>
                   : filteredParents.map(p => (
                     <button key={p.id} onClick={() => setPickedParent(p)}
                       className={`w-full flex items-center justify-between px-5 py-3 text-right text-sm border-b border-gray-50 transition-colors ${pickedParent?.id===p.id?'bg-blue-50':'hover:bg-gray-50'}`}>
-                      <span className="text-gray-400 text-xs">₪{fmtN(p.salary_gross)}/חודש</span>
+                      {p.salary_gross > 0 && <span className="text-gray-400 text-xs">₪{fmtN(p.salary_gross)}/חודש</span>}
                       <span className="font-medium">{p.name}</span>
                     </button>
                   ))}
