@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
         const json = await resp.json()
-        if (json.Result !== 0) throw new Error(json.Message ?? 'Nedarim error')
+        if (json.Result !== 0) throw new Error(`Nedarim (credit list): Result=${json.Result} — ${json.Message ?? json.ErrorMessage ?? JSON.stringify(json)}`)
 
         const records: Record<string, string>[] = json.data ?? []
         send({ type: 'log', message: `קיבלנו ${records.length} הו"ק אשראי מנדרים` })

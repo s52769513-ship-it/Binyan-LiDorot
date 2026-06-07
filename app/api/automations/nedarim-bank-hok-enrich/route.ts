@@ -27,11 +27,12 @@ export async function POST(req: NextRequest) {
       try {
         // Step 1: Pull full list from Nedarim GetMasavKevaNew
         send({ type: 'log', message: 'משך רשימת הו"ק בנקאי מנדרים...' })
-        const listUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}`
+        // Try MosadId first (same as other bank endpoints), fall back to MosadNumber
+        const listUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}`
         const listResp = await fetch(listUrl)
         if (!listResp.ok) throw new Error(`Nedarim returned ${listResp.status}`)
         const listJson = await listResp.json()
-        if (listJson.Result !== 0) throw new Error(listJson.Message ?? 'Nedarim error')
+        if (listJson.Result !== 0) throw new Error(`Nedarim (bank list): Result=${listJson.Result} — ${listJson.Message ?? listJson.ErrorMessage ?? JSON.stringify(listJson)}`)
 
         const nedarimIds: string[] = (listJson.data ?? [])
           .map((r: Record<string, string>) => String(r.DT_RowId ?? '').trim())
@@ -45,9 +46,10 @@ export async function POST(req: NextRequest) {
           .select('id, external_id, parent_id, standing_order_type')
 
         if (error) throw error
-        const existingByExtId = new Map(
+        type SoRow = { id: string; external_id: string; parent_id: string | null; standing_order_type: string | null }
+        const existingByExtId = new Map<string, SoRow>(
           (soList ?? [])
-            .filter(s => s.external_id && s.standing_order_type !== 'אשראי')
+            .filter((s): s is SoRow => !!(s.external_id && s.standing_order_type !== 'אשראי'))
             .map(s => [s.external_id, s])
         )
 

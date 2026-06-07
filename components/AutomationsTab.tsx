@@ -362,6 +362,17 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void
 }) {
   const [monthYear, setMonthYear]           = useState(def.defaultMonth())
+  // salary-pp range mode
+  const schoolYearStart = (): string => {
+    const now = new Date(); const y = now.getFullYear()
+    return now.getMonth() >= 8 ? `09/${y}` : `09/${y - 1}`
+  }
+  const curMonth = (): string => {
+    const now = new Date()
+    return `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
+  }
+  const [fromMonth, setFromMonth]           = useState(schoolYearStart())
+  const [toMonth, setToMonth]               = useState(curMonth())
   const [phase, setPhase]                   = useState<Phase>('idle')
   const [dryRun, setDryRun]                 = useState(false)
   const [activeStep, setActiveStep]         = useState(0)
@@ -431,7 +442,11 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       const resp = await fetch(def.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: isDry, parentId: pid, monthYear: targetMY }),
+        body: JSON.stringify(
+          def.id === 'salary-pp' && !pid
+            ? { dryRun: isDry, fromMonth, toMonth }
+            : { dryRun: isDry, parentId: pid, monthYear: targetMY }
+        ),
       })
       if (!resp.body) throw new Error('no stream')
       const reader = resp.body.getReader()
@@ -571,12 +586,28 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       {!isRunning && (
         <div className="px-6 py-4 border-b border-gray-100" dir="rtl">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">פרמטרים</p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
-            <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
-            <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
-          </div>
+          {def.id === 'salary-pp' ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">מחודש:</label>
+              <input type="month" value={myToInp(fromMonth)} onChange={e => setFromMonth(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">עד חודש:</label>
+              <input type="month" value={myToInp(toMonth)} onChange={e => setToMonth(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <button onClick={() => { setFromMonth(schoolYearStart()); setToMonth(curMonth()) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                📅 מתחילת שנה
+              </button>
+              <span className="text-xs text-gray-400">{fromMonth} → {toMonth}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
+              <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
+            </div>
+          )}
         </div>
       )}
 

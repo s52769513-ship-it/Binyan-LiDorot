@@ -18,17 +18,38 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const { dryRun = false, parentId, monthYear } = await req.json()
+// Generate array of MM/YYYY strings from fromMY to toMY inclusive
+function monthRange(fromMY: string, toMY: string): string[] {
+  const parse = (my: string) => { const [m, y] = my.split('/'); return { m: Number(m), y: Number(y) } }
+  const { m: fm, y: fy } = parse(fromMY)
+  const { m: tm, y: ty } = parse(toMY)
+  const months: string[] = []
+  let m = fm, y = fy
+  while (y < ty || (y === ty && m <= tm)) {
+    months.push(`${String(m).padStart(2, '0')}/${y}`)
+    m++; if (m > 12) { m = 1; y++ }
+    if (months.length > 60) break // safety
+  }
+  return months
+}
 
-  // Default: previous month
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const { dryRun = false, parentId } = body
+
+  // Support: single monthYear OR fromMonth+toMonth range OR monthYears array
   const today = new Date()
   const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-  const targetMY: string =
-    monthYear ||
-    `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
-  const [tm, ty] = targetMY.split('/')
-  const targetDate = `${ty}-${tm.padStart(2, '0')}-01`
+  const defaultMY = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
+
+  let targetMonths: string[]
+  if (Array.isArray(body.monthYears) && body.monthYears.length > 0) {
+    targetMonths = body.monthYears
+  } else if (body.fromMonth && body.toMonth) {
+    targetMonths = monthRange(body.fromMonth, body.toMonth)
+  } else {
+    targetMonths = [body.monthYear || defaultMY]
+  }
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -39,16 +60,12 @@ export async function POST(req: NextRequest) {
       let totalOffset = 0
 
       try {
-        // Step 1 — query parents
-        e({ type: 'step', step: 1, msg: `מחפש הורים עם משכורת לחודש ${targetMY}...` })
-        let q = supabaseAdmin
-          .from('parents')
-          .select('id, name, salary_gross')
-          .gt('salary_gross', 0)
+        // Load parents once
+        e({ type: 'step', step: 1, msg: `מחפש הורים עם משכורת...` })
+        let q = supabaseAdmin.from('parents').select('id, name, salary_gross').gt('salary_gross', 0)
         if (parentId) q = q.eq('id', parentId)
         const { data: parents } = await q
 
-        // Fetch wife salaries for all parents
         const parentIds = (parents ?? []).map((p: { id: string }) => p.id)
         const { data: womenRows } = parentIds.length > 0
           ? await supabaseAdmin.from('women').select('parent_ids, salary_gross').overlaps('parent_ids', parentIds)
@@ -61,145 +78,108 @@ export async function POST(req: NextRequest) {
             wifeSalaryMap[pid] = (wifeSalaryMap[pid] || 0) + gross
           }
         }
+        e({ type: 'step', step: 1, msg: `נמצאו ${(parents ?? []).length} הורים — ${targetMonths.length} חודשים` })
 
-        e({ type: 'step', step: 1, msg: `נמצאו ${(parents ?? []).length} הורים` })
+        const totalSteps = (parents ?? []).length * targetMonths.length
+        let stepIdx = 0
 
-        // Step 2 — check existing salary PPs
-        e({ type: 'step', step: 2, msg: 'בודק תשלומים מתוכננים קיימים...' })
+        for (const targetMY of targetMonths) {
+          const [tm, ty] = targetMY.split('/')
+          const targetDate = `${ty}-${tm.padStart(2, '0')}-01`
 
-        for (const parent of parents ?? []) {
-          // Family salary = husband + wife
-          const salary = (Number(parent.salary_gross) || 0) + (wifeSalaryMap[parent.id] || 0)
+          e({ type: 'log', message: `--- חודש ${targetMY} ---` })
 
-          // Check if salary PP already exists for this month
-          const { data: existingPPs } = await supabaseAdmin
-            .from('planned_payments')
-            .select('id, amount, balance')
-            .contains('parent_ids', [parent.id])
-            .eq('month_year', targetMY)
-            .eq('pp_type', 'salary')
-            .limit(1)
+          for (const parent of parents ?? []) {
+            stepIdx++
+            e({ type: 'progress', current: stepIdx, total: totalSteps })
 
-          const existingPP = existingPPs?.[0]
-          let ppId = existingPP?.id ?? null
-          let ppCreated = false
+            const salary = (Number(parent.salary_gross) || 0) + (wifeSalaryMap[parent.id] || 0)
 
-          if (existingPP) {
-            e({ type: 'progress', parentName: parent.name, salary, ppExists: true, skipped: false,
-              msg: `PP משכורת קיים (₪${existingPP.amount})` })
-          } else {
-            // Step 3 — create salary PP
-            e({ type: 'step', step: 3, msg: `יוצר PP משכורת עבור ${parent.name}...` })
+            const { data: existingPPs } = await supabaseAdmin
+              .from('planned_payments')
+              .select('id, amount, balance')
+              .contains('parent_ids', [parent.id])
+              .eq('month_year', targetMY)
+              .eq('pp_type', 'salary')
+              .limit(1)
 
-            if (!dryRun) {
-              ppId = crypto.randomUUID()
-              const { error } = await supabaseAdmin.from('planned_payments').insert({
-                id:         ppId,
-                name:       'משכורת',
-                pp_type:    'salary',
-                amount:     salary,
-                balance:    salary,
-                date:       targetDate,
-                month_year: targetMY,
-                parent_ids: [parent.id],
-                synced_at:  '2099-12-31T23:59:59.999Z',
-              })
-              if (error) { ppId = null; ppCreated = false }
-              else { ppCreated = true; totalCreated++ }
+            const existingPP = existingPPs?.[0]
+            let ppId = existingPP?.id ?? null
+            let ppCreated = false
+
+            if (existingPP) {
+              e({ type: 'log', message: `${parent.name} / ${targetMY}: PP קיים — דלג` })
             } else {
-              ppCreated = true; totalCreated++
+              if (!dryRun) {
+                ppId = crypto.randomUUID()
+                const { error } = await supabaseAdmin.from('planned_payments').insert({
+                  id:         ppId,
+                  name:       'משכורת',
+                  pp_type:    'salary',
+                  amount:     salary,
+                  balance:    salary,
+                  date:       targetDate,
+                  month_year: targetMY,
+                  parent_ids: [parent.id],
+                  synced_at:  '2099-12-31T23:59:59.999Z',
+                })
+                if (error) { ppId = null }
+                else { ppCreated = true; totalCreated++ }
+              } else {
+                ppCreated = true; totalCreated++
+              }
+              e({ type: 'log', message: `${parent.name} / ${targetMY}: נוצר PP ₪${salary}${dryRun ? ' [dry]' : ''}` })
             }
-          }
 
-          // Step 4 — find tuition-offset transactions for this month
-          e({ type: 'step', step: 4, msg: `מחפש קיזוזי שכ"ל של ${parent.name} לחודש ${targetMY}...` })
-          const { data: offsetTxs } = await supabaseAdmin
-            .from('transactions')
-            .select('id, amount')
-            .contains('parent_ids', [parent.id])
-            .eq('month_year', targetMY)
-            .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
+            // Offset search
+            const { data: offsetTxs } = await supabaseAdmin
+              .from('transactions')
+              .select('id, amount')
+              .contains('parent_ids', [parent.id])
+              .eq('month_year', targetMY)
+              .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
 
-          const offsetTotal = (offsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+            const offsetTotal = (offsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
-          if (offsetTotal > 0 && ppId && !dryRun) {
-            // Create salary-side offset transaction
-            const salaryTxId = crypto.randomUUID()
-            await supabaseAdmin.from('transactions').insert({
-              id:                 salaryTxId,
-              amount:             offsetTotal,
-              planned_payment_id: ppId,
-              parent_ids:         [parent.id],
-              date:               today.toISOString().split('T')[0],
-              month_year:         targetMY,
-              notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
-              type:               'ניכוי שכ"ל',
-              project_ids:        [],
-              project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
-            })
-            // Reduce salary PP balance
-            const currentBalance = existingPP ? Number(existingPP.balance) : salary
-            await supabaseAdmin.from('planned_payments')
-              .update({ balance: Math.max(0, currentBalance - offsetTotal) })
-              .eq('id', ppId)
-
-            // Save to salary_offsets history table (silently ignore if missing)
-            try {
-              await supabaseAdmin.from('salary_offsets').insert({
-                id:           crypto.randomUUID(),
-                parent_id:    parent.id,
-                parent_name:  parent.name,
-                month_year:   targetMY,
-                salary_gross: salary,
-                offset_amount: offsetTotal,
-                salary_pp_id: ppId,
-                tuition_tx_ids: (offsetTxs ?? []).map((t: { id: string }) => t.id),
+            if (offsetTotal > 0 && ppId && !dryRun) {
+              await supabaseAdmin.from('transactions').insert({
+                id:                 crypto.randomUUID(),
+                amount:             offsetTotal,
+                planned_payment_id: ppId,
+                parent_ids:         [parent.id],
+                date:               today.toISOString().split('T')[0],
+                month_year:         targetMY,
+                notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
+                type:               'ניכוי שכ"ל',
+                project_ids:        [],
+                project_names:      [],
+                synced_at:          '2099-12-31T23:59:59.999Z',
               })
-            } catch { /* table may not exist yet */ }
+              const currentBalance = existingPP ? Number(existingPP.balance) : salary
+              await supabaseAdmin.from('planned_payments')
+                .update({ balance: Math.max(0, currentBalance - offsetTotal) })
+                .eq('id', ppId)
+              totalOffset += offsetTotal
+            }
 
-            totalOffset += offsetTotal
+            actions.push({ parentId: parent.id, parentName: parent.name, monthYear: targetMY, salary, ppCreated, ppExists: !!existingPP, offsetFound: offsetTotal, skipped: false })
           }
-
-          e({
-            type: 'progress',
-            parentName: parent.name,
-            salary,
-            offsetFound: offsetTotal,
-            ppCreated,
-            ppExists: !!existingPP,
-            skipped: false,
-          })
-
-          actions.push({
-            parentId: parent.id,
-            parentName: parent.name,
-            salary,
-            ppCreated,
-            ppExists: !!existingPP,
-            offsetFound: offsetTotal,
-            skipped: false,
-          })
         }
 
         if (!dryRun) {
           try {
             await supabaseAdmin.from('automation_logs').insert({
-              id:            crypto.randomUUID(),
-              automation_id: 'salary-pp',
-              run_at:        new Date().toISOString(),
-              dry_run:       false,
-              parent_id:     parentId ?? null,
-              parent_name:   parentId ? ((parents ?? []).find((p: { id: string; name: string }) => p.id === parentId)?.name ?? null) : null,
-              actions_count: totalCreated,
-              status:        'success',
-              summary:       `נוצרו ${totalCreated} PP משכורת, קוזז ₪${totalOffset} (${targetMY})`,
-              details:       actions,
+              id: crypto.randomUUID(), automation_id: 'salary-pp',
+              run_at: new Date().toISOString(), dry_run: false,
+              actions_count: totalCreated, status: 'success',
+              summary: `נוצרו ${totalCreated} PP משכורת ב-${targetMonths.length} חודשים, קוזז ₪${totalOffset}`,
+              details: actions,
             })
           } catch { /* table may not exist yet */ }
         }
 
-        e({ type: 'complete', applied: totalCreated, skipped: (parents ?? []).length - actions.filter((a: { ppCreated?: boolean }) => a.ppCreated).length, totalOffset, totalCreated, dryRun, monthYear: targetMY, actions })
+        const targetMY = targetMonths[targetMonths.length - 1]
+        e({ type: 'complete', applied: totalCreated, skipped: actions.filter((a: { ppExists?: boolean }) => a.ppExists).length, totalOffset, totalCreated, dryRun, monthYear: targetMY, actions })
       } catch (err) {
         e({ type: 'error', error: (err as { message?: string })?.message ?? String(err) })
       } finally {
