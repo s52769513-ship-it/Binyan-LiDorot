@@ -10,25 +10,16 @@ function fmtExpiry(raw: string): string {
   return s
 }
 
-// Normalize Hebrew name for fuzzy matching: remove titles, extra spaces
-function normalizeName(n: string): string {
-  return n
-    .replace(/\b(הרב|ר'|ר"|רב|בר"?[א-ת]|בריא"ז|ברי"ט|ברי"מ|ברא"צ|ברא"ז|בר"ל|בר"מ|בר"צ|בר"א|בר"ב|בר"ש|בר"ד)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
 function namesMatch(a: string, b: string): boolean {
-  const na = normalizeName(a).toLowerCase()
-  const nb = normalizeName(b).toLowerCase()
+  const norm = (n: string) => n
+    .replace(/\b(הרב|ר'|ר"|רב|בר"?[א-ת]|בריא"ז|ברי"ט|ברי"מ|ברא"צ|ברא"ז|בר"ל|בר"מ|בר"צ|בר"א|בר"ב|בר"ש|בר"ד)\b/g, '')
+    .replace(/\s+/g, ' ').trim().toLowerCase()
+  const na = norm(a), nb = norm(b)
   if (na === nb) return true
-  // check if one contains all words of the other
   const wa = na.split(' ').filter(Boolean)
   const wb = nb.split(' ').filter(Boolean)
   if (wa.length >= 2 && wb.length >= 2) {
-    // at least 2 words in common
-    const common = wa.filter(w => wb.includes(w))
-    if (common.length >= 2) return true
+    return wa.filter(w => wb.includes(w)).length >= 2
   }
   return false
 }
@@ -54,114 +45,112 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים...' })
+        // 1. Pull full list via GetKeva.Json with pagination (LastId)
+        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים (GetKeva.Json)...' })
 
-        const url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}`
-        const resp = await fetch(url)
-        if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
-        const json = await resp.json()
-        if (json.Result != null && json.Result !== 0) throw new Error(`Nedarim: ${json.Message ?? json.Result}`)
-        if (!Array.isArray(json.data)) throw new Error('Nedarim: unexpected response format')
+        type KevaRecord = {
+          Kevald: string; ClientName: string; Zeout: string
+          Amount: string; Groupe: string; Comments: string
+          LastNum: string; Tokef: string; Itra: string
+          Enabled: string; ErrorText: string; NextDate: string; Currency: string
+        }
+        const allRecords: KevaRecord[] = []
+        let lastId = ''
 
-        const records: Record<string, string>[] = json.data
-        send({ type: 'log', message: `קיבלנו ${records.length} הו"ק אשראי` })
-        send({ type: 'log', message: `סה"כ חודשי: ₪${json.TotalMonth ?? 0} | צפי שנתי: ₪${json.TotalYear ?? 0}` })
+        // Paginate: keep calling until we get fewer than 2000 records
+        while (true) {
+          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`
+          if (lastId) url += `&LastId=${encodeURIComponent(lastId)}`
 
-        // Load all parents for name matching
+          const resp = await fetch(url)
+          if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
+          const json = await resp.json()
+          if (json.Result != null && json.Result !== 0) throw new Error(`Nedarim: ${json.Message ?? json.Result}`)
+
+          const page: KevaRecord[] = Array.isArray(json) ? json : (json.data ?? json.Data ?? [])
+          if (!page.length) break
+
+          allRecords.push(...page)
+          send({ type: 'log', message: `  משכנו ${allRecords.length} הו"ק עד כה...` })
+
+          if (page.length < 2000) break  // last page
+          // Set LastId to the last record's Kevald for next page
+          lastId = String(page[page.length - 1].Kevald ?? '').trim()
+          if (!lastId) break
+        }
+
+        send({ type: 'log', message: `סה"כ: ${allRecords.length} הו"ק אשראי` })
+
+        // 2. Load parents
         send({ type: 'log', message: 'טוען הורים...' })
         const { data: allParents } = await supabaseAdmin.from('parents').select('id, name, id_number')
-        const parentList = (allParents ?? []).map(p => ({ id: p.id, name: String(p.name ?? ''), tz: String(p.id_number ?? '') }))
+        const parentList = (allParents ?? []).map(p => ({
+          id: p.id, name: String(p.name ?? ''), tz: String(p.id_number ?? '').trim()
+        }))
+        const parentByTz = new Map(parentList.filter(p => p.tz).map(p => [p.tz, p]))
 
-        // Load existing standing orders
+        // 3. Load existing standing orders
         const { data: soList } = await supabaseAdmin.from('standing_orders').select('id, external_id, standing_order_type')
         type SoRow = { id: string; external_id: string; standing_order_type: string | null }
         const existingByExtId = new Map<string, SoRow>(
-          (soList ?? [])
-            .filter((s): s is SoRow => !!s.external_id)
-            .map(s => [s.external_id, s])
+          (soList ?? []).filter((s): s is SoRow => !!s.external_id).map(s => [s.external_id, s])
         )
-        send({ type: 'log', message: `${existingByExtId.size} הו"ק קיימים בDB · ${parentList.length} הורים` })
+        send({ type: 'log', message: `${existingByExtId.size} הו"ק קיימים בDB · ${parentList.length} הורים (${parentByTz.size} עם ת"ז)` })
 
         type LogRow = { externalId: string; name: string; tz: string; action: string; parentAction: string; amount: string; category: string; status: string }
         const logRows: LogRow[] = []
         let updated = 0, created = 0, parentCreated = 0, skipped = 0
 
-        for (let i = 0; i < records.length; i++) {
-          const r = records[i]
-          const externalId    = String(r.DT_RowId ?? '').trim()
+        for (let i = 0; i < allRecords.length; i++) {
+          const r = allRecords[i]
+          const externalId = String(r.Kevald ?? '').trim()
           if (!externalId) { skipped++; continue }
 
-          send({ type: 'progress', current: i + 1, total: records.length })
+          send({ type: 'progress', current: i + 1, total: allRecords.length })
 
-          const clientName    = String(r['2'] ?? '').trim()
-          const chargeAmount  = Number(String(r['4'] ?? '').replace(/[^\d.]/g, '')) || null
-          const projectName   = String(r['5'] ?? '').trim() || null
-          const notes         = String(r['6'] ?? '').trim()
-          const creditBalance = Number(String(r['7'] ?? '').replace(/[^\d.]/g, '')) || null
-          const statusRaw     = String(r['10'] ?? '').trim()
-          const cardLast4     = String(r['11'] ?? '').trim() || null
-          const cardExpiry    = fmtExpiry(r['12'] ?? '')
+          const clientName    = String(r.ClientName ?? '').trim()
+          const tz            = String(r.Zeout ?? '').trim()
+          const chargeAmount  = Number(String(r.Amount ?? '').replace(/[^\d.]/g, '')) || null
+          const projectName   = String(r.Groupe ?? '').trim() || null
+          const notes         = String(r.Comments ?? '').trim()
+          const cardLast4     = String(r.LastNum ?? '').trim() || null
+          const cardExpiry    = fmtExpiry(r.Tokef ?? '')
+          const creditBalance = Number(String(r.Itra ?? '').replace(/[^\d.]/g, '')) || null
+          const isActive      = String(r.Enabled ?? '1') !== '0'
+          const errorText     = String(r.ErrorText ?? '').trim()
+          const soStatus      = !isActive ? 'לא פעיל' : errorText ? 'סירוב' : 'פעיל'
 
-          // Derive status from field 10
-          let soStatus = 'פעיל'
-          if (statusRaw.includes('מוקפא'))    soStatus = 'מוקפא'
-          else if (statusRaw.includes('לא פעיל')) soStatus = 'לא פעיל'
-          else if (statusRaw.includes('בוטל'))  soStatus = 'מבוטל'
-          else if (statusRaw.includes('סירוב')) soStatus = 'סירוב'
-
-          // Try GetKevald for ת"ז
-          let tz = ''
-          try {
-            const kvUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevald&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&Kevald=${encodeURIComponent(externalId)}`
-            const kvResp = await fetch(kvUrl)
-            if (kvResp.ok) {
-              const kvJson = await kvResp.json()
-              const isErr = kvJson.Result != null && kvJson.Result !== 0
-              if (!isErr) {
-                // Try common ת"ז field names
-                tz = String(kvJson.ClientZeout ?? kvJson.ClientId ?? kvJson.Zeout ?? kvJson.ID_Number ?? '').trim()
-              }
-            }
-          } catch { /* ת"ז not critical */ }
-
-          // Find parent: first by ת"ז, then by name
+          // Match parent: ת"ז first, then name
           let parentId: string | null = null
           let parentAction = 'לא קושר'
 
-          const matchedByTz  = tz ? parentList.find(p => p.tz && p.tz === tz) : undefined
-          const matchedByName = !matchedByTz && clientName ? parentList.find(p => namesMatch(p.name, clientName)) : undefined
-          const matched = matchedByTz ?? matchedByName
+          const byTz   = tz ? parentByTz.get(tz) : undefined
+          const byName = !byTz && clientName ? parentList.find(p => namesMatch(p.name, clientName)) : undefined
+          const matched = byTz ?? byName
 
           if (matched) {
             parentId = matched.id
-            parentAction = `קושר → ${matched.name}${matchedByTz ? ' (ת"ז)' : ' (שם)'}`
+            parentAction = `קושר → ${matched.name}${byTz ? ' (ת"ז)' : ' (שם)'}`
           } else if (!dryRun) {
-            const newParentId = crypto.randomUUID()
+            const newId = crypto.randomUUID()
             const { error: pErr } = await supabaseAdmin.from('parents').insert({
-              id:        newParentId,
-              name:      clientName || `הו"ק אשראי ${externalId}`,
-              id_number: tz || null,
+              id: newId, name: clientName || `הו"ק ${externalId}`, id_number: tz || null,
             })
             if (!pErr) {
-              parentId = newParentId
-              parentAction = 'נוצר חדש'
-              parentCreated++
-              parentList.push({ id: newParentId, name: clientName, tz })
+              parentId = newId; parentAction = 'נוצר חדש'; parentCreated++
+              parentList.push({ id: newId, name: clientName, tz })
+              if (tz) parentByTz.set(tz, { id: newId, name: clientName, tz })
             }
           } else {
             parentAction = tz ? 'ת"ז לא נמצא — ייווצר' : 'שם לא נמצא — ייווצר'
           }
 
           const payload: Record<string, unknown> = {
-            external_id:         externalId,
-            standing_order_type: 'אשראי',
-            parent_id:           parentId,
-            charge_amount:       chargeAmount,
-            credit_balance:      creditBalance,
-            project_name:        projectName,
-            card_last4:          cardLast4,
-            card_expiry:         cardExpiry || null,
-            so_status:           soStatus,
+            external_id: externalId, standing_order_type: 'אשראי',
+            parent_id: parentId, charge_amount: chargeAmount,
+            credit_balance: creditBalance, project_name: projectName,
+            card_last4: cardLast4, card_expiry: cardExpiry || null,
+            so_status: soStatus,
           }
           if (notes) payload.notes = notes
 
@@ -180,20 +169,19 @@ export async function POST(req: NextRequest) {
             existing ? updated++ : created++
           }
 
-          const logRow: LogRow = { externalId, name: clientName, tz, action, parentAction, amount: String(chargeAmount ?? ''), category: projectName ?? '', status: soStatus }
-          logRows.push(logRow)
-          send({ type: 'log', message: `${externalId} · ${clientName} · ${action} · ${parentAction}` })
+          logRows.push({ externalId, name: clientName, tz, action, parentAction, amount: String(chargeAmount ?? ''), category: projectName ?? '', status: soStatus })
+          send({ type: 'log', message: `${externalId} · ${clientName}${tz ? ` · ת"ז ${tz}` : ''} · ${action} · ${parentAction}` })
         }
 
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
             id: crypto.randomUUID(), automation: 'nedarim-credit-hok-sync',
             ran_at: new Date().toISOString(),
-            details: { updated, created, parentCreated, skipped, total: records.length, rows: logRows },
+            details: { updated, created, parentCreated, skipped, total: allRecords.length, rows: logRows },
           })
         }
 
-        send({ type: 'done', updated, created, parentCreated, skipped, total: records.length, dryRun, logRows })
+        send({ type: 'done', updated, created, parentCreated, skipped, total: allRecords.length, dryRun, logRows })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {
