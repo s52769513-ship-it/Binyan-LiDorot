@@ -228,6 +228,7 @@ interface Props {
   parentId: string
   onClose: () => void
   onOpenStudent?: (studentId: string) => void
+  onUpdate?: (fields: Partial<{ id: string; name: string; firstName: string; lastName: string; fatherPhone: string; motherPhone: string; email: string; city: string; status: string[]; tuitionTotal: number; tuitionBalance: number }>) => void
 }
 
 /* ─── badge ─────────────────────────────────────────── */
@@ -250,7 +251,7 @@ type SalarySubTab = 'summary' | 'settings' | 'women'
 /* ═══════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
-export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props) {
+export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdate }: Props) {
   const [parent, setParent]       = useState<ParentDetail | null>(null)
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
@@ -440,7 +441,27 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
       body: JSON.stringify(fields),
     })
     setParent(prev => prev ? { ...prev, ...fields } as ParentDetail : prev)
-  }, [parentId])
+    // Notify parent list so the row updates immediately
+    if (onUpdate) {
+      const summaryFields: Record<string, unknown> = { id: parentId }
+      const MAP: Record<string, string> = {
+        firstName: 'firstName', lastName: 'lastName',
+        fatherPhone: 'fatherPhone', motherPhone: 'motherPhone',
+        email: 'email', city: 'city', status: 'status',
+        tuitionTotal: 'tuitionTotal', tuitionBalance: 'tuitionBalance',
+      }
+      for (const [k, v] of Object.entries(fields)) {
+        if (MAP[k]) summaryFields[MAP[k]] = v
+      }
+      // Rebuild name if first/last changed
+      if (('firstName' in fields || 'lastName' in fields) && parent) {
+        const fn = (fields.firstName as string | undefined) ?? parent.firstName
+        const ln = (fields.lastName as string | undefined) ?? parent.lastName
+        summaryFields.name = [fn, ln].filter(Boolean).join(' ')
+      }
+      onUpdate(summaryFields as Parameters<typeof onUpdate>[0])
+    }
+  }, [parentId, onUpdate, parent])
 
   // Load transactions for a selected standing order
   const loadSoTxs = useCallback((soId: string) => {

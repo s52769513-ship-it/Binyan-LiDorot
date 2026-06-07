@@ -145,6 +145,7 @@ export default function ParentsPage() {
           parentId={selectedId}
           onClose={() => setSelectedId(null)}
           onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
+          onUpdate={fields => setParents(prev => prev.map(p => p.id === selectedId ? { ...p, ...fields } : p))}
         />
       )}
       {selectedStudentId && (
