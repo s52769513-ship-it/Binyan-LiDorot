@@ -48,12 +48,7 @@ export async function POST(req: NextRequest) {
         // 1. Pull full list via GetKeva.Json with pagination (LastId)
         send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים...' })
 
-        type KevaRecord = {
-          Kevald: string; ClientName: string; Zeout: string
-          Amount: string; Groupe: string; Comments: string
-          LastNum: string; Tokef: string; Itra: string
-          Enabled: string; ErrorText: string; NextDate: string; Currency: string
-        }
+        type KevaRecord = Record<string, unknown>
         const allRecords: KevaRecord[] = []
         let lastId = ''
 
@@ -100,7 +95,7 @@ export async function POST(req: NextRequest) {
 
           if (page.length < 2000) break  // last page
           // Set LastId to the last record's Kevald for next page
-          lastId = String(page[page.length - 1].Kevald ?? '').trim()
+          lastId = String((page[page.length - 1] as Record<string, unknown>).Kevald ?? (page[page.length - 1] as Record<string, unknown>)['DT_RowId'] ?? '').trim()
           if (!lastId) break
         }
 
@@ -126,20 +121,26 @@ export async function POST(req: NextRequest) {
         const logRows: LogRow[] = []
         let updated = 0, created = 0, parentCreated = 0, skipped = 0
 
+        // Log first raw record to debug field names
+        if (allRecords.length > 0) {
+          send({ type: 'log', message: `DEBUG רשומה ראשונה: ${JSON.stringify(allRecords[0]).slice(0, 300)}` })
+        }
+
         for (let i = 0; i < allRecords.length; i++) {
-          const r = allRecords[i]
-          const externalId = String(r.Kevald ?? '').trim()
+          const r = allRecords[i] as Record<string, unknown>
+          // Support both named fields (GetKeva.Json) and numbered (GetKevaNew)
+          const externalId = String(r.Kevald ?? r['DT_RowId'] ?? r['1'] ?? '').trim()
           if (!externalId) { skipped++; continue }
 
           send({ type: 'progress', current: i + 1, total: allRecords.length })
 
-          const clientName    = String(r.ClientName ?? '').trim()
-          const tz            = String(r.Zeout ?? '').trim()
-          const chargeAmount  = Number(String(r.Amount ?? '').replace(/[^\d.]/g, '')) || null
-          const projectName   = String(r.Groupe ?? '').trim() || null
-          const notes         = String(r.Comments ?? '').trim()
-          const cardLast4     = String(r.LastNum ?? '').trim() || null
-          const cardExpiry    = fmtExpiry(r.Tokef ?? '')
+          const clientName    = String(r.ClientName ?? r['2'] ?? '').trim()
+          const tz            = String(r.Zeout ?? r['9'] ?? r['10'] ?? '').trim()
+          const chargeAmount  = Number(String(r.Amount ?? r['5'] ?? r['6'] ?? '').replace(/[^\d.]/g, '')) || null
+          const projectName   = String(r.Groupe ?? r['7'] ?? '').trim() || null
+          const notes         = String(r.Comments ?? r['8'] ?? '').trim()
+          const cardLast4     = String(r.LastNum ?? r['3'] ?? '').trim() || null
+          const cardExpiry    = fmtExpiry(String(r.Tokef ?? r['4'] ?? ''))
           const creditBalance = Number(String(r.Itra ?? '').replace(/[^\d.]/g, '')) || null
           const isActive      = String(r.Enabled ?? '1') !== '0'
           const errorText     = String(r.ErrorText ?? '').trim()
