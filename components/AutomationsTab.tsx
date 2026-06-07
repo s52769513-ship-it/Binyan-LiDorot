@@ -81,6 +81,19 @@ CREATE POLICY "service_role_all" ON automation_logs
   FOR ALL TO service_role USING (true) WITH CHECK (true);`,
   },
   {
+    id: 'nedarim-hok-sync', name: 'סינק הו"ק מנדרים', icon: '🏦',
+    desc: 'מושך את רשימת כל הו"ק הפעילים מנדרים ומעדכן פרטים: סכום חיוב, יתרת חיובים, קטגוריה',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-hok-sync',
+    steps: [
+      { icon:'⏰', label:'הפעלה',         desc:'ידני',                  bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'🌐', label:'נדרים API',     desc:'GetMasavKevaNew',       bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🔍', label:'התאמת הו"ק',   desc:'לפי external_id',       bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'עדכון פרטים',  desc:'סכום / יתרה / קטגוריה', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
     id: 'salary-pp', name: 'יצירת תשלום מתוכנן למשכורת', icon: '💼',
     desc: 'יוצר תשלום מתוכנן למשכורת של חודש קודם ומקשר קיזוזי שכ"ל שנמצאו',
     defaultMonth: prevMY,
