@@ -237,20 +237,33 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
         <div className={`px-5 py-3 border-b flex-shrink-0 ${result.dryRun ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
           {result.error
             ? <p className="text-red-600 text-sm">{result.error}</p>
-            : (
-              <div className="flex flex-wrap gap-4 text-sm">
-                <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>
-                {def.id === 'tuition-offset'
-                  ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
-                  : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
-                }
-                <span className="text-gray-400">דולגו: {result.skipped}</span>
-              </div>
-            )}
+            : (() => {
+              const isHok = ['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id)
+              return (
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {!isHok && <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>}
+                  {def.id === 'tuition-offset'
+                    ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
+                    : isHok
+                      ? <>
+                          {(result as {updated?:number}).updated != null && <span className="text-emerald-700 font-semibold">עודכנו: {(result as {updated?:number}).updated}</span>}
+                          {(result as {imported?:number}).imported != null && <span className="text-emerald-700 font-semibold">יובאו: {(result as {imported?:number}).imported}</span>}
+                          {(result.totalOffset ?? 0) > 0 && <span className="font-bold">₪{fmtN(result.totalOffset)}</span>}
+                        </>
+                      : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
+                  }
+                  <span className="text-gray-400">דולגו: {result.skipped}</span>
+                </div>
+              )
+            })()}
           {result.dryRun && !result.error && <p className="text-xs text-amber-700 mt-1">⚠️ בדיקה בלבד — שום דבר לא נשמר</p>}
         </div>
         {!result.error && (
           <div className="overflow-y-auto flex-1">
+            {['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id) ? (
+              // הו"ק automations — show simple message list from liveLines (passed via actions workaround)
+              <p className="px-5 py-6 text-center text-sm text-gray-400">הפעולה הושלמה — ראה לוג הרצה למעלה לפרטים</p>
+            ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b">
                 <tr className="text-right text-xs text-gray-400">
@@ -291,6 +304,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         )}
         <div className="px-5 py-4 border-t flex-shrink-0">
