@@ -132,6 +132,19 @@ CREATE POLICY "service_role_all" ON salary_offsets
     sql: '',
   },
   {
+    id: 'nedarim-bank-hok-pull', name: 'משיכת תנועות הו"ק בנקאי', icon: '🏦',
+    desc: 'מושך היסטוריית חיובים בנקאיים לפי טווח תאריכים, מקשר להו"ק ולהורה, ומוסיף תנועה ל-DB',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-pull',
+    steps: [
+      { icon:'⏰', label:'הפעלה',          desc:'ידני',                  bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'🌐', label:'GetMasavHistory', desc:'טווח תאריכים',          bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🔍', label:'התאמת הו"ק',     desc:'לפי מספר הו"ק',        bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'תנועה + PP',      desc:'חיוב / קישור לשכ"ל',  bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
     id: 'nedarim-credit-hok-pull', name: 'משיכת תנועות הו"ק אשראי', icon: '💳',
     desc: 'מושך היסטוריית חיובים לכל הו"ק אשראי, מעדכן פרטי כרטיס, ומקשר תנועות ל-PP שכ"ל',
     defaultMonth: currentMY,
@@ -314,7 +327,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
           {result.error
             ? <p className="text-red-600 text-sm">{result.error}</p>
             : (() => {
-              const isHok = ['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id)
+              const isHok = ['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull','nedarim-bank-hok-pull'].includes(def.id)
               return (
                 <div className="flex flex-wrap gap-4 text-sm">
                   {!isHok && <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>}
@@ -338,7 +351,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
         </div>
         {!result.error && (
           <div className="overflow-y-auto flex-1">
-            {['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id) ? (
+            {['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull','nedarim-bank-hok-pull'].includes(def.id) ? (
               <HokResultTable rows={result.logRows ?? []} defId={def.id} />
             ) : (
             <table className="w-full text-sm">
@@ -449,6 +462,15 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   }
   const [fromMonth, setFromMonth]           = useState(schoolYearStart())
   const [toMonth, setToMonth]               = useState(curMonth())
+  // bank pull date range (YYYY-MM-DD for <input type="date">)
+  const schoolYearStartDate = (): string => {
+    const now = new Date(); const y = now.getFullYear()
+    const sy = now.getMonth() >= 8 ? y : y - 1
+    return `${sy}-09-01`
+  }
+  const todayDate = () => new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom]             = useState(schoolYearStartDate())
+  const [dateTo, setDateTo]                 = useState(todayDate())
   const [phase, setPhase]                   = useState<Phase>('idle')
   const [dryRun, setDryRun]                 = useState(false)
   const [activeStep, setActiveStep]         = useState(0)
@@ -521,6 +543,8 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
         body: JSON.stringify(
           def.id === 'salary-pp' && !pid
             ? { dryRun: isDry, fromMonth, toMonth }
+            : def.id === 'nedarim-bank-hok-pull'
+            ? { dryRun: isDry, from: dateFrom, to: dateTo }
             : { dryRun: isDry, parentId: pid, monthYear: targetMY }
         ),
       })
@@ -675,6 +699,20 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
                 📅 מתחילת שנה
               </button>
               <span className="text-xs text-gray-400">{fromMonth} → {toMonth}</span>
+            </div>
+          ) : def.id === 'nedarim-bank-hok-pull' ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">מתאריך:</label>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">עד תאריך:</label>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <button onClick={() => { setDateFrom(schoolYearStartDate()); setDateTo(todayDate()) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                📅 מתחילת שנה
+              </button>
+              <span className="text-xs text-gray-400">{dateFrom} → {dateTo}</span>
             </div>
           ) : (
             <div className="flex items-center gap-3 flex-wrap">
