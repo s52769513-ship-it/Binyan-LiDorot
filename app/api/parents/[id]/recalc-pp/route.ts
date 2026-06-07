@@ -11,8 +11,8 @@ import { supabaseAdmin } from '@/lib/supabase'
  *   3. Recalculate balance on every explicitly linked PP
  *   4. Update parent.tuition_balance
  */
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
-  const parentId = params.id
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: parentId } = await params
   try {
     const result = await recalcPPs(parentId)
     return NextResponse.json({ success: true, ...result })

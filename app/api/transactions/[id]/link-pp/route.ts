@@ -12,8 +12,8 @@ import { supabaseAdmin } from '@/lib/supabase'
  * - Leftover → parent credit_balance
  * - Recalculates parent tuition_balance
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const txId = params.id
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: txId } = await params
   const { ppId } = await req.json()
   if (!ppId) return NextResponse.json({ error: 'ppId required' }, { status: 400 })
 
