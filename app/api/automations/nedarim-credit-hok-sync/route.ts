@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
           `Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
         ]
         let workingAction = ''
+        let hasNamedFields = false
         for (const candidate of actionsToTry) {
           const testUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?${candidate}`
           const testResp = await fetch(testUrl)
@@ -68,9 +69,16 @@ export async function POST(req: NextRequest) {
           const testJson = await testResp.json().catch(() => null)
           if (!testJson) continue
           const isError = testJson.Result != null && testJson.Result !== 0
-          if (!isError) { workingAction = candidate; break }
+          if (isError) continue
+          const page = Array.isArray(testJson) ? testJson : (testJson.data ?? testJson.Data ?? [])
+          // Prefer GetKeva.Json (named fields with Zeout/card details)
+          const firstRecord = page[0] as Record<string, unknown> | undefined
+          hasNamedFields = !!(firstRecord && ('Kevald' in firstRecord || 'Zeout' in firstRecord))
+          workingAction = candidate
+          if (hasNamedFields) break  // found the preferred named-field variant
         }
         if (!workingAction) throw new Error('כל שמות הפעולה של GetKeva נדחו על ידי נדרים')
+        send({ type: 'log', message: `פעולה: ${workingAction.split('&')[0]} · שדות: ${hasNamedFields ? 'named (Kevald/Zeout)' : 'numbered (DT_RowId)'}` })
         send({ type: 'log', message: `פעולה פעילה: ${workingAction.split('&')[0]}` })
 
         while (true) {
@@ -134,13 +142,15 @@ export async function POST(req: NextRequest) {
 
           send({ type: 'progress', current: i + 1, total: allRecords.length })
 
+          // Named fields: from GetKeva.Json (preferred — has ת"ז and card details)
+          // Numbered fallbacks: from GetKevaNew (no card details, only basic info)
           const clientName    = String(r.ClientName ?? r['2'] ?? '').trim()
-          const tz            = String(r.Zeout ?? r['9'] ?? r['10'] ?? '').trim()
-          const chargeAmount  = Number(String(r.Amount ?? r['5'] ?? r['6'] ?? '').replace(/[^\d.]/g, '')) || null
+          const tz            = String(r.Zeout ?? '').trim()                          // only GetKeva.Json has this
+          const chargeAmount  = Number(String(r.Amount ?? r['6'] ?? r['5'] ?? '').replace(/[^\d.]/g, '')) || null
           const projectName   = String(r.Groupe ?? r['7'] ?? '').trim() || null
           const notes         = String(r.Comments ?? r['8'] ?? '').trim()
-          const cardLast4     = String(r.LastNum ?? r['3'] ?? '').trim() || null
-          const cardExpiry    = fmtExpiry(String(r.Tokef ?? r['4'] ?? ''))
+          const cardLast4     = String(r.LastNum ?? '').trim() || null                // only GetKeva.Json
+          const cardExpiry    = fmtExpiry(String(r.Tokef ?? ''))                      // only GetKeva.Json
           const creditBalance = Number(String(r.Itra ?? '').replace(/[^\d.]/g, '')) || null
           const isActive      = String(r.Enabled ?? '1') !== '0'
           const errorText     = String(r.ErrorText ?? '').trim()
