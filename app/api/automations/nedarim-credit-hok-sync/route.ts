@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // 1. Pull full list via GetKeva.Json with pagination (LastId)
-        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים (GetKeva.Json)...' })
+        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים (GetKevaNew)...' })
 
         type KevaRecord = {
           Kevald: string; ClientName: string; Zeout: string
@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
 
         // Paginate: keep calling until we get fewer than 2000 records
         while (true) {
-          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`
+          // Try GetKevaNew first; action name "GetKeva.Json" was rejected by API
+          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`
           if (lastId) url += `&LastId=${encodeURIComponent(lastId)}`
 
           const resp = await fetch(url)
@@ -69,6 +70,11 @@ export async function POST(req: NextRequest) {
 
           const page: KevaRecord[] = Array.isArray(json) ? json : (json.data ?? json.Data ?? [])
           if (!page.length) break
+
+          // Debug: log first record keys on first page to verify field names
+          if (allRecords.length === 0 && page.length > 0) {
+            send({ type: 'log', message: `DEBUG שדות: ${Object.keys(page[0]).join(', ')}` })
+          }
 
           allRecords.push(...page)
           send({ type: 'log', message: `  משכנו ${allRecords.length} הו"ק עד כה...` })
