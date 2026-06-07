@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 
 export async function GET(req: NextRequest) {
   try {
@@ -173,6 +174,14 @@ export async function PATCH(req: NextRequest) {
       } catch { /* offset recalc is best-effort */ }
     }
 
+    // Recalc credits for affected parents when tuition PP changes
+    if (existing.pp_type !== 'משכורת') {
+      const pids = (existing.parent_ids as string[]) ?? []
+      for (const pid of pids) {
+        void recalcPPs(pid).catch(() => {})
+      }
+    }
+
     return NextResponse.json({ success: true, amount: newAmount, balance: newBalance })
   } catch (err) {
     return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
@@ -206,44 +215,10 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
-    // Apply any existing credit from parent
-    try {
-      const parentIdsList = Array.isArray(parentIds) ? parentIds : []
-      for (const parentId of parentIdsList) {
-        const { data: par } = await supabaseAdmin
-          .from('parents')
-          .select('pp_credit')
-          .eq('id', parentId)
-          .single()
-        const credit = par?.pp_credit || 0
-        if (credit > 0) {
-          const applied    = Math.min(credit, Number(amount))
-          const newBalance = Number(amount) - applied
-          const newCredit  = credit - applied
-          await Promise.all([
-            supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', id),
-            supabaseAdmin.from('parents').update({ pp_credit: newCredit }).eq('id', parentId),
-            // Create a visible credit transaction so the balance reduction is explained
-            supabaseAdmin.from('transactions').insert({
-              id:                 crypto.randomUUID(),
-              amount:             applied,
-              planned_payment_id: id,
-              parent_ids:         [parentId],
-              date:               new Date().toISOString().split('T')[0],
-              month_year:         monthYear || '',
-              notes:              'זיכוי עודף שמור',
-              type:               '',
-              project_ids:        [],
-              project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
-            }),
-          ])
-          break
-        }
-      }
-    } catch (creditErr) {
-      console.error('pp credit apply error:', creditErr)
-      // Do not fail the creation — payment was already saved
+    // Apply existing credit_balance to new PP (and recalc tuition_balance)
+    const parentIdsList = Array.isArray(parentIds) ? parentIds : []
+    for (const pid of parentIdsList) {
+      void recalcPPs(pid).catch(() => {})
     }
 
     return NextResponse.json({ success: true, id })
