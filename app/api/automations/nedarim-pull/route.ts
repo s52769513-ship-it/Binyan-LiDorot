@@ -122,14 +122,15 @@ export async function POST(req: NextRequest) {
           const category  = String(rec['8'] ?? '').trim()       // קטגוריה
           const rowId     = String(rec['DT_RowId'] ?? '').trim()
 
-          e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status })
-
           // Skip already imported
           if (rowId && importedRowIds.has(rowId)) {
             totalSkipped++
+            e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status, skipped: true, reason: 'יובא כבר' })
             actions.push({ hokNumber, donorName, skipped: true, reason: 'יובא כבר' })
             continue
           }
+
+          e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status })
 
           const isReturned = status === 'החזרת הוראת קבע' || status.includes('חזרה')
 
@@ -147,6 +148,7 @@ export async function POST(req: NextRequest) {
 
           if (!payerParentId) {
             totalSkipped++
+            e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status, skipped: true, reason: 'הו"ק לא נמצא במערכת' })
             actions.push({ hokNumber, donorName, amount, status, skipped: true, reason: 'הו"ק לא נמצא במערכת' })
             continue
           }

@@ -628,10 +628,10 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               addLine('step', `◆ ${ev.msg}`)
               await delay(60)
             } else if (ev.type === 'progress') {
-              if (ev.current != null && ev.total != null && !ev.parentName) {
+              if (ev.current != null && ev.total != null && !ev.parentName && !ev.hokNumber && !ev.externalId) {
                 // numeric progress only — no line, just step indicator
               } else if (ev.skipped) {
-                addLine('skip', `  — ${ev.parentName ?? ev.externalId}`, ev.reason)
+                addLine('skip', `  — ${ev.parentName ?? ev.hokNumber ?? ev.externalId}`, ev.reason)
               } else if (def.id === 'tuition-offset') {
                 addLine('ok', `  ✓ ${ev.parentName} → ₪${fmtN(ev.offset??0)}`,
                   `משכורת ₪${fmtN(ev.salary??0)} · שכ"ל ₪${fmtN(ev.tuitionBalance??0)}`)
@@ -659,12 +659,25 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               setActiveStep(def.steps.length + 1)
               const parts: string[] = []
               if (ev.imported != null) parts.push(`יובאו ${ev.imported}`)
+              if (ev.returned != null && ev.returned > 0) parts.push(`החזרות ${ev.returned}`)
               if (ev.updated  != null) parts.push(`עודכנו ${ev.updated}`)
               if (ev.deleted  != null && ev.deleted > 0) parts.push(`נמחקו ${ev.deleted}`)
               if (ev.skipped  != null) parts.push(`דולגו ${ev.skipped}`)
               if (ev.totalAmount) parts.push(`₪${fmtN(ev.totalAmount)}`)
+              // Map nedarim-pull actions → logRows for table display
+              type PullAction = { hokNumber?: string; donorName?: string; amount?: number; status?: string; monthYear?: string; skipped?: boolean; reason?: string; isReturned?: boolean; ppLinked?: boolean }
+              const pullLogRows: HokLogRow[] = def.id === 'nedarim-bank-hok-pull'
+                ? ((ev.actions ?? []) as PullAction[]).map(a => ({
+                    externalId:   a.hokNumber ?? '',
+                    name:         a.donorName ?? '',
+                    action:       a.skipped ? 'דולג' : a.isReturned ? 'החזרה' : 'יובא',
+                    parentAction: a.skipped ? (a.reason ?? '') : a.ppLinked ? 'PP קושר' : 'ללא PP',
+                    amount:       String(a.amount ?? ''),
+                    status:       a.status ?? '',
+                  }))
+                : []
               addLine('done', `✅ הושלם — ${parts.join(' · ')}${ev.dryRun ? ' [dry]' : ''}`)
-              setResult({ ...ev, actions, applied: ev.imported ?? ev.updated ?? 0, totalOffset: ev.totalAmount ?? 0, dryRun: isDry, monthYear: targetMY })
+              setResult({ ...ev, actions, logRows: pullLogRows.length ? pullLogRows : ev.logRows, applied: ev.imported ?? ev.updated ?? 0, totalOffset: ev.totalAmount ?? 0, dryRun: isDry, monthYear: targetMY })
               setPhase('results')
               if (!isDry) loadLogs()
             } else if (ev.type === 'error') {
