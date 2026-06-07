@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       const seen = new Set<string>()
       const parents: { id: string; name: string }[] = []
       for (const row of data ?? []) {
-        const p = row.parent as { id: string; name: string } | null
+        const p = (row.parent as unknown) as { id: string; name: string } | null
         if (p && !seen.has(p.id)) { seen.add(p.id); parents.push(p) }
       }
       return NextResponse.json(parents.sort((a, b) => a.name.localeCompare(b.name, 'he')))

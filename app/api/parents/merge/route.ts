@@ -10,9 +10,10 @@ async function repoint(table: string, col: string, mergeId: string, keepId: stri
     .contains(col, [mergeId])
 
   for (const row of data ?? []) {
-    const arr: string[] = row[col] ?? []
+    const r = row as unknown as Record<string, unknown>
+    const arr: string[] = (r[col] as string[]) ?? []
     const updated = Array.from(new Set(arr.map((id: string) => id === mergeId ? keepId : id)))
-    await supabaseAdmin.from(table).update({ [col]: updated }).eq('id', row.id)
+    await supabaseAdmin.from(table).update({ [col]: updated }).eq('id', r['id'] as string)
   }
   return (data ?? []).length
 }
