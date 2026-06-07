@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
             status:        'success',
             summary:       `קוזז ₪${totalOffset} זיכויי אשראי עבור ${applied} הו"ק (${targetMY})`,
             details:       actions,
-          }).catch(() => {})
+          })
         }
 
         e({ type: 'complete', applied, skipped: actions.length - applied, totalOffset, dryRun, resetOnly: false, monthYear: targetMY, actions })

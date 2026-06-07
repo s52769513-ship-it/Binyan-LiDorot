@@ -390,14 +390,14 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
               <tbody className="divide-y divide-gray-50">
                 {result.actions.map((a, i) => (
                   <tr key={i} className={a.skipped ? 'opacity-40' : ''}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{(a as Record<string,unknown>).externalId as string ?? a.parentName}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{(a as unknown as Record<string,unknown>).externalId as string ?? a.parentName}</td>
                     {def.id === 'tuition-offset' ? <>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.salary!=null?`₪${fmtN(a.salary)}`:'—'}</td>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.tuitionBalance!=null?`₪${fmtN(a.tuitionBalance)}`:'—'}</td>
                       <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">{a.skipped?'—':`₪${fmtN(a.offset??0)}`}</td>
                     </> : def.id === 'credit-offset' ? <>
-                      <td className="px-4 py-2.5 text-left tabular-nums text-blue-600">{(a as Record<string,unknown>).creditBalance!=null?`₪${fmtN((a as Record<string,unknown>).creditBalance as number)}`:'—'}</td>
-                      <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{(a as Record<string,unknown>).ppBalance!=null?`₪${fmtN((a as Record<string,unknown>).ppBalance as number)}`:'—'}</td>
+                      <td className="px-4 py-2.5 text-left tabular-nums text-blue-600">{(a as unknown as Record<string,unknown>).creditBalance!=null?`₪${fmtN((a as unknown as Record<string,unknown>).creditBalance as number)}`:'—'}</td>
+                      <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{(a as unknown as Record<string,unknown>).ppBalance!=null?`₪${fmtN((a as unknown as Record<string,unknown>).ppBalance as number)}`:'—'}</td>
                       <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">{a.skipped?'—':`₪${fmtN(a.offset??0)}`}</td>
                     </> : <>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.salary!=null?`₪${fmtN(a.salary)}`:'—'}</td>
