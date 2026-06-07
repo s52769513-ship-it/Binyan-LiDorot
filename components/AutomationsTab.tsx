@@ -826,7 +826,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
               ▶ הרץ לכולם
             </button>
-            {(
+            {def.id === 'salary-pp' && (
               <button onClick={() => openPick(false)}
                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
                 👤 הרץ להורה בודד
