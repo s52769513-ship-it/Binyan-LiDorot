@@ -1660,7 +1660,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                                   <td className="py-1.5 text-right text-gray-500 max-w-[120px] truncate">{tx.notes || '—'}</td>
                                   <td className="py-1.5 text-right text-gray-600">{tx.monthYear}</td>
                                   <td className="py-1.5 text-right text-gray-500">{fmtDate(tx.date)}</td>
-                                  <td className="py-1.5 text-left font-medium text-emerald-600 tabular-nums" dir="ltr">{fmt(tx.amount)}</td>
+                                  <td className={`py-1.5 text-left font-medium tabular-nums ${tx.amount < 0 ? 'text-red-500' : 'text-emerald-600'}`} dir="ltr">{fmt(tx.amount)}</td>
                                 </tr>
                               ))}
                             </tbody>
