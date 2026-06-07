@@ -525,9 +525,23 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   const loadParents = async () => {
     setParentsLoading(true)
     try {
-      const r = await fetch(def.endpoint)
-      const d = await r.json()
-      setParentOptions(Array.isArray(d) ? d : [])
+      // nedarim-bank-hok-pull: load parents via standing orders (not salary endpoint)
+      if (def.id === 'nedarim-bank-hok-pull') {
+        const r = await fetch('/api/standing-orders?type=בנקאי&limit=500')
+        const d = await r.json()
+        const seen = new Set<string>()
+        const opts: ParentOpt[] = []
+        for (const so of (d.data ?? d ?? [])) {
+          const pid = so.parentId ?? so.parent_id
+          const name = so.parentName ?? so.parent_name ?? so.name ?? ''
+          if (pid && !seen.has(pid)) { seen.add(pid); opts.push({ id: pid, name, salary_gross: 0 }) }
+        }
+        setParentOptions(opts)
+      } else {
+        const r = await fetch(def.endpoint)
+        const d = await r.json()
+        setParentOptions(Array.isArray(d) ? d : [])
+      }
     } catch {} finally { setParentsLoading(false) }
   }
 
@@ -604,7 +618,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
           def.id === 'salary-pp' && !pid
             ? { dryRun: isDry, fromMonth, toMonth }
             : def.id === 'nedarim-bank-hok-pull'
-            ? { dryRun: isDry, from: dateFrom, to: dateTo }
+            ? { dryRun: isDry, from: dateFrom, to: dateTo, ...(pid ? { parentId: pid } : {}) }
             : { dryRun: isDry, parentId: pid, monthYear: targetMY }
         ),
       })
@@ -815,7 +829,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               ▶ הרץ לכולם
             </button>
             {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
-             def.id !== 'nedarim-bank-hok-pull'   && def.id !== 'nedarim-credit-hok-pull' && (
+             def.id !== 'nedarim-credit-hok-pull' && (
               <button onClick={() => openPick(false)}
                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
                 👤 הרץ להורה בודד
@@ -829,7 +843,7 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             )}
           </>}
           {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
-           def.id !== 'nedarim-bank-hok-pull'   && def.id !== 'nedarim-credit-hok-pull' && (
+           def.id !== 'nedarim-credit-hok-pull' && (
             <button onClick={() => openPick(true)}
               className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
               🧪 בדיקה להורה

@@ -45,7 +45,7 @@ export async function GET() {
 // POST — pull data
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { from, to, dryRun = false } = body as { from: string; to: string; dryRun: boolean }
+  const { from, to, dryRun = false, parentId } = body as { from: string; to: string; dryRun: boolean; parentId?: string }
 
   if (!from || !to) {
     return NextResponse.json({ error: 'חסרים from/to' }, { status: 400 })
@@ -63,6 +63,18 @@ export async function POST(req: NextRequest) {
       let totalReturned = 0
       let totalSkipped  = 0
       let totalAmount   = 0
+
+      // If parentId provided — build a set of allowed hokNumbers for this parent
+      let parentHokNumbers: Set<string> | null = null
+      if (parentId) {
+        const { data: parentSos } = await supabaseAdmin
+          .from('standing_orders')
+          .select('external_id')
+          .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+          .eq('standing_order_type', 'בנקאי')
+        parentHokNumbers = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
+        e({ type: 'step', step: 1, msg: `סינון להורה: ${parentHokNumbers.size} הו"ק בנקאי` })
+      }
       const actions: object[] = []
 
       try {
@@ -121,6 +133,12 @@ export async function POST(req: NextRequest) {
           const status    = String(rec['6'] ?? '').trim()       // סטטוס
           const category  = String(rec['8'] ?? '').trim()       // קטגוריה
           const rowId     = String(rec['DT_RowId'] ?? '').trim()
+
+          // Skip if not in parent's standing orders (when filtering by parent)
+          if (parentHokNumbers !== null && !parentHokNumbers.has(hokNumber)) {
+            totalSkipped++
+            continue
+          }
 
           // Skip already imported
           if (rowId && importedRowIds.has(rowId)) {
