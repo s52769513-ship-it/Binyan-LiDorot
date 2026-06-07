@@ -92,6 +92,13 @@ export default function ImportPage() {
   const [result, setResult]       = useState<{ imported: number; skipped: number; errors: string[] } | null>(null)
   const [page, setPage]           = useState(0)
   const [resetOpen, setResetOpen] = useState(false)
+  const TABLE_LABELS: Record<string, string> = {
+    transactions:     'תנועות',
+    planned_payments: 'תשלומים מתוכננים',
+    debts:            'חובות',
+    standing_orders:  'הוראות קבע',
+    automation_logs:  'לוגים אוטומציות',
+  }
   const [resetTables, setResetTables] = useState<Record<string, boolean>>({
     transactions: true, planned_payments: true, debts: true, standing_orders: false, automation_logs: false,
   })
@@ -201,7 +208,7 @@ export default function ImportPage() {
               <label key={t} className="flex items-center gap-2 cursor-pointer text-sm text-red-700">
                 <input type="checkbox" checked={resetTables[t]}
                   onChange={e => setResetTables(prev => ({ ...prev, [t]: e.target.checked }))} />
-                {t}
+                {TABLE_LABELS[t] ?? t}
               </label>
             ))}
           </div>
@@ -222,7 +229,9 @@ export default function ImportPage() {
           {resetResult && (
             <div className="space-y-1">
               {Object.entries(resetResult).map(([t, s]) => (
-                <p key={t} className="text-xs"><span className="font-mono text-red-700">{t}</span>: {s}</p>
+                <p key={t} className="text-xs">
+                  <span className="font-semibold text-red-700">{TABLE_LABELS[t] ?? t}</span>: {s}
+                </p>
               ))}
             </div>
           )}
