@@ -130,6 +130,11 @@ export default function MergeParentsTab() {
   const [merging, setMerging]       = useState(false)
   const [mergeError, setMergeError] = useState('')
   const [done, setDone]             = useState(false)
+  // excluded linked record IDs (from non-primary parents) that should NOT be re-pointed
+  const [excludedLinked, setExcludedLinked] = useState<Set<string>>(new Set())
+  const toggleLinked = (id: string) => setExcludedLinked(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAllLinked = (ids: string[], exclude: boolean) =>
+    setExcludedLinked(s => { const n = new Set(s); ids.forEach(id => exclude ? n.add(id) : n.delete(id)); return n })
 
   /* Search */
   const search = async () => {
@@ -185,16 +190,22 @@ export default function MergeParentsTab() {
           if (winner) overrides[key] = winner.parent[key]
         }
       }
+      const excludeTxIds = [...excludedLinked].filter(id =>
+        allData.some(d => d.parent.id !== primaryId && d.transactions.some(t => t.id === id))
+      )
+      const excludePpIds = [...excludedLinked].filter(id =>
+        allData.some(d => d.parent.id !== primaryId && d.plannedPayments.some(p => p.id === id))
+      )
       for (const loserId of loserIds) {
         const r = await fetch('/api/parents/merge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keepId: primaryId, mergeId: loserId, overrides }),
+          body: JSON.stringify({ keepId: primaryId, mergeId: loserId, overrides, excludeTxIds, excludePpIds }),
         })
         const d = await r.json()
         if (d.error) throw new Error(d.error)
       }
-      setDone(true); setActiveGroupIds(null); setAllData([])
+      setDone(true); setActiveGroupIds(null); setAllData([]); setExcludedLinked(new Set())
       setGroups(prev => prev.filter(g => !g.some(p => p.id === primaryId || loserIds.includes(p.id))))
     } catch (e) { setMergeError(String(e)) }
     finally { setMerging(false) }
@@ -357,42 +368,71 @@ export default function MergeParentsTab() {
                       )
                     })}
 
-                    {/* Linked sections — always merged from all */}
+                    {/* Linked sections */}
                     {LINKED_SECTIONS.map(({ key, label }) => {
-                      const allItems = allData.flatMap(d => d[key] as LinkedRecord[])
+                      const includedCount = allData.flatMap(d => {
+                        const items = d[key] as LinkedRecord[]
+                        if (d.parent.id === primaryId) return items
+                        return items.filter(item => !excludedLinked.has(item.id))
+                      }).length
                       return (
                         <div key={key}
                           className="grid border-b border-gray-100 last:border-b-0"
                           style={{ gridTemplateColumns: colStyle }}>
                           {allData.map(d => {
                             const items = d[key] as LinkedRecord[]
+                            const isLoser = d.parent.id !== primaryId
+                            const loserIds = items.map(i => i.id)
+                            const allExcluded = loserIds.length > 0 && loserIds.every(id => excludedLinked.has(id))
                             return (
                               <div key={d.parent.id} className="px-3 py-2.5 bg-emerald-50/50 border-l border-gray-100 first:border-l-0">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                                    <span className="w-4 h-4 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center font-bold leading-none">+</span>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1">
+                                    {isLoser && items.length > 0 && (
+                                      <button onClick={() => toggleAllLinked(loserIds, !allExcluded)}
+                                        className="text-xs text-indigo-500 hover:underline">
+                                        {allExcluded ? 'בחר הכל' : 'בטל הכל'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-semibold text-emerald-700">
                                     {label} ({items.length})
                                   </span>
                                 </div>
                                 {items.length > 0
-                                  ? <div className="space-y-0.5">
-                                      {items.slice(0,4).map(item => (
-                                        <div key={item.id} className="text-xs text-emerald-800 flex justify-between gap-2">
-                                          {item.amount !== undefined && <span className={item.amount < 0 ? 'text-red-500' : ''}>{fmtAmt(item.amount)}</span>}
-                                          <span className="truncate">{item.label}{item.sub ? ` · ${item.sub}` : ''}</span>
-                                        </div>
-                                      ))}
-                                      {items.length > 4 && <div className="text-xs text-gray-400">+{items.length-4} נוספים</div>}
+                                  ? <div className="space-y-1">
+                                      {items.map(item => {
+                                        const excluded = isLoser && excludedLinked.has(item.id)
+                                        return (
+                                          <div key={item.id}
+                                            className={`flex items-center gap-1.5 text-xs ${excluded ? 'opacity-40' : ''}`}>
+                                            {isLoser && (
+                                              <input type="checkbox" checked={!excluded}
+                                                onChange={() => toggleLinked(item.id)}
+                                                className="accent-emerald-600 cursor-pointer flex-shrink-0" />
+                                            )}
+                                            {!isLoser && <span className="w-3.5 flex-shrink-0" />}
+                                            <span className={`flex-1 truncate ${excluded ? 'line-through text-gray-400' : 'text-emerald-800'}`}>
+                                              {item.label}{item.sub ? ` · ${item.sub}` : ''}
+                                            </span>
+                                            {item.amount !== undefined && (
+                                              <span className={`flex-shrink-0 font-medium ${item.amount < 0 ? 'text-red-500' : 'text-gray-600'}`}>
+                                                {fmtAmt(item.amount)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                   : <div className="text-xs text-gray-300">אין</div>
                                 }
                               </div>
                             )
                           })}
-                          {/* Preview: total count */}
-                          <div className="px-3 py-2.5 bg-indigo-50 border-l border-indigo-100">
+                          {/* Preview: included count */}
+                          <div className="px-3 py-2.5 bg-indigo-50 border-l border-indigo-100 flex flex-col justify-center">
                             <div className="text-xs text-indigo-400 mb-0.5">{label}</div>
-                            <div className="text-sm font-bold text-indigo-900">{allItems.length} רשומות</div>
+                            <div className="text-sm font-bold text-indigo-900">{includedCount} רשומות</div>
                           </div>
                         </div>
                       )
