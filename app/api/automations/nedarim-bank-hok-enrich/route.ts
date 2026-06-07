@@ -25,15 +25,19 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        // Load all bank standing orders from DB
+        // Load all bank standing orders — fetch all then filter in JS to avoid Hebrew in PostgREST filter
+        send({ type: 'log', message: 'טוען רשימת הו"ק מהמערכת...' })
         const { data: soList, error } = await supabaseAdmin
           .from('standing_orders')
-          .select('id, external_id, parent_id')
-          .neq('external_id', '')
-          .or('standing_order_type.eq.בנקאי,standing_order_type.is.null')
+          .select('id, external_id, parent_id, standing_order_type')
+          .not('external_id', 'is', null)
 
         if (error) throw error
-        const bankSOs = (soList ?? []).filter(s => s.external_id)
+        const bankSOs = (soList ?? []).filter(s =>
+          s.external_id &&
+          s.external_id.trim() !== '' &&
+          s.standing_order_type !== 'אשראי'
+        )
         send({ type: 'log', message: `נמצאו ${bankSOs.length} הו"ק בנקאי לעדכון` })
 
         let updated = 0, skipped = 0, deleted = 0
