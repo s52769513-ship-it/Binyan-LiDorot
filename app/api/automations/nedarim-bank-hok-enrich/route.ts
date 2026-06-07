@@ -34,7 +34,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const dryRun = body.dryRun === true
+  const dryRun   = body.dryRun === true
+  const parentId: string | null = body.parentId ?? null
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -52,8 +53,20 @@ export async function POST(req: NextRequest) {
         if (listJson.Result != null && listJson.Result !== 0) throw new Error(`Nedarim: ${listJson.Message ?? listJson.Result}`)
         if (!Array.isArray(listJson.data)) throw new Error('Nedarim: unexpected response format')
 
-        const records: Record<string, string>[] = listJson.data
-        send({ type: 'log', message: `קיבלנו ${records.length} הו"ק בנקאי` })
+        let records: Record<string, string>[] = listJson.data
+
+        // Filter to single parent if requested
+        if (parentId) {
+          const { data: parentSos } = await supabaseAdmin
+            .from('standing_orders')
+            .select('external_id')
+            .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+            .eq('standing_order_type', 'בנקאי')
+          const parentExtIds = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
+          records = records.filter(r => parentExtIds.has(String(r['DT_RowId'] ?? '').trim()))
+        }
+
+        send({ type: 'log', message: `קיבלנו ${records.length} הו"ק בנקאי${parentId ? ' (מסונן להורה)' : ''}` })
 
         // 2. Load parents index by id_number (ת"ז) for matching
         send({ type: 'log', message: 'טוען הורים...' })

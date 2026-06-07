@@ -36,7 +36,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const dryRun = body.dryRun === true
+  const dryRun   = body.dryRun === true
+  const parentId: string | null = body.parentId ?? null
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -117,7 +118,22 @@ export async function POST(req: NextRequest) {
           if (!lastId) break
         }
 
-        send({ type: 'log', message: `סה"כ: ${allRecords.length} הו"ק אשראי` })
+        // Filter to single parent if requested
+        let filteredRecords = allRecords
+        if (parentId) {
+          const { data: parentSos } = await supabaseAdmin
+            .from('standing_orders')
+            .select('external_id')
+            .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+            .eq('standing_order_type', 'אשראי')
+          const parentExtIds = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
+          filteredRecords = allRecords.filter(r => {
+            const eid = String(r.Kevald ?? r['DT_RowId'] ?? '').trim()
+            return parentExtIds.has(eid)
+          })
+        }
+
+        send({ type: 'log', message: `סה"כ: ${filteredRecords.length} הו"ק אשראי${parentId ? ' (מסונן להורה)' : ` מתוך ${allRecords.length}`}` })
 
         // 2. Load parents
         send({ type: 'log', message: 'טוען הורים...' })
@@ -144,13 +160,13 @@ export async function POST(req: NextRequest) {
           send({ type: 'log', message: `DEBUG רשומה ראשונה: ${JSON.stringify(allRecords[0]).slice(0, 300)}` })
         }
 
-        for (let i = 0; i < allRecords.length; i++) {
-          const r = allRecords[i] as Record<string, unknown>
+        for (let i = 0; i < filteredRecords.length; i++) {
+          const r = filteredRecords[i] as Record<string, unknown>
           // Support both named fields (GetKeva.Json) and numbered (GetKevaNew)
           const externalId = String(r.Kevald ?? r['DT_RowId'] ?? r['1'] ?? '').trim()
           if (!externalId) { skipped++; continue }
 
-          send({ type: 'progress', current: i + 1, total: allRecords.length })
+          send({ type: 'progress', current: i + 1, total: filteredRecords.length })
 
           // Named fields: from GetKeva.Json (preferred — has ת"ז and card details)
           // Numbered fallbacks: from GetKevaNew (no card details, only basic info)
@@ -223,11 +239,11 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin.from('automation_logs').insert({
             id: crypto.randomUUID(), automation: 'nedarim-credit-hok-sync',
             ran_at: new Date().toISOString(),
-            details: { updated, created, parentCreated, skipped, total: allRecords.length, rows: logRows },
+            details: { updated, created, parentCreated, skipped, total: filteredRecords.length, rows: logRows },
           })
         }
 
-        send({ type: 'done', updated, created, parentCreated, skipped, total: allRecords.length, dryRun, logRows })
+        send({ type: 'done', updated, created, parentCreated, skipped, total: filteredRecords.length, dryRun, logRows })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {
