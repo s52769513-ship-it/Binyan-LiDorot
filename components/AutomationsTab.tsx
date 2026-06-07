@@ -130,6 +130,32 @@ CREATE POLICY "service_role_all" ON salary_offsets
     ],
     sql: '',
   },
+  {
+    id: 'nedarim-bank-hok-enrich', name: 'העשרת פרטי הו"ק בנקאי', icon: '🏦',
+    desc: 'משך פרטים מעמיקים לכל הו"ק בנקאי: בנק/סניף/חשבון, סטטוס, קטגוריה, ת"ז לקוח',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-bank-hok-enrich',
+    steps: [
+      { icon:'⏰', label:'הפעלה',        desc:'ידני',               bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'🔄', label:'כל הו"ק בנקאי', desc:'לפי DB',            bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🌐', label:'GetMasavId',   desc:'קריאה לכל הו"ק',     bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'עדכון פרטים',  desc:'בנק / סטטוס / ת"ז',  bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
+    id: 'nedarim-credit-hok-pull', name: 'משיכת תנועות הו"ק אשראי', icon: '💳',
+    desc: 'מושך היסטוריית חיובים לכל הו"ק אשראי, מעדכן פרטי כרטיס, ומקשר תנועות ל-PP שכ"ל',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-credit-hok-pull',
+    steps: [
+      { icon:'⏰', label:'הפעלה',          desc:'ידני',                 bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'💳', label:'כל הו"ק אשראי', desc:'לפי DB',               bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🌐', label:'GetKevald',      desc:'היסטוריה לכל הו"ק',   bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'תנועה + PP',     desc:'חיוב / קישור לשכ"ל', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
 ]
 
 /* ─── FlowDiagram ─────────────────────────────────────────────────────── */
