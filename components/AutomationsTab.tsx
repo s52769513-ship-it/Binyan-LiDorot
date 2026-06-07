@@ -40,7 +40,8 @@ function last6Months(): string[] {
 interface ParentOpt  { id: string; name: string; salary_gross: number }
 interface LiveLine   { time: string; kind: 'step'|'ok'|'skip'|'done'|'err'; text: string; detail?: string }
 interface RunAction  { parentName: string; salary?: number; tuitionBalance?: number; offset?: number; offsetFound?: number; ppCreated?: boolean; ppExists?: boolean; skipped: boolean; reason?: string }
-interface RunResult  { actions: RunAction[]; applied: number; skipped: number; totalOffset: number; totalCreated?: number; dryRun: boolean; monthYear: string; error?: string }
+interface HokLogRow { externalId: string; name: string; tz?: string; action: string; parentAction: string; bankInfo?: string; amount: string; category?: string; status: string }
+interface RunResult  { actions: RunAction[]; applied: number; skipped: number; totalOffset: number; totalCreated?: number; dryRun: boolean; monthYear: string; error?: string; logRows?: HokLogRow[]; updated?: number; created?: number; parentCreated?: number }
 interface LogEntry   { id: string; run_at: string; dry_run: boolean; parent_name: string|null; actions_count: number; summary: string }
 interface FlowStep   { icon: string; label: string; desc: string; bg: string; border: string; text: string }
 
@@ -222,6 +223,81 @@ function LiveTerminal({ lines, running }: { lines: LiveLine[]; running: boolean 
   )
 }
 
+/* ─── HokResultTable ──────────────────────────────────────────────────── */
+function HokResultTable({ rows, defId }: { rows: HokLogRow[]; defId: string }) {
+  const isBank = defId === 'nedarim-bank-hok-enrich'
+
+  const downloadCsv = () => {
+    const headers = isBank
+      ? ['מזהה הו"ק', 'שם', 'ת"ז', 'פעולה', 'הורה', 'בנק', 'סכום', 'סטטוס']
+      : ['מזהה הו"ק', 'שם', 'פעולה', 'הורה', 'סכום', 'קטגוריה', 'סטטוס']
+    const csvRows = rows.map(r =>
+      isBank
+        ? [r.externalId, r.name, r.tz ?? '', r.action, r.parentAction, r.bankInfo ?? '', r.amount, r.status]
+        : [r.externalId, r.name, r.action, r.parentAction, r.amount, r.category ?? '', r.status]
+    )
+    const csv = [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url; a.download = `hok-sync-${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  if (!rows.length) return <p className="px-5 py-6 text-center text-sm text-gray-400">הפעולה הושלמה — ראה לוג הרצה למעלה</p>
+
+  return (
+    <div>
+      <div className="px-5 py-2 border-b flex items-center justify-between bg-gray-50">
+        <span className="text-xs text-gray-500">{rows.length} שורות</span>
+        <button onClick={downloadCsv}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">
+          ⬇️ הורד Excel
+        </button>
+      </div>
+      <table className="w-full text-xs">
+        <thead className="sticky top-0 bg-gray-50 border-b">
+          <tr className="text-right text-gray-400">
+            <th className="px-3 py-2">מזהה</th>
+            <th className="px-3 py-2">שם</th>
+            {isBank && <th className="px-3 py-2">ת"ז</th>}
+            <th className="px-3 py-2">פעולה</th>
+            <th className="px-3 py-2">הורה</th>
+            {isBank && <th className="px-3 py-2">בנק</th>}
+            <th className="px-3 py-2 text-left">סכום</th>
+            <th className="px-3 py-2">סטטוס</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className={`border-b ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <td className="px-3 py-1.5 font-mono text-gray-400">{r.externalId}</td>
+              <td className="px-3 py-1.5 font-medium">{r.name}</td>
+              {isBank && <td className="px-3 py-1.5 text-gray-400 font-mono">{r.tz}</td>}
+              <td className="px-3 py-1.5">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                  r.action.includes('עודכן') || r.action.includes('יעודכן') ? 'bg-blue-50 text-blue-700' :
+                  r.action.includes('נוצר') || r.action.includes('ייווצר') ? 'bg-emerald-50 text-emerald-700' :
+                  'bg-gray-100 text-gray-500'
+                }`}>{r.action}</span>
+              </td>
+              <td className="px-3 py-1.5 text-gray-600">{r.parentAction}</td>
+              {isBank && <td className="px-3 py-1.5 text-gray-400">{r.bankInfo}</td>}
+              <td className="px-3 py-1.5 text-left font-medium">₪{r.amount}</td>
+              <td className="px-3 py-1.5">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                  r.status === 'פעיל' ? 'bg-emerald-50 text-emerald-700' :
+                  r.status === 'מוקפא' ? 'bg-amber-50 text-amber-700' :
+                  'bg-red-50 text-red-700'
+                }`}>{r.status}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /* ─── ResultsModal ────────────────────────────────────────────────────── */
 function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDef; onClose: () => void }) {
   return (
@@ -246,9 +322,10 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                     ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
                     : isHok
                       ? <>
-                          {(result as {created?:number}).created != null && (result as {created?:number}).created! > 0 && <span className="text-blue-700 font-semibold">נוצרו: {(result as {created?:number}).created}</span>}
-                          {(result as {updated?:number}).updated != null && <span className="text-emerald-700 font-semibold">עודכנו: {(result as {updated?:number}).updated}</span>}
+                          {(result.created ?? 0) > 0 && <span className="text-blue-700 font-semibold">נוצרו: {result.created}</span>}
+                          {(result.updated ?? 0) > 0 && <span className="text-emerald-700 font-semibold">עודכנו: {result.updated}</span>}
                           {(result as {imported?:number}).imported != null && <span className="text-emerald-700 font-semibold">יובאו: {(result as {imported?:number}).imported}</span>}
+                          {(result.parentCreated ?? 0) > 0 && <span className="text-purple-700 font-semibold">הורים חדשים: {result.parentCreated}</span>}
                           {(result.totalOffset ?? 0) > 0 && <span className="font-bold">₪{fmtN(result.totalOffset)}</span>}
                         </>
                       : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
@@ -262,8 +339,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
         {!result.error && (
           <div className="overflow-y-auto flex-1">
             {['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id) ? (
-              // הו"ק automations — show simple message list from liveLines (passed via actions workaround)
-              <p className="px-5 py-6 text-center text-sm text-gray-400">הפעולה הושלמה — ראה לוג הרצה למעלה לפרטים</p>
+              <HokResultTable rows={result.logRows ?? []} defId={def.id} />
             ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b">

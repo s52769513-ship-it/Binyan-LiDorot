@@ -4,24 +4,20 @@ import { supabaseAdmin } from '@/lib/supabase'
 const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
 const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
 
-// Parse "bank-branch-account" or "*bank-branch-account" from Nedarim field '3'
 function parseBankField(raw: string): { bankName: string; bankBranch: string; bankAccount: string } {
   const s = String(raw ?? '').replace(/^\*/, '').trim()
   const parts = s.split('-')
-  if (parts.length >= 3) {
-    return { bankName: parts[0], bankBranch: parts[1], bankAccount: parts.slice(2).join('-') }
-  }
+  if (parts.length >= 3) return { bankName: parts[0], bankBranch: parts[1], bankAccount: parts.slice(2).join('-') }
   return { bankName: s, bankBranch: '', bankAccount: '' }
 }
 
-// Derive status from field '4' (next charge date or status text)
 function parseStatus(raw: string): string {
   const s = String(raw ?? '').trim()
   if (!s) return 'פעיל'
-  if (s.includes('מוקפא'))  return 'מוקפא'
-  if (s.includes('נדחה'))   return 'נדחה'
-  if (s.includes('בוטל'))   return 'מבוטל'
-  if (s.includes('לא פעיל')) return 'לא פעיל'
+  if (s.includes('מוקפא'))     return 'מוקפא'
+  if (s.includes('נדחה'))      return 'נדחה'
+  if (s.includes('בוטל'))      return 'מבוטל'
+  if (s.includes('לא פעיל'))   return 'לא פעיל'
   if (s.includes('הטופס נשלח')) return 'ממתין לבנק'
   return 'פעיל'
 }
@@ -47,35 +43,39 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        // Step 1: Pull full list from Nedarim GetMasavKevaNew
+        // 1. Pull list from Nedarim
         send({ type: 'log', message: 'משך רשימת הו"ק בנקאי מנדרים...' })
         const listUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}`
         const listResp = await fetch(listUrl)
         if (!listResp.ok) throw new Error(`Nedarim returned ${listResp.status}`)
         const listJson = await listResp.json()
-        if (listJson.Result != null && listJson.Result !== 0)
-          throw new Error(`Nedarim: ${listJson.Message ?? listJson.Result}`)
-        if (!Array.isArray(listJson.data))
-          throw new Error(`Nedarim: unexpected response — ${JSON.stringify(listJson).slice(0, 200)}`)
+        if (listJson.Result != null && listJson.Result !== 0) throw new Error(`Nedarim: ${listJson.Message ?? listJson.Result}`)
+        if (!Array.isArray(listJson.data)) throw new Error('Nedarim: unexpected response format')
 
         const records: Record<string, string>[] = listJson.data
-        send({ type: 'log', message: `קיבלנו ${records.length} הו"ק בנקאי מנדרים` })
+        send({ type: 'log', message: `קיבלנו ${records.length} הו"ק בנקאי` })
 
-        // Step 2: Load existing standing_orders from DB (filter in JS — no Hebrew in PostgREST)
-        const { data: soList, error } = await supabaseAdmin
-          .from('standing_orders')
-          .select('id, external_id, parent_id, standing_order_type')
-        if (error) throw error
+        // 2. Load parents index by id_number (ת"ז) for matching
+        send({ type: 'log', message: 'טוען הורים...' })
+        const { data: allParents } = await supabaseAdmin.from('parents').select('id, name, id_number')
+        const parentByTz = new Map<string, { id: string; name: string }>()
+        for (const p of allParents ?? []) {
+          if (p.id_number) parentByTz.set(String(p.id_number).trim(), { id: p.id, name: p.name ?? '' })
+        }
 
-        type SoRow = { id: string; external_id: string; parent_id: string | null; standing_order_type: string | null }
+        // 3. Load existing standing orders by external_id
+        const { data: soList } = await supabaseAdmin.from('standing_orders').select('id, external_id, standing_order_type')
+        type SoRow = { id: string; external_id: string; standing_order_type: string | null }
         const existingByExtId = new Map<string, SoRow>(
           (soList ?? [])
             .filter((s): s is SoRow => !!(s.external_id && s.standing_order_type !== 'אשראי'))
             .map(s => [s.external_id, s])
         )
-        send({ type: 'log', message: `${existingByExtId.size} הו"ק בנקאי קיימים בDB` })
+        send({ type: 'log', message: `${existingByExtId.size} הו"ק בנקאי קיימים בDB · ${parentByTz.size} הורים עם ת"ז` })
 
-        let updated = 0, created = 0, skipped = 0
+        type LogRow = { externalId: string; name: string; tz: string; action: string; parentAction: string; bankInfo: string; amount: string; status: string }
+        const logRows: LogRow[] = []
+        let updated = 0, created = 0, parentCreated = 0, skipped = 0
 
         for (let i = 0; i < records.length; i++) {
           const r = records[i]
@@ -93,52 +93,92 @@ export async function POST(req: NextRequest) {
           const soStatus     = parseStatus(statusRaw)
           const { bankName, bankBranch, bankAccount } = parseBankField(bankRaw)
 
-          send({
-            type: 'log',
-            message: `${externalId}: ${clientName} — ${soStatus}${dryRun ? ' [dry]' : ''}`,
-          })
-
-          if (!dryRun) {
-            const payload: Record<string, unknown> = {
-              external_id:         externalId,
-              standing_order_type: 'בנקאי',
-              charge_amount:       chargeAmount,
-              project_name:        projectName,
-              bank_name:           bankName || null,
-              bank_branch:         bankBranch || null,
-              bank_account:        bankAccount || null,
-              so_status:           soStatus,
+          // 4a. Try GetMasavId for ת"ז
+          let tz = ''
+          try {
+            const idUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MasavId=${encodeURIComponent(externalId)}`
+            const idResp = await fetch(idUrl)
+            if (idResp.ok) {
+              const idJson = await idResp.json()
+              // Accept response if no explicit error (Result may be absent)
+              const isError = idJson.Result != null && idJson.Result !== 0
+              if (!isError && idJson.ClientZeout) tz = String(idJson.ClientZeout).trim()
             }
-            if (notes) payload.notes = notes
+          } catch { /* ת"ז not critical */ }
 
-            const existing = existingByExtId.get(externalId)
-            if (existing) {
-              await supabaseAdmin.from('standing_orders').update(payload).eq('id', existing.id)
-              updated++
-            } else {
-              await supabaseAdmin.from('standing_orders').insert({
-                id: crypto.randomUUID(),
-                parent_id: null,
-                ...payload,
-              })
-              created++
-              send({ type: 'log', message: `  → נוצר חדש` })
+          // 4b. Find or create parent
+          let parentId: string | null = null
+          let parentAction = 'לא קושר'
+
+          if (tz && parentByTz.has(tz)) {
+            const p = parentByTz.get(tz)!
+            parentId = p.id
+            parentAction = `קושר → ${p.name}`
+          } else if (!dryRun) {
+            // Create new parent
+            const newParentId = crypto.randomUUID()
+            const { error: pErr } = await supabaseAdmin.from('parents').insert({
+              id:         newParentId,
+              name:       clientName || `הו"ק ${externalId}`,
+              id_number:  tz || null,
+            })
+            if (!pErr) {
+              parentId = newParentId
+              parentAction = `נוצר חדש`
+              parentCreated++
+              if (tz) parentByTz.set(tz, { id: newParentId, name: clientName })
             }
           } else {
-            existingByExtId.has(externalId) ? updated++ : created++
+            parentAction = tz ? 'ת"ז לא נמצא — ייווצר' : 'אין ת"ז — ייווצר'
           }
+
+          // 4c. Upsert standing order
+          const payload: Record<string, unknown> = {
+            external_id:         externalId,
+            standing_order_type: 'בנקאי',
+            parent_id:           parentId,
+            charge_amount:       chargeAmount,
+            project_name:        projectName,
+            bank_name:           bankName || null,
+            bank_branch:         bankBranch || null,
+            bank_account:        bankAccount || null,
+            so_status:           soStatus,
+          }
+          if (notes) payload.notes = notes
+
+          let action = ''
+          const existing = existingByExtId.get(externalId)
+          if (!dryRun) {
+            if (existing) {
+              await supabaseAdmin.from('standing_orders').update(payload).eq('id', existing.id)
+              action = 'עודכן'; updated++
+            } else {
+              await supabaseAdmin.from('standing_orders').insert({ id: crypto.randomUUID(), ...payload })
+              action = 'נוצר'; created++
+            }
+          } else {
+            action = existing ? 'יעודכן' : 'ייווצר'
+            existing ? updated++ : created++
+          }
+
+          const logRow: LogRow = {
+            externalId, name: clientName, tz,
+            action, parentAction,
+            bankInfo: bankRaw, amount: String(chargeAmount ?? ''), status: soStatus,
+          }
+          logRows.push(logRow)
+          send({ type: 'log', message: `${externalId} · ${clientName} · ${action} · ${parentAction}` })
         }
 
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
-            id:         crypto.randomUUID(),
-            automation: 'nedarim-bank-hok-enrich',
-            ran_at:     new Date().toISOString(),
-            details:    { updated, created, skipped, total: records.length },
+            id: crypto.randomUUID(), automation: 'nedarim-bank-hok-enrich',
+            ran_at: new Date().toISOString(),
+            details: { updated, created, parentCreated, skipped, total: records.length, rows: logRows },
           })
         }
 
-        send({ type: 'done', updated, created, skipped, total: records.length, dryRun })
+        send({ type: 'done', updated, created, parentCreated, skipped, total: records.length, dryRun, logRows })
       } catch (err) {
         send({ type: 'error', message: String(err) })
       } finally {
