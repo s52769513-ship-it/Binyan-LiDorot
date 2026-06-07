@@ -32,7 +32,9 @@ export async function POST(req: NextRequest) {
         const listResp = await fetch(listUrl)
         if (!listResp.ok) throw new Error(`Nedarim returned ${listResp.status}`)
         const listJson = await listResp.json()
-        if (listJson.Result !== 0) throw new Error(`Nedarim (bank list): Result=${listJson.Result} — ${listJson.Message ?? listJson.ErrorMessage ?? JSON.stringify(listJson)}`)
+        // API returns {data:[...]} with no Result field on success
+        if (listJson.Result != null && listJson.Result !== 0) throw new Error(`Nedarim: ${listJson.Message ?? listJson.ErrorMessage ?? listJson.Result}`)
+        if (!Array.isArray(listJson.data)) throw new Error(`Nedarim: unexpected response — ${JSON.stringify(listJson).slice(0, 200)}`)
 
         const nedarimIds: string[] = (listJson.data ?? [])
           .map((r: Record<string, string>) => String(r.DT_RowId ?? '').trim())

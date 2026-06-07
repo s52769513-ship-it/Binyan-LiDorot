@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
         const json = await resp.json()
-        if (json.Result !== 0) throw new Error(`Nedarim (credit list): Result=${json.Result} — ${json.Message ?? json.ErrorMessage ?? JSON.stringify(json)}`)
+        // API returns {data:[...],TotalMonth,...} with no Result field on success
+        if (json.Result != null && json.Result !== 0) throw new Error(`Nedarim: ${json.Message ?? json.ErrorMessage ?? json.Result}`)
+        if (!Array.isArray(json.data)) throw new Error(`Nedarim: unexpected response — ${JSON.stringify(json).slice(0, 200)}`)
 
         const records: Record<string, string>[] = json.data ?? []
         send({ type: 'log', message: `קיבלנו ${records.length} הו"ק אשראי מנדרים` })
