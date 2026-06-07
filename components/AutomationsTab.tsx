@@ -82,6 +82,19 @@ CREATE POLICY "service_role_all" ON automation_logs
   FOR ALL TO service_role USING (true) WITH CHECK (true);`,
   },
   {
+    id: 'credit-offset', name: 'קיזוז זיכויי אשראי', icon: '💰',
+    desc: 'מיישם יתרת זיכוי אשראי (Itra) מהו"ק על תשלום השכ"ל הפתוח ומאפס את היתרה',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/credit-offset',
+    steps: [
+      { icon:'⏰', label:'הפעלה',         desc:'ידני / מתוזמן',           bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'💳', label:'הו"ק אשראי',   desc:'יתרת זיכוי > 0',          bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'📋', label:'PP שכ"ל',      desc:'תשלום פתוח להורה',         bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'קיזוז + אפס',  desc:'תנועה + credit_balance=0', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
     id: 'nedarim-bank-hok-enrich', name: 'סינק הו"ק בנקאי', icon: '🏦',
     desc: 'מושך פרטים מלאים לכל הו"ק בנקאי: בנק/סניף/חשבון, סטטוס, סכום, קטגוריה, ת"ז',
     defaultMonth: currentMY,
@@ -331,8 +344,8 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
               return (
                 <div className="flex flex-wrap gap-4 text-sm">
                   {!isHok && <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>}
-                  {def.id === 'tuition-offset'
-                    ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
+                  {def.id === 'tuition-offset' || def.id === 'credit-offset'
+                    ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied}</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
                     : isHok
                       ? <>
                           {(result.created ?? 0) > 0 && <span className="text-blue-700 font-semibold">נוצרו: {result.created}</span>}
@@ -362,6 +375,10 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                     <th className="px-4 py-2 text-left">משכורת</th>
                     <th className="px-4 py-2 text-left">שכ&quot;ל</th>
                     <th className="px-4 py-2 text-left">קיזוז</th>
+                  </> : def.id === 'credit-offset' ? <>
+                    <th className="px-4 py-2 text-left">יתרת זיכוי</th>
+                    <th className="px-4 py-2 text-left">שכ&quot;ל</th>
+                    <th className="px-4 py-2 text-left">קיזוז</th>
                   </> : <>
                     <th className="px-4 py-2 text-left">משכורת</th>
                     <th className="px-4 py-2 text-center">תשלום מתוכנן</th>
@@ -373,10 +390,14 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
               <tbody className="divide-y divide-gray-50">
                 {result.actions.map((a, i) => (
                   <tr key={i} className={a.skipped ? 'opacity-40' : ''}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{a.parentName}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{(a as Record<string,unknown>).externalId as string ?? a.parentName}</td>
                     {def.id === 'tuition-offset' ? <>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.salary!=null?`₪${fmtN(a.salary)}`:'—'}</td>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.tuitionBalance!=null?`₪${fmtN(a.tuitionBalance)}`:'—'}</td>
+                      <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">{a.skipped?'—':`₪${fmtN(a.offset??0)}`}</td>
+                    </> : def.id === 'credit-offset' ? <>
+                      <td className="px-4 py-2.5 text-left tabular-nums text-blue-600">{(a as Record<string,unknown>).creditBalance!=null?`₪${fmtN((a as Record<string,unknown>).creditBalance as number)}`:'—'}</td>
+                      <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{(a as Record<string,unknown>).ppBalance!=null?`₪${fmtN((a as Record<string,unknown>).ppBalance as number)}`:'—'}</td>
                       <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">{a.skipped?'—':`₪${fmtN(a.offset??0)}`}</td>
                     </> : <>
                       <td className="px-4 py-2.5 text-left tabular-nums text-gray-500">{a.salary!=null?`₪${fmtN(a.salary)}`:'—'}</td>
@@ -527,6 +548,45 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
     else onToggleEnabled(true)
   }
 
+  const runStreamResetOnly = async (isDry: boolean) => {
+    setPhase('running'); setActiveStep(1); setLiveLines([])
+    addLine('step', `▶ ${isDry ? 'בדיקת ' : ''}איפוס זיכויים`)
+    try {
+      const resp = await fetch(def.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: isDry, resetOnly: true }),
+      })
+      if (!resp.body) throw new Error('no stream')
+      const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = ''
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n'); buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'log')      addLine('ok',   `  ${ev.message ?? ''}`)
+            else if (ev.type === 'step') addLine('step', `◆ ${ev.msg}`)
+            else if (ev.type === 'progress' && !ev.skipped)
+              addLine('ok', `  ✓ ${ev.parentName} · ₪${fmtN(ev.creditBalance ?? 0)} אופס`)
+            else if (ev.type === 'progress' && ev.skipped)
+              addLine('skip', `  — ${ev.parentName}`, ev.reason)
+            else if (ev.type === 'complete') {
+              addLine('done', `✅ אופסו ${ev.applied} הו"ק${isDry ? ' [dry]' : ''}`)
+              setResult({ applied: ev.applied, skipped: ev.skipped ?? 0, totalOffset: 0, dryRun: isDry, monthYear, actions: [] })
+              setPhase('results')
+            } else if (ev.type === 'error') {
+              addLine('err', `❌ ${ev.error ?? ev.message}`)
+              setPhase('idle')
+            }
+          } catch {}
+        }
+      }
+    } catch (err) { addLine('err', `❌ ${String(err)}`); setPhase('idle') }
+  }
+
   const runStream = async (isDry: boolean, pid?: string, my?: string) => {
     const targetMY = my || monthYear
     setPhase('running')
@@ -571,10 +631,13 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               if (ev.current != null && ev.total != null && !ev.parentName) {
                 // numeric progress only — no line, just step indicator
               } else if (ev.skipped) {
-                addLine('skip', `  — ${ev.parentName}`, ev.reason)
+                addLine('skip', `  — ${ev.parentName ?? ev.externalId}`, ev.reason)
               } else if (def.id === 'tuition-offset') {
                 addLine('ok', `  ✓ ${ev.parentName} → ₪${fmtN(ev.offset??0)}`,
                   `משכורת ₪${fmtN(ev.salary??0)} · שכ"ל ₪${fmtN(ev.tuitionBalance??0)}`)
+              } else if (def.id === 'credit-offset') {
+                addLine('ok', `  ✓ ${ev.externalId} → קיזוז ₪${fmtN(ev.offset??0)}`,
+                  `זיכוי ₪${fmtN(ev.creditBalance??0)} · שכ"ל ₪${fmtN(ev.ppBalance??0)}`)
               } else {
                 addLine('ok', `  ✓ ${ev.parentName}${ev.ppCreated?' — PP נוצר':''}${(ev.offsetFound??0)>0?` · קיזוז ₪${fmtN(ev.offsetFound)}`:''}`)
               }
@@ -583,8 +646,8 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
             } else if (ev.type === 'complete') {
               setActiveStep(def.steps.length + 1)
               addLine('done',
-                def.id==='tuition-offset'
-                  ? `✅ הושלם — ${ev.applied} הורים · ₪${fmtN(ev.totalOffset)} קוזז`
+                def.id === 'tuition-offset' || def.id === 'credit-offset'
+                  ? `✅ הושלם — ${ev.applied} הו"ק · ₪${fmtN(ev.totalOffset)} קוזז`
                   : `✅ הושלם — ${ev.totalCreated??ev.applied} תשלומים מתוכננים נוצרו · ₪${fmtN(ev.totalOffset)} קוזז`
               )
               setResult({ ...ev, actions })
@@ -738,15 +801,33 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
               ▶ הרץ לכולם
             </button>
-            <button onClick={() => openPick(false)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
-              👤 הרץ להורה בודד
-            </button>
+            {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
+             def.id !== 'nedarim-bank-hok-pull'   && def.id !== 'nedarim-credit-hok-pull' && (
+              <button onClick={() => openPick(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
+                👤 הרץ להורה בודד
+              </button>
+            )}
+            {def.id === 'credit-offset' && (
+              <button onClick={() => runStreamResetOnly(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors">
+                🔄 אפס זיכויים בלבד
+              </button>
+            )}
           </>}
-          <button onClick={() => openPick(true)}
-            className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
-            🧪 בדיקה להורה
-          </button>
+          {def.id !== 'nedarim-bank-hok-enrich' && def.id !== 'nedarim-credit-hok-sync' &&
+           def.id !== 'nedarim-bank-hok-pull'   && def.id !== 'nedarim-credit-hok-pull' && (
+            <button onClick={() => openPick(true)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
+              🧪 בדיקה להורה
+            </button>
+          )}
+          {def.id === 'credit-offset' && (
+            <button onClick={() => runStreamResetOnly(true)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
+              🧪 בדיקת איפוס
+            </button>
+          )}
         </div>
         )}
 
