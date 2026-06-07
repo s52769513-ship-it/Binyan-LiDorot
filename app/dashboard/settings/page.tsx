@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import AutomationsTab from '@/components/AutomationsTab'
+import MergeParentsTab from '@/components/MergeParentsModal'
 
-type SettingsTab = 'general' | 'automations'
+type SettingsTab = 'general' | 'automations' | 'merge'
 
 interface Settings {
   institution_name?: string
@@ -325,6 +326,7 @@ export default function SettingsPage() {
         {([
           { key: 'general',     label: 'הגדרות מוסד' },
           { key: 'automations', label: '🤖 אוטומציות' },
+          { key: 'merge',       label: '🔗 איחוד כרטיסים' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -338,6 +340,7 @@ export default function SettingsPage() {
       </div>
 
       {settingsTab === 'automations' && <AutomationsTab />}
+      {settingsTab === 'merge'       && <MergeParentsTab />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
