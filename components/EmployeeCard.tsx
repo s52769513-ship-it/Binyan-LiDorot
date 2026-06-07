@@ -1336,7 +1336,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               {/* Header row */}
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', chargeAmount: '', soStatus: 'פעיל', cardLast4: '', cardExpiry: '', cardType: '', cardHolderName: '', creditBalance: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
+                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', projectName: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', chargeAmount: '', soStatus: 'פעיל', cardLast4: '', cardExpiry: '', cardType: '', cardHolderName: '', creditBalance: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
                   className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] hover:bg-[#0d1f52] text-white font-medium transition-colors"
                 >+ הוסף הו"ק</button>
                 <h3 className="text-sm font-semibold text-gray-700">הוראות קבע</h3>
@@ -1354,6 +1354,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         onChange={e => setSoDraft(d => ({ ...d, externalId: e.target.value }))}
                         className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
                         placeholder='מספר הו"ק מנדרים' />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">קטגוריה</label>
+                      <select value={soDraft.projectName ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, projectName: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white">
+                        <option value="">— ללא —</option>
+                        {['בנין לדורות', 'משכורת', 'הכנסה', 'הוצאה', 'אחר'].map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
                     </div>
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">סוג הו"ק</label>
@@ -1566,7 +1575,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           className="text-[11px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
                         >מחק</button>
                         <button
-                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', chargeAmount: so.chargeAmount != null ? String(so.chargeAmount) : '', soStatus: so.soStatus || 'פעיל', cardLast4: so.cardLast4 || '', cardExpiry: so.cardExpiry || '', cardType: so.cardType || '', cardHolderName: so.cardHolderName || '', creditBalance: so.creditBalance != null ? String(so.creditBalance) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
+                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, projectName: so.projectName || '', bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', chargeAmount: so.chargeAmount != null ? String(so.chargeAmount) : '', soStatus: so.soStatus || 'פעיל', cardLast4: so.cardLast4 || '', cardExpiry: so.cardExpiry || '', cardType: so.cardType || '', cardHolderName: so.cardHolderName || '', creditBalance: so.creditBalance != null ? String(so.creditBalance) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
                           className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
                         >עריכה</button>
                       </div>
@@ -1576,6 +1585,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           {so.standingOrderType && (
                             <span className={`text-[11px] px-2 py-0.5 rounded-full ${so.standingOrderType === 'אשראי' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
                               {so.standingOrderType}
+                            </span>
+                          )}
+                          {so.projectName && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                              {so.projectName}
                             </span>
                           )}
                         </div>

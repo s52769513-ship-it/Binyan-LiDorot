@@ -19,6 +19,7 @@ function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = n
     creditBalance:     so.credit_balance ?? null,
     linkedParentId:    so.linked_parent_id ?? null,
     linkedParentName:  linked?.name ?? null,
+    projectName:       so.project_name ?? '',
     notes:             so.notes ?? '',
     createdAt:         so.created_at ?? '',
   }
@@ -47,6 +48,7 @@ export async function PATCH(
     if ('cardHolderName'    in body) update.card_holder_name  = body.cardHolderName ? String(body.cardHolderName) : null
     if ('creditBalance'     in body) update.credit_balance    = body.creditBalance  !== '' ? Number(body.creditBalance) : null
     if ('linkedParentId'    in body) update.linked_parent_id  = body.linkedParentId || null
+    if ('projectName'       in body) update.project_name      = body.projectName ? String(body.projectName) : null
     if ('notes'             in body) update.notes             = String(body.notes ?? '')
 
     if (Object.keys(update).length === 0)

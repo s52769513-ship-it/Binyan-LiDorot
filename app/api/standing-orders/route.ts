@@ -20,6 +20,7 @@ function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = n
     creditBalance:     so.credit_balance ?? null,
     linkedParentId:    so.linked_parent_id ?? null,
     linkedParentName:  linked?.name ?? null,
+    projectName:       so.project_name ?? '',
     notes:             so.notes ?? '',
     createdAt:         so.created_at ?? '',
   }
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const {
-      parentId, externalId, standingOrderType, bankName, bankBranch, bankAccount,
+      parentId, externalId, standingOrderType, projectName, bankName, bankBranch, bankAccount,
       chargeDay, chargeAmount, soStatus,
       cardLast4, cardExpiry, cardType, cardHolderName, creditBalance,
       linkedParentId, notes,
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
         card_holder_name:    cardHolderName ? String(cardHolderName) : null,
         credit_balance:      creditBalance  ? Number(creditBalance)  : null,
         linked_parent_id:    linkedParentId || null,
+        project_name:        projectName ? String(projectName) : null,
         notes:               String(notes ?? ''),
       })
       .select('*, linked_parent:linked_parent_id(id, name)')

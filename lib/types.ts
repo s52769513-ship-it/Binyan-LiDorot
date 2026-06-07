@@ -71,6 +71,7 @@ export interface StandingOrderItem {
   creditBalance: number | null
   linkedParentId: string | null
   linkedParentName: string | null
+  projectName: string
   notes: string
   createdAt: string
 }

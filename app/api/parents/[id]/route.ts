@@ -334,6 +334,7 @@ export async function GET(
         creditBalance:     so.credit_balance ?? null,
         linkedParentId:    so.linked_parent_id ?? null,
         linkedParentName:  (so.linked_parent as { name?: string } | null)?.name ?? null,
+        projectName:       so.project_name ?? '',
         notes:             so.notes ?? '',
         createdAt:         so.created_at ?? '',
       })),
