@@ -81,6 +81,19 @@ CREATE POLICY "service_role_all" ON automation_logs
   FOR ALL TO service_role USING (true) WITH CHECK (true);`,
   },
   {
+    id: 'nedarim-bank-hok-enrich', name: 'סינק הו"ק בנקאי', icon: '🏦',
+    desc: 'מושך פרטים מלאים לכל הו"ק בנקאי: בנק/סניף/חשבון, סטטוס, סכום, קטגוריה, ת"ז',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-bank-hok-enrich',
+    steps: [
+      { icon:'⏰', label:'הפעלה',        desc:'ידני',               bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'🔄', label:'כל הו"ק בנקאי', desc:'לפי DB',            bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🌐', label:'GetMasavId',   desc:'קריאה לכל הו"ק',     bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'עדכון פרטים',  desc:'בנק / סטטוס / ת"ז',  bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
     id: 'salary-pp', name: 'יצירת תשלום מתוכנן למשכורת', icon: '💼',
     desc: 'יוצר תשלום מתוכנן למשכורת של חודש קודם ומקשר קיזוזי שכ"ל שנמצאו',
     defaultMonth: prevMY,
@@ -103,6 +116,32 @@ CREATE TABLE IF NOT EXISTS salary_offsets (
 ALTER TABLE salary_offsets ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all" ON salary_offsets
   FOR ALL TO service_role USING (true) WITH CHECK (true);`,
+  },
+  {
+    id: 'nedarim-credit-hok-sync', name: 'סינק הו"ק אשראי מנדרים', icon: '💳',
+    desc: 'מושך רשימת הו"ק אשראי מנדרים ומעדכן פרטי כרטיס: 4 ספרות, תוקף, סכום חיוב, יתרה',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-credit-hok-sync',
+    steps: [
+      { icon:'⏰', label:'הפעלה',         desc:'ידני',                   bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'🌐', label:'נדרים API',     desc:'GetKevaNew',             bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🔍', label:'התאמת הו"ק',   desc:'לפי external_id',        bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'עדכון פרטים',  desc:'כרטיס / יתרה / קטגוריה', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
+  },
+  {
+    id: 'nedarim-credit-hok-pull', name: 'משיכת תנועות הו"ק אשראי', icon: '💳',
+    desc: 'מושך היסטוריית חיובים לכל הו"ק אשראי, מעדכן פרטי כרטיס, ומקשר תנועות ל-PP שכ"ל',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/nedarim-credit-hok-pull',
+    steps: [
+      { icon:'⏰', label:'הפעלה',          desc:'ידני',                 bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'💳', label:'כל הו"ק אשראי', desc:'לפי DB',               bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🌐', label:'GetKevald',      desc:'היסטוריה לכל הו"ק',   bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'✅', label:'תנועה + PP',     desc:'חיוב / קישור לשכ"ל', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    ],
+    sql: '',
   },
 ]
 
@@ -198,20 +237,34 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
         <div className={`px-5 py-3 border-b flex-shrink-0 ${result.dryRun ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
           {result.error
             ? <p className="text-red-600 text-sm">{result.error}</p>
-            : (
-              <div className="flex flex-wrap gap-4 text-sm">
-                <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>
-                {def.id === 'tuition-offset'
-                  ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
-                  : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
-                }
-                <span className="text-gray-400">דולגו: {result.skipped}</span>
-              </div>
-            )}
+            : (() => {
+              const isHok = ['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id)
+              return (
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {!isHok && <span>חודש: <strong>{fmtMY(result.monthYear)}</strong></span>}
+                  {def.id === 'tuition-offset'
+                    ? <><span className="text-emerald-700 font-semibold">קוזזו: {result.applied} הורים</span><span className="font-bold">₪{fmtN(result.totalOffset)} סה&quot;כ</span></>
+                    : isHok
+                      ? <>
+                          {(result as {created?:number}).created != null && (result as {created?:number}).created! > 0 && <span className="text-blue-700 font-semibold">נוצרו: {(result as {created?:number}).created}</span>}
+                          {(result as {updated?:number}).updated != null && <span className="text-emerald-700 font-semibold">עודכנו: {(result as {updated?:number}).updated}</span>}
+                          {(result as {imported?:number}).imported != null && <span className="text-emerald-700 font-semibold">יובאו: {(result as {imported?:number}).imported}</span>}
+                          {(result.totalOffset ?? 0) > 0 && <span className="font-bold">₪{fmtN(result.totalOffset)}</span>}
+                        </>
+                      : <><span className="text-emerald-700 font-semibold">נוצרו: {result.totalCreated ?? result.applied} תשלומים מתוכננים</span><span className="font-bold">קוזז ₪{fmtN(result.totalOffset)}</span></>
+                  }
+                  <span className="text-gray-400">דולגו: {result.skipped}</span>
+                </div>
+              )
+            })()}
           {result.dryRun && !result.error && <p className="text-xs text-amber-700 mt-1">⚠️ בדיקה בלבד — שום דבר לא נשמר</p>}
         </div>
         {!result.error && (
           <div className="overflow-y-auto flex-1">
+            {['nedarim-bank-hok-enrich','nedarim-credit-hok-sync','nedarim-credit-hok-pull'].includes(def.id) ? (
+              // הו"ק automations — show simple message list from liveLines (passed via actions workaround)
+              <p className="px-5 py-6 text-center text-sm text-gray-400">הפעולה הושלמה — ראה לוג הרצה למעלה לפרטים</p>
+            ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b">
                 <tr className="text-right text-xs text-gray-400">
@@ -252,6 +305,7 @@ function ResultsModal({ result, def, onClose }: { result: RunResult; def: AutoDe
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         )}
         <div className="px-5 py-4 border-t flex-shrink-0">
@@ -308,6 +362,17 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   def: AutoDef; enabled: boolean; onToggleEnabled: (val: boolean) => void
 }) {
   const [monthYear, setMonthYear]           = useState(def.defaultMonth())
+  // salary-pp range mode
+  const schoolYearStart = (): string => {
+    const now = new Date(); const y = now.getFullYear()
+    return now.getMonth() >= 8 ? `09/${y}` : `09/${y - 1}`
+  }
+  const curMonth = (): string => {
+    const now = new Date()
+    return `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
+  }
+  const [fromMonth, setFromMonth]           = useState(schoolYearStart())
+  const [toMonth, setToMonth]               = useState(curMonth())
   const [phase, setPhase]                   = useState<Phase>('idle')
   const [dryRun, setDryRun]                 = useState(false)
   const [activeStep, setActiveStep]         = useState(0)
@@ -377,7 +442,11 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       const resp = await fetch(def.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: isDry, parentId: pid, monthYear: targetMY }),
+        body: JSON.stringify(
+          def.id === 'salary-pp' && !pid
+            ? { dryRun: isDry, fromMonth, toMonth }
+            : { dryRun: isDry, parentId: pid, monthYear: targetMY }
+        ),
       })
       if (!resp.body) throw new Error('no stream')
       const reader = resp.body.getReader()
@@ -399,7 +468,9 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               addLine('step', `◆ ${ev.msg}`)
               await delay(60)
             } else if (ev.type === 'progress') {
-              if (ev.skipped) {
+              if (ev.current != null && ev.total != null && !ev.parentName) {
+                // numeric progress only — no line, just step indicator
+              } else if (ev.skipped) {
                 addLine('skip', `  — ${ev.parentName}`, ev.reason)
               } else if (def.id === 'tuition-offset') {
                 addLine('ok', `  ✓ ${ev.parentName} → ₪${fmtN(ev.offset??0)}`,
@@ -419,9 +490,24 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               setResult({ ...ev, actions })
               setPhase('results')
               if (!isDry) loadLogs()
+            } else if (ev.type === 'log') {
+              addLine('ok', `  ${ev.message ?? ev.msg ?? ''}`)
+            } else if (ev.type === 'done') {
+              setActiveStep(def.steps.length + 1)
+              const parts: string[] = []
+              if (ev.imported != null) parts.push(`יובאו ${ev.imported}`)
+              if (ev.updated  != null) parts.push(`עודכנו ${ev.updated}`)
+              if (ev.deleted  != null && ev.deleted > 0) parts.push(`נמחקו ${ev.deleted}`)
+              if (ev.skipped  != null) parts.push(`דולגו ${ev.skipped}`)
+              if (ev.totalAmount) parts.push(`₪${fmtN(ev.totalAmount)}`)
+              addLine('done', `✅ הושלם — ${parts.join(' · ')}${ev.dryRun ? ' [dry]' : ''}`)
+              setResult({ ...ev, actions, applied: ev.imported ?? ev.updated ?? 0, totalOffset: ev.totalAmount ?? 0, dryRun: isDry, monthYear: targetMY })
+              setPhase('results')
+              if (!isDry) loadLogs()
             } else if (ev.type === 'error') {
-              addLine('err', `❌ ${ev.error}`)
-              setResult({ error: ev.error, actions, applied: 0, skipped: 0, totalOffset: 0, dryRun: isDry, monthYear: targetMY })
+              const msg = ev.message ?? ev.error ?? 'שגיאה לא ידועה'
+              addLine('err', `❌ ${msg}`)
+              setResult({ error: msg, actions, applied: 0, skipped: 0, totalOffset: 0, dryRun: isDry, monthYear: targetMY })
               setPhase('results')
             }
           } catch {}
@@ -500,12 +586,28 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
       {!isRunning && (
         <div className="px-6 py-4 border-b border-gray-100" dir="rtl">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">פרמטרים</p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
-            <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
-            <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
-          </div>
+          {def.id === 'salary-pp' ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">מחודש:</label>
+              <input type="month" value={myToInp(fromMonth)} onChange={e => setFromMonth(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">עד חודש:</label>
+              <input type="month" value={myToInp(toMonth)} onChange={e => setToMonth(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <button onClick={() => { setFromMonth(schoolYearStart()); setToMonth(curMonth()) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                📅 מתחילת שנה
+              </button>
+              <span className="text-xs text-gray-400">{fromMonth} → {toMonth}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-gray-700 font-medium whitespace-nowrap">חודש:</label>
+              <input type="month" value={myToInp(monthYear)} onChange={e => setMonthYear(inpToMY(e.target.value))}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white" dir="ltr" />
+              <span className="text-sm text-indigo-600 font-medium">{fmtMY(monthYear)}</span>
+            </div>
+          )}
         </div>
       )}
 

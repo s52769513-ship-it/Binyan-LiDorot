@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       .from('transactions')
       .select('parent_ids, amount')
       .eq('month_year', monthYear)
-      .eq('type', 'קיזוז ממשכורת'),
+      .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']),
   ])
 
   // Wife lookup

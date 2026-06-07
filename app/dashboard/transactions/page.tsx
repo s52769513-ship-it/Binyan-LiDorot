@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import AddTransactionModal from '@/components/AddTransactionModal'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
+import NedarimPullModal from '@/components/NedarimPullModal'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const fmt = (n: number) =>
@@ -50,7 +51,8 @@ export default function TransactionsPage() {
   const [projects, setProjects] = useState<string[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
-  const [showAdd, setShowAdd]   = useState(false)
+  const [showAdd, setShowAdd]         = useState(false)
+  const [showNedarim, setShowNedarim] = useState(false)
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [selectedTx, setSelectedTx] = useState<TxRow | null>(null)
 
@@ -92,10 +94,16 @@ export default function TransactionsPage() {
     <div className="space-y-4" dir="rtl">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800">תנועות</h2>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors">
-          <span className="text-lg leading-none">+</span> הוספת תנועה
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowNedarim(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
+            משיכת הו"ק מנדרים
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors">
+            <span className="text-lg leading-none">+</span> הוספת תנועה
+          </button>
+        </div>
       </div>
 
       {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 text-sm">{error}</div>}
@@ -232,6 +240,7 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {showNedarim && <NedarimPullModal onClose={() => setShowNedarim(false)} onDone={() => { setShowNedarim(false); load() }} />}
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onSuccess={() => { setShowAdd(false); load() }} />}
       {selectedParent && <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />}
       {selectedTx && (

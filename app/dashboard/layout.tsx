@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: '/dashboard/reports',     label: 'דוחות'       },
   { href: '/dashboard/register',    label: 'רישום תלמיד' },
   { href: '/dashboard/settings',    label: '⚙ הגדרות'   },
+  { href: '/dashboard/import',      label: '📥 ייבוא'    },
 ]
 
 

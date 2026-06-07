@@ -115,7 +115,7 @@ export async function PATCH(req: NextRequest) {
           .from('transactions')
           .select('id, amount')
           .eq('planned_payment_id', id)
-          .eq('type', 'קיזוז משכר לימוד')
+          .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל'])
 
         if ((salaryOffsetTxs ?? []).length > 0 && parentId) {
           const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
@@ -148,7 +148,7 @@ export async function PATCH(req: NextRequest) {
               .select('id, amount')
               .contains('parent_ids', [parentId])
               .eq('month_year', monthYear)
-              .eq('type', 'קיזוז ממשכורת')
+              .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
             if ((tuitionOffsetTxs ?? []).length > 0) {
               const mainTuitionTx = (tuitionOffsetTxs ?? [])[0]
               await supabaseAdmin.from('transactions')

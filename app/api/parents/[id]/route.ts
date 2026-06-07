@@ -65,9 +65,9 @@ export async function PATCH(
       // Fetch all offset transactions + salary PPs for recent months
       const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: salaryPPs }] = await Promise.all([
         supabaseAdmin.from('transactions').select('id, amount, month_year')
-          .contains('parent_ids', [id]).eq('type', 'קיזוז ממשכורת').in('month_year', months),
+          .contains('parent_ids', [id]).in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']).in('month_year', months),
         supabaseAdmin.from('transactions').select('id, amount, month_year, planned_payment_id')
-          .contains('parent_ids', [id]).eq('type', 'קיזוז משכר לימוד').in('month_year', months),
+          .contains('parent_ids', [id]).in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל']).in('month_year', months),
         supabaseAdmin.from('planned_payments').select('id, amount, balance, month_year')
           .contains('parent_ids', [id]).eq('pp_type', 'salary').in('month_year', months),
       ])
@@ -325,8 +325,16 @@ export async function GET(
         bankBranch:        so.bank_branch ?? '',
         bankAccount:       so.bank_account ?? '',
         chargeDay:         so.charge_day ?? null,
+        chargeAmount:      so.charge_amount ?? null,
+        soStatus:          so.so_status ?? 'פעיל',
+        cardLast4:         so.card_last4 ?? '',
+        cardExpiry:        so.card_expiry ?? '',
+        cardType:          so.card_type ?? '',
+        cardHolderName:    so.card_holder_name ?? '',
+        creditBalance:     so.credit_balance ?? null,
         linkedParentId:    so.linked_parent_id ?? null,
         linkedParentName:  (so.linked_parent as { name?: string } | null)?.name ?? null,
+        projectName:       so.project_name ?? '',
         notes:             so.notes ?? '',
         createdAt:         so.created_at ?? '',
       })),
