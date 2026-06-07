@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // 1. Pull full list via GetKeva.Json with pagination (LastId)
-        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים (GetKevaNew)...' })
+        send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים...' })
 
         type KevaRecord = {
           Kevald: string; ClientName: string; Zeout: string
@@ -58,9 +58,28 @@ export async function POST(req: NextRequest) {
         let lastId = ''
 
         // Paginate: keep calling until we get fewer than 2000 records
+        // Try multiple action/param name variants — Nedarim API is inconsistent
+        const actionsToTry = [
+          `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
+          `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
+          `Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
+          `Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`,
+        ]
+        let workingAction = ''
+        for (const candidate of actionsToTry) {
+          const testUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?${candidate}`
+          const testResp = await fetch(testUrl)
+          if (!testResp.ok) continue
+          const testJson = await testResp.json().catch(() => null)
+          if (!testJson) continue
+          const isError = testJson.Result != null && testJson.Result !== 0
+          if (!isError) { workingAction = candidate; break }
+        }
+        if (!workingAction) throw new Error('כל שמות הפעולה של GetKeva נדחו על ידי נדרים')
+        send({ type: 'log', message: `פעולה פעילה: ${workingAction.split('&')[0]}` })
+
         while (true) {
-          // Try GetKevaNew first; action name "GetKeva.Json" was rejected by API
-          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000`
+          let url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?${workingAction}`
           if (lastId) url += `&LastId=${encodeURIComponent(lastId)}`
 
           const resp = await fetch(url)
