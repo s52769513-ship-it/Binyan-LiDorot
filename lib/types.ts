@@ -56,11 +56,19 @@ export interface PlannedPaymentItem {
 export interface StandingOrderItem {
   id: string
   externalId: string
-  standingOrderType: string
+  standingOrderType: string   // 'בנקאי' | 'אשראי'
   bankName: string
   bankBranch: string
   bankAccount: string
   chargeDay: number | null
+  chargeAmount: number | null  // expected monthly amount
+  soStatus: string             // פעיל / מושהה / מבוטל
+  // credit card only
+  cardLast4: string
+  cardExpiry: string
+  cardType: string
+  cardHolderName: string
+  creditBalance: number | null
   linkedParentId: string | null
   linkedParentName: string | null
   notes: string

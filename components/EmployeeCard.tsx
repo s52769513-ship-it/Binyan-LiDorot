@@ -1336,7 +1336,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               {/* Header row */}
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
+                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', chargeAmount: '', soStatus: 'פעיל', cardLast4: '', cardExpiry: '', cardType: '', cardHolderName: '', creditBalance: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
                   className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] hover:bg-[#0d1f52] text-white font-medium transition-colors"
                 >+ הוסף הו"ק</button>
                 <h3 className="text-sm font-semibold text-gray-700">הוראות קבע</h3>
@@ -1347,72 +1347,118 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-semibold text-[#1a3a7a] text-right">{editingSoId ? 'עריכת הו"ק' : 'הו"ק חדש'}</p>
                   <div className="grid grid-cols-2 gap-3">
+                    {/* Common fields */}
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">מזהה הו"ק (חיצוני)</label>
-                      <input
-                        type="text"
-                        value={soDraft.externalId ?? ''}
+                      <input type="text" value={soDraft.externalId ?? ''} dir="ltr"
                         onChange={e => setSoDraft(d => ({ ...d, externalId: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='מספר הו"ק מנדרים'
-                        dir="ltr"
-                      />
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                        placeholder='מספר הו"ק מנדרים' />
                     </div>
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">סוג הו"ק</label>
-                      <select
-                        value={soDraft.standingOrderType ?? ''}
+                      <select value={soDraft.standingOrderType ?? ''}
                         onChange={e => setSoDraft(d => ({ ...d, standingOrderType: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white"
-                      >
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white">
                         <option value="">— בחר סוג —</option>
                         <option value="בנקאי">בנקאי</option>
                         <option value="אשראי">אשראי</option>
                       </select>
                     </div>
                     <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">בנק</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankName ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankName: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='שם בנק'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">סניף</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankBranch ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankBranch: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        dir="ltr"
-                        placeholder='מס׳ סניף'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">מספר חשבון</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankAccount ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankAccount: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        dir="ltr"
-                        placeholder='חשבון'
-                      />
+                      <label className="text-[10px] font-medium text-gray-500">סכום חיוב חודשי (₪)</label>
+                      <input type="number" value={soDraft.chargeAmount ?? ''} dir="ltr"
+                        onChange={e => setSoDraft(d => ({ ...d, chargeAmount: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                        placeholder='0' />
                     </div>
                     <div className="text-right">
                       <label className="text-[10px] font-medium text-gray-500">יום חיוב</label>
-                      <input
-                        type="number"
-                        value={soDraft.chargeDay ?? ''}
+                      <input type="number" value={soDraft.chargeDay ?? ''} dir="ltr"
                         onChange={e => setSoDraft(d => ({ ...d, chargeDay: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='1-31'
-                        dir="ltr"
-                      />
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                        placeholder='1–31' />
                     </div>
+                    <div className="text-right col-span-2">
+                      <label className="text-[10px] font-medium text-gray-500">סטטוס</label>
+                      <select value={soDraft.soStatus ?? 'פעיל'}
+                        onChange={e => setSoDraft(d => ({ ...d, soStatus: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white">
+                        <option value="פעיל">פעיל</option>
+                        <option value="מושהה">מושהה</option>
+                        <option value="מבוטל">מבוטל</option>
+                      </select>
+                    </div>
+
+                    {/* Bank-only fields */}
+                    {soDraft.standingOrderType !== 'אשראי' && (<>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">בנק</label>
+                        <input type="text" value={soDraft.bankName ?? ''}
+                          onChange={e => setSoDraft(d => ({ ...d, bankName: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                          placeholder='שם בנק' />
+                      </div>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">סניף</label>
+                        <input type="text" value={soDraft.bankBranch ?? ''} dir="ltr"
+                          onChange={e => setSoDraft(d => ({ ...d, bankBranch: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                          placeholder='מס׳ סניף' />
+                      </div>
+                      <div className="text-right col-span-2">
+                        <label className="text-[10px] font-medium text-gray-500">מספר חשבון</label>
+                        <input type="text" value={soDraft.bankAccount ?? ''} dir="ltr"
+                          onChange={e => setSoDraft(d => ({ ...d, bankAccount: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                          placeholder='חשבון' />
+                      </div>
+                    </>)}
+
+                    {/* Credit-card-only fields */}
+                    {soDraft.standingOrderType === 'אשראי' && (<>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">4 ספרות אחרונות</label>
+                        <input type="text" value={soDraft.cardLast4 ?? ''} dir="ltr" maxLength={4}
+                          onChange={e => setSoDraft(d => ({ ...d, cardLast4: e.target.value.replace(/\D/g, '').slice(0,4) }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg tracking-widest"
+                          placeholder='XXXX' />
+                      </div>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">תוקף (MM/YY)</label>
+                        <input type="text" value={soDraft.cardExpiry ?? ''} dir="ltr" maxLength={5}
+                          onChange={e => setSoDraft(d => ({ ...d, cardExpiry: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                          placeholder='MM/YY' />
+                      </div>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">סוג כרטיס</label>
+                        <select value={soDraft.cardType ?? ''}
+                          onChange={e => setSoDraft(d => ({ ...d, cardType: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right bg-white">
+                          <option value="">— בחר —</option>
+                          <option value="Visa">Visa</option>
+                          <option value="Mastercard">Mastercard</option>
+                          <option value="Amex">Amex</option>
+                          <option value="Diners">Diners</option>
+                          <option value="אחר">אחר</option>
+                        </select>
+                      </div>
+                      <div className="text-right">
+                        <label className="text-[10px] font-medium text-gray-500">שם בעל הכרטיס</label>
+                        <input type="text" value={soDraft.cardHolderName ?? ''}
+                          onChange={e => setSoDraft(d => ({ ...d, cardHolderName: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                          placeholder='שם כמו בכרטיס' />
+                      </div>
+                      <div className="text-right col-span-2">
+                        <label className="text-[10px] font-medium text-gray-500">יתרת חיובים (₪)</label>
+                        <input type="number" value={soDraft.creditBalance ?? ''} dir="ltr"
+                          onChange={e => setSoDraft(d => ({ ...d, creditBalance: e.target.value }))}
+                          className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                          placeholder='0' />
+                      </div>
+                    </>)}
                   </div>
 
                   {/* Linked parent – paying for someone else */}
@@ -1520,7 +1566,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           className="text-[11px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
                         >מחק</button>
                         <button
-                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
+                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', chargeAmount: so.chargeAmount != null ? String(so.chargeAmount) : '', soStatus: so.soStatus || 'פעיל', cardLast4: so.cardLast4 || '', cardExpiry: so.cardExpiry || '', cardType: so.cardType || '', cardHolderName: so.cardHolderName || '', creditBalance: so.creditBalance != null ? String(so.creditBalance) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
                           className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
                         >עריכה</button>
                       </div>
@@ -1533,11 +1579,34 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             </span>
                           )}
                         </div>
-                        {(so.bankName || so.bankBranch || so.bankAccount) && (
+                        {so.standingOrderType === 'אשראי' ? (
+                          <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
+                            {[so.cardType, so.cardLast4 ? `****${so.cardLast4}` : '', so.cardExpiry].filter(Boolean).join(' · ')}
+                            {so.chargeDay ? ` · יום ${so.chargeDay}` : ''}
+                          </p>
+                        ) : (so.bankName || so.bankBranch || so.bankAccount) ? (
                           <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
                             {[so.bankName, so.bankBranch, so.bankAccount].filter(Boolean).join(' · ')}
                             {so.chargeDay ? ` · יום ${so.chargeDay}` : ''}
                           </p>
+                        ) : null}
+                        {so.chargeAmount != null && (
+                          <p className="text-[11px] mt-0.5">
+                            <span className="text-gray-400">צפי חודשי: </span>
+                            <span className="font-medium text-gray-700">₪{so.chargeAmount.toLocaleString()}</span>
+                            {soTxs.length > 0 && selectedSo?.id === so.id && (() => {
+                              const actual = soTxs.reduce((s, t) => s + t.amount, 0)
+                              const diff = actual - so.chargeAmount
+                              return <span className={`mr-1 ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {diff >= 0 ? `✓ +₪${diff.toLocaleString()}` : `⚠ -₪${Math.abs(diff).toLocaleString()}`}
+                              </span>
+                            })()}
+                          </p>
+                        )}
+                        {so.soStatus && so.soStatus !== 'פעיל' && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full inline-block mt-0.5 ${so.soStatus === 'מבוטל' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-700'}`}>
+                            {so.soStatus}
+                          </span>
                         )}
                         {so.linkedParentName && (
                           <p className="text-[11px] mt-0.5">
