@@ -131,19 +131,6 @@ CREATE POLICY "service_role_all" ON salary_offsets
     sql: '',
   },
   {
-    id: 'nedarim-bank-hok-enrich', name: 'העשרת פרטי הו"ק בנקאי', icon: '🏦',
-    desc: 'משך פרטים מעמיקים לכל הו"ק בנקאי: בנק/סניף/חשבון, סטטוס, קטגוריה, ת"ז לקוח',
-    defaultMonth: currentMY,
-    endpoint: '/api/automations/nedarim-bank-hok-enrich',
-    steps: [
-      { icon:'⏰', label:'הפעלה',        desc:'ידני',               bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
-      { icon:'🔄', label:'כל הו"ק בנקאי', desc:'לפי DB',            bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
-      { icon:'🌐', label:'GetMasavId',   desc:'קריאה לכל הו"ק',     bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
-      { icon:'✅', label:'עדכון פרטים',  desc:'בנק / סטטוס / ת"ז',  bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
-    ],
-    sql: '',
-  },
-  {
     id: 'nedarim-credit-hok-pull', name: 'משיכת תנועות הו"ק אשראי', icon: '💳',
     desc: 'מושך היסטוריית חיובים לכל הו"ק אשראי, מעדכן פרטי כרטיס, ומקשר תנועות ל-PP שכ"ל',
     defaultMonth: currentMY,
@@ -451,7 +438,9 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               addLine('step', `◆ ${ev.msg}`)
               await delay(60)
             } else if (ev.type === 'progress') {
-              if (ev.skipped) {
+              if (ev.current != null && ev.total != null && !ev.parentName) {
+                // numeric progress only — no line, just step indicator
+              } else if (ev.skipped) {
                 addLine('skip', `  — ${ev.parentName}`, ev.reason)
               } else if (def.id === 'tuition-offset') {
                 addLine('ok', `  ✓ ${ev.parentName} → ₪${fmtN(ev.offset??0)}`,
@@ -471,9 +460,24 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
               setResult({ ...ev, actions })
               setPhase('results')
               if (!isDry) loadLogs()
+            } else if (ev.type === 'log') {
+              addLine('ok', `  ${ev.message ?? ev.msg ?? ''}`)
+            } else if (ev.type === 'done') {
+              setActiveStep(def.steps.length + 1)
+              const parts: string[] = []
+              if (ev.imported != null) parts.push(`יובאו ${ev.imported}`)
+              if (ev.updated  != null) parts.push(`עודכנו ${ev.updated}`)
+              if (ev.deleted  != null && ev.deleted > 0) parts.push(`נמחקו ${ev.deleted}`)
+              if (ev.skipped  != null) parts.push(`דולגו ${ev.skipped}`)
+              if (ev.totalAmount) parts.push(`₪${fmtN(ev.totalAmount)}`)
+              addLine('done', `✅ הושלם — ${parts.join(' · ')}${ev.dryRun ? ' [dry]' : ''}`)
+              setResult({ ...ev, actions, applied: ev.imported ?? ev.updated ?? 0, totalOffset: ev.totalAmount ?? 0, dryRun: isDry, monthYear: targetMY })
+              setPhase('results')
+              if (!isDry) loadLogs()
             } else if (ev.type === 'error') {
-              addLine('err', `❌ ${ev.error}`)
-              setResult({ error: ev.error, actions, applied: 0, skipped: 0, totalOffset: 0, dryRun: isDry, monthYear: targetMY })
+              const msg = ev.message ?? ev.error ?? 'שגיאה לא ידועה'
+              addLine('err', `❌ ${msg}`)
+              setResult({ error: msg, actions, applied: 0, skipped: 0, totalOffset: 0, dryRun: isDry, monthYear: targetMY })
               setPhase('results')
             }
           } catch {}
