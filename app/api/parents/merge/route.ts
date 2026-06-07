@@ -79,8 +79,43 @@ export async function POST(req: NextRequest) {
 
     await supabaseAdmin.from('parents').delete().eq('id', mergeId)
 
+    // ── Post-merge recalc ────────────────────────────────────────────────────
+    // Recalculate each PP balance for the winner from its linked transactions
+    await recalcParentPPs(keepId)
+
     return NextResponse.json({ success: true, summary })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
+}
+
+/** Recalculate balance on every PP belonging to keepId based on linked transaction amounts */
+async function recalcParentPPs(keepId: string) {
+  const { data: pps } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id, amount')
+    .contains('parent_ids', [keepId])
+
+  for (const pp of pps ?? []) {
+    const { data: txs } = await supabaseAdmin
+      .from('transactions')
+      .select('amount')
+      .eq('planned_payment_id', pp.id)
+
+    const paid = (txs ?? []).reduce((sum, t) => sum + Number(t.amount ?? 0), 0)
+    const balance = Math.max(0, Number(pp.amount) - paid)
+    await supabaseAdmin.from('planned_payments').update({ balance }).eq('id', pp.id)
+  }
+
+  // Recalculate parent tuition_balance = sum of all open PP balances
+  const { data: allPps } = await supabaseAdmin
+    .from('planned_payments')
+    .select('balance, pp_type')
+    .contains('parent_ids', [keepId])
+
+  const tuitionBalance = (allPps ?? [])
+    .filter(p => (p.pp_type ?? '') !== 'משכורת')
+    .reduce((sum, p) => sum + Number(p.balance ?? 0), 0)
+
+  await supabaseAdmin.from('parents').update({ tuition_balance: tuitionBalance }).eq('id', keepId)
 }
