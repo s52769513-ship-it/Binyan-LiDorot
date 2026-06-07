@@ -230,11 +230,11 @@ function HokResultTable({ rows, defId }: { rows: HokLogRow[]; defId: string }) {
   const downloadCsv = () => {
     const headers = isBank
       ? ['מזהה הו"ק', 'שם', 'ת"ז', 'פעולה', 'הורה', 'בנק', 'סכום', 'סטטוס']
-      : ['מזהה הו"ק', 'שם', 'פעולה', 'הורה', 'סכום', 'קטגוריה', 'סטטוס']
+      : ['מזהה הו"ק', 'שם', 'ת"ז', 'פעולה', 'הורה', 'סכום', 'קטגוריה', 'סטטוס']
     const csvRows = rows.map(r =>
       isBank
         ? [r.externalId, r.name, r.tz ?? '', r.action, r.parentAction, r.bankInfo ?? '', r.amount, r.status]
-        : [r.externalId, r.name, r.action, r.parentAction, r.amount, r.category ?? '', r.status]
+        : [r.externalId, r.name, r.tz ?? '', r.action, r.parentAction, r.amount, r.category ?? '', r.status]
     )
     const csv = [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -259,7 +259,7 @@ function HokResultTable({ rows, defId }: { rows: HokLogRow[]; defId: string }) {
           <tr className="text-right text-gray-400">
             <th className="px-3 py-2">מזהה</th>
             <th className="px-3 py-2">שם</th>
-            {isBank && <th className="px-3 py-2">ת"ז</th>}
+            <th className="px-3 py-2">ת"ז</th>
             <th className="px-3 py-2">פעולה</th>
             <th className="px-3 py-2">הורה</th>
             {isBank && <th className="px-3 py-2">בנק</th>}
@@ -272,7 +272,7 @@ function HokResultTable({ rows, defId }: { rows: HokLogRow[]; defId: string }) {
             <tr key={i} className={`border-b ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
               <td className="px-3 py-1.5 font-mono text-gray-400">{r.externalId}</td>
               <td className="px-3 py-1.5 font-medium">{r.name}</td>
-              {isBank && <td className="px-3 py-1.5 text-gray-400 font-mono">{r.tz}</td>}
+              <td className="px-3 py-1.5 text-gray-400 font-mono">{r.tz}</td>
               <td className="px-3 py-1.5">
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                   r.action.includes('עודכן') || r.action.includes('יעודכן') ? 'bg-blue-50 text-blue-700' :

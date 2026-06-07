@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         )
         send({ type: 'log', message: `${existingByExtId.size} הו"ק קיימים בDB · ${parentList.length} הורים` })
 
-        type LogRow = { externalId: string; name: string; action: string; parentAction: string; amount: string; category: string; status: string }
+        type LogRow = { externalId: string; name: string; tz: string; action: string; parentAction: string; amount: string; category: string; status: string }
         const logRows: LogRow[] = []
         let updated = 0, created = 0, parentCreated = 0, skipped = 0
 
@@ -109,28 +109,47 @@ export async function POST(req: NextRequest) {
           else if (statusRaw.includes('בוטל'))  soStatus = 'מבוטל'
           else if (statusRaw.includes('סירוב')) soStatus = 'סירוב'
 
-          // Find parent by name match
+          // Try GetKevald for ת"ז
+          let tz = ''
+          try {
+            const kvUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevald&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&Kevald=${encodeURIComponent(externalId)}`
+            const kvResp = await fetch(kvUrl)
+            if (kvResp.ok) {
+              const kvJson = await kvResp.json()
+              const isErr = kvJson.Result != null && kvJson.Result !== 0
+              if (!isErr) {
+                // Try common ת"ז field names
+                tz = String(kvJson.ClientZeout ?? kvJson.ClientId ?? kvJson.Zeout ?? kvJson.ID_Number ?? '').trim()
+              }
+            }
+          } catch { /* ת"ז not critical */ }
+
+          // Find parent: first by ת"ז, then by name
           let parentId: string | null = null
           let parentAction = 'לא קושר'
-          const matched = parentList.find(p => clientName && namesMatch(p.name, clientName))
+
+          const matchedByTz  = tz ? parentList.find(p => p.tz && p.tz === tz) : undefined
+          const matchedByName = !matchedByTz && clientName ? parentList.find(p => namesMatch(p.name, clientName)) : undefined
+          const matched = matchedByTz ?? matchedByName
 
           if (matched) {
             parentId = matched.id
-            parentAction = `קושר → ${matched.name}`
+            parentAction = `קושר → ${matched.name}${matchedByTz ? ' (ת"ז)' : ' (שם)'}`
           } else if (!dryRun) {
             const newParentId = crypto.randomUUID()
             const { error: pErr } = await supabaseAdmin.from('parents').insert({
-              id:   newParentId,
-              name: clientName || `הו"ק אשראי ${externalId}`,
+              id:        newParentId,
+              name:      clientName || `הו"ק אשראי ${externalId}`,
+              id_number: tz || null,
             })
             if (!pErr) {
               parentId = newParentId
               parentAction = 'נוצר חדש'
               parentCreated++
-              parentList.push({ id: newParentId, name: clientName, tz: '' })
+              parentList.push({ id: newParentId, name: clientName, tz })
             }
           } else {
-            parentAction = 'שם לא נמצא — ייווצר'
+            parentAction = tz ? 'ת"ז לא נמצא — ייווצר' : 'שם לא נמצא — ייווצר'
           }
 
           const payload: Record<string, unknown> = {
@@ -161,7 +180,7 @@ export async function POST(req: NextRequest) {
             existing ? updated++ : created++
           }
 
-          const logRow: LogRow = { externalId, name: clientName, action, parentAction, amount: String(chargeAmount ?? ''), category: projectName ?? '', status: soStatus }
+          const logRow: LogRow = { externalId, name: clientName, tz, action, parentAction, amount: String(chargeAmount ?? ''), category: projectName ?? '', status: soStatus }
           logRows.push(logRow)
           send({ type: 'log', message: `${externalId} · ${clientName} · ${action} · ${parentAction}` })
         }
