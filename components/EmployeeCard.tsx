@@ -422,12 +422,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
   // Recompute PP balance from linked transactions and patch DB if stale
   useEffect(() => {
     if (!selectedPP || loadingPpTx) return
-    // Only count בנין לדורות transactions for tuition PPs
-    const isTuition = selectedPP.ppType === 'tuition' || !selectedPP.ppType
-    const countable = isTuition
-      ? ppTxList.filter(t => !t.isCredit && (t.projectNames ?? []).includes('בנין לדורות'))
-      : ppTxList.filter(t => !t.isCredit)
-    const computedPaid    = countable.reduce((s, t) => s + Math.abs(t.amount), 0)
+    // Count ALL linked positive transactions (filtering is for auto-linking, not balance calc)
+    const computedPaid    = ppTxList.filter(t => !t.isCredit).reduce((s, t) => s + Math.abs(t.amount), 0)
     const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
     if (computedBalance === selectedPP.balance) return
     setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
