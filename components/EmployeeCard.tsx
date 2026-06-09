@@ -318,64 +318,13 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
   const [soParentResults, setSoParentResults]       = useState<{id:string;name:string}[]>([])
   const [soParentSearching, setSoParentSearching]   = useState(false)
 
-  const creditApplyingRef = useRef(false)
-
   const load = useCallback(() => {
     setLoading(true); setError('')
     fetch(`/api/parents/${parentId}`)
       .then(r => r.json())
-      .then(async d => {
+      .then(d => {
         if (d.error) { setError(d.error); return }
         setParent(d); setTransactions(d.transactions ?? [])
-
-        // Auto-apply ppCredit to open tuition PPs (oldest first)
-        // Guard prevents concurrent/duplicate application triggered by Realtime refreshes
-        const credit = Number(d.ppCredit) || 0
-        if (credit > 0 && !creditApplyingRef.current) {
-          creditApplyingRef.current = true
-          try {
-            const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
-              (d.plannedPayments ?? [])
-                .filter((pp: { ppType: string; balance: number }) => pp.ppType !== 'salary' && pp.balance > 0)
-                .sort((a: { monthYear: string }, b: { monthYear: string }) => {
-                  const [am, ay] = a.monthYear.split('/').map(Number)
-                  const [bm, by] = b.monthYear.split('/').map(Number)
-                  return ay !== by ? ay - by : am - bm
-                })
-
-            let remaining = credit
-            for (const pp of openTuitionPPs) {
-              if (remaining <= 0) break
-              const applied    = Math.min(remaining, pp.balance)
-              const newBalance = pp.balance - applied
-              remaining -= applied
-              await fetch('/api/planned-payments', {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: pp.id, balance: newBalance }),
-              })
-              await fetch('/api/transactions', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  amount: applied, type: 'זיכוי', date: new Date().toISOString().split('T')[0],
-                  monthYear: pp.monthYear || '', notes: 'זיכוי שמור',
-                  parentIds: [parentId], projectNames: ['בנין לדורות'],
-                  plannedPaymentId: pp.id,
-                }),
-              })
-            }
-            if (remaining !== credit) {
-              await fetch(`/api/parents/${parentId}`, {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ppCredit: remaining }),
-              })
-              fetch(`/api/parents/${parentId}`).then(r => r.json()).then(fresh => {
-                if (!fresh.error) { setParent(fresh); setTransactions(fresh.transactions ?? []) }
-              })
-            }
-          } finally {
-            creditApplyingRef.current = false
-          }
-        }
       })
       .catch(() => setError('שגיאה'))
       .finally(() => setLoading(false))
@@ -419,21 +368,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parent?.plannedPayments])
 
-  // Recompute PP balance from linked transactions and patch DB if stale
-  useEffect(() => {
-    if (!selectedPP || loadingPpTx) return
-    // Count ALL linked positive transactions (filtering is for auto-linking, not balance calc)
-    const computedPaid    = ppTxList.filter(t => !t.isCredit).reduce((s, t) => s + Math.abs(t.amount), 0)
-    const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
-    if (computedBalance === selectedPP.balance) return
-    setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
-    fetch('/api/planned-payments', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: selectedPP.id, balance: computedBalance }),
-    }).then(() => load()).catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ppTxList, loadingPpTx])
+  // PP balance is managed server-side only — no client-side auto-patch
 
   const patch = useCallback(async (fields: Record<string, unknown>) => {
     await fetch(`/api/parents/${parentId}`, {
