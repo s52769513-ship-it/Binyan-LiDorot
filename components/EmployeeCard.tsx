@@ -422,7 +422,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
   // Recompute PP balance from linked transactions and patch DB if stale
   useEffect(() => {
     if (!selectedPP || loadingPpTx) return
-    const computedPaid    = ppTxList.reduce((s, t) => s + Math.abs(t.amount), 0)
+    // Only count בנין לדורות transactions for tuition PPs
+    const isTuition = selectedPP.ppType === 'tuition' || !selectedPP.ppType
+    const countable = isTuition
+      ? ppTxList.filter(t => !t.isCredit && (t.projectNames ?? []).includes('בנין לדורות'))
+      : ppTxList.filter(t => !t.isCredit)
+    const computedPaid    = countable.reduce((s, t) => s + Math.abs(t.amount), 0)
     const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
     if (computedBalance === selectedPP.balance) return
     setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
@@ -1877,20 +1882,38 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
                         </button>
                       )}
                       {!tx.isCredit && (
-                        <button
-                          onClick={e => {
-                            e.stopPropagation()
-                            if (!confirm('למחוק תשלום זה?')) return
-                            const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
-                            fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
-                              .then(() => {
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (!confirm('לנתק תשלום זה מה-PP? התשלום יישאר במערכת ללא קישור.')) return
+                              fetch(`/api/transactions/${tx.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ planned_payment_id: null }),
+                              }).then(() => {
                                 setPpTxList(prev => prev.filter(t => t.id !== tx.id))
                                 load()
                               })
-                          }}
-                          className="p-1 text-gray-300 hover:text-red-400 text-xs mr-1 shrink-0"
-                          title="מחיקה"
-                        >🗑️</button>
+                            }}
+                            className="p-1 text-gray-300 hover:text-amber-500 text-xs"
+                            title="נתק מה-PP"
+                          >🔗</button>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (!confirm('למחוק תשלום זה?')) return
+                              const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
+                              fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
+                                .then(() => {
+                                  setPpTxList(prev => prev.filter(t => t.id !== tx.id))
+                                  load()
+                                })
+                            }}
+                            className="p-1 text-gray-300 hover:text-red-400 text-xs"
+                            title="מחיקה"
+                          >🗑️</button>
+                        </div>
                       )}
                     </div>
                   ))}
