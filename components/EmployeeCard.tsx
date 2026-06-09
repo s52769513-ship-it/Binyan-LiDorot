@@ -266,7 +266,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
       const r = await fetch(`/api/parents/${parent.id}/recalc-pp`, { method: 'POST' })
       const d = await r.json()
       if (d.error) { setRecalcPPResult(`שגיאה: ${d.error}`); return }
-      setRecalcPPResult(`✓ ${d.unlinkedMatched} תנועות קושרו · זיכוי: ₪${d.leftoverCredit ?? 0} · חוב: ₪${d.tuitionBalance ?? 0}`)
+      const parts = [`✓ ${d.unlinkedMatched ?? 0} תנועות קושרו`]
+      if ((d.unlinkedWrong ?? 0) > 0) parts.push(`${d.unlinkedWrong} נותקו (שגויות)`)
+      if ((d.leftoverCredit ?? 0) > 0) parts.push(`זיכוי: ₪${d.leftoverCredit}`)
+      parts.push(`חוב: ₪${d.tuitionBalance ?? 0}`)
+      if ((d.salaryOffsetMonths ?? []).length > 0) {
+        parts.push(`⚠️ ייתכן קיזוז ממשכורת חסר עבור: ${(d.salaryOffsetMonths as string[]).join(', ')}`)
+      }
+      setRecalcPPResult(parts.join(' · '))
       load()
     } catch { setRecalcPPResult('שגיאת רשת') }
     finally { setRecalcPPRunning(false) }

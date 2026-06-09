@@ -3,13 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 /**
  * POST /api/parents/[id]/recalc-pp
- * Full PP reconciliation for a parent:
- *   1. Match unlinked positive transactions to open tuition PPs by month_year (oldest first)
- *      with cascade: if tx > PP balance → close PP, carry remainder to next
- *      leftover after all PPs → credit_balance
- *   2. Apply existing credit_balance to remaining open PPs (oldest first)
- *   3. Recalculate balance on every explicitly linked PP
- *   4. Update parent.tuition_balance
+ * חישוב מלא של כל התשלומים המתוכננים עבור הורה:
+ *   0. ניתוק תנועות שקושרו בטעות לתשלומים מתוכננים (לא מפרויקט בנין לדורות)
+ *   1. קישור תנועות חופשיות לתשלומים מתוכננים לפי חודש (הישן ביותר קודם)
+ *      אם תנועה > יתרת תשלום → סגור תשלום, המשך לבא
+ *      עודף לאחר כל התשלומים → זיכוי
+ *   2. יישום זיכוי קיים על תשלומים פתוחים (הישן ביותר קודם)
+ *   3. חישוב מחדש של יתרה בכל תשלום מקושר לפי תנועות בנין לדורות בלבד
+ *   4. עדכון יתרת שכ"ל וזיכוי הורה
+ *   5. בדיקת קיזוז ממשכורת
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: parentId } = await params
@@ -22,8 +24,40 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function recalcPPs(parentId: string) {
-  // ── Load open tuition PPs sorted oldest first ────────────────────────────
-  // Include pp_type = 'tuition' OR null (old records from generate-year before fix)
+  // ── שלב 0: ניתוק תנועות שגויות ─────────────────────────────────────────
+  // תנועות שמקושרות לתשלומי שכ"ל אך אינן מפרויקט בנין לדורות
+  const { data: tuitionPPIds } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id')
+    .contains('parent_ids', [parentId])
+    .or('pp_type.eq.tuition,pp_type.is.null')
+
+  const ppIdList = (tuitionPPIds ?? []).map(p => p.id as string)
+  let unlinkedWrong = 0
+
+  if (ppIdList.length > 0) {
+    const { data: wrongTxs } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, planned_payment_id')
+      .in('planned_payment_id', ppIdList)
+      .not('project_names', 'cs', '{"בנין לדורות"}')
+      .gt('amount', 0)
+
+    for (const tx of wrongTxs ?? []) {
+      // שחזר יתרת התשלום המתוכנן
+      const { data: pp } = await supabaseAdmin
+        .from('planned_payments').select('balance, amount').eq('id', tx.planned_payment_id).single()
+      if (pp) {
+        const restored = Math.min(Number(pp.amount), Number(pp.balance) + Number(tx.amount))
+        await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', tx.planned_payment_id)
+      }
+      // נתק תנועה
+      await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
+      unlinkedWrong++
+    }
+  }
+
+  // ── טעינת תשלומים פתוחים לפי סדר חודש ──────────────────────────────────
   const { data: rawPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('id, amount, balance, month_year, pp_type')
@@ -34,7 +68,7 @@ export async function recalcPPs(parentId: string) {
 
   const openPPs = (rawPPs ?? []).map(p => ({ ...p, balance: Number(p.balance), amount: Number(p.amount) }))
 
-  // ── Load unlinked positive transactions sorted oldest first ──────────────
+  // ── טעינת תנועות חופשיות של בנין לדורות ────────────────────────────────
   const { data: rawTxs } = await supabaseAdmin
     .from('transactions')
     .select('id, amount, month_year, date')
@@ -44,19 +78,17 @@ export async function recalcPPs(parentId: string) {
     .gt('amount', 0)
     .order('date', { ascending: true })
 
-  let leftover = 0 // carries over between transactions
+  let leftover = 0
 
-  // ── Step 1: match each unlinked tx to PPs with cascade ──────────────────
+  // ── שלב 1: קישור תנועות לתשלומים לפי חודש עם מעבר לבא ─────────────────
   for (const tx of rawTxs ?? []) {
     let remaining = Number(tx.amount)
 
-    // Try matching month first, then oldest
     const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
     const firstOpen  = openPPs.findIndex(p => p.balance > 0)
     let ppIdx = monthMatch >= 0 ? monthMatch : firstOpen
     if (ppIdx < 0) { leftover += remaining; continue }
 
-    // Link to first PP and cascade
     let firstLinked = true
     while (remaining > 0 && ppIdx >= 0) {
       const pp = openPPs[ppIdx]
@@ -78,7 +110,7 @@ export async function recalcPPs(parentId: string) {
     leftover += remaining
   }
 
-  // ── Step 2: leftover from unlinked txs → add to credit_balance ──────────
+  // ── שלב 2: עודף תנועות → הוספה לזיכוי ─────────────────────────────────
   const { data: parentRow } = await supabaseAdmin
     .from('parents')
     .select('credit_balance')
@@ -87,7 +119,7 @@ export async function recalcPPs(parentId: string) {
 
   let credit = Number(parentRow?.credit_balance ?? 0) + leftover
 
-  // ── Step 3: apply credit_balance to remaining open PPs ──────────────────
+  // ── שלב 3: יישום זיכוי על תשלומים פתוחים ───────────────────────────────
   if (credit > 0) {
     for (const pp of openPPs) {
       if (pp.balance <= 0 || credit <= 0) continue
@@ -98,14 +130,14 @@ export async function recalcPPs(parentId: string) {
     }
   }
 
-  // ── Step 4: recalc all linked tuition PPs ───────────────────────────────
-  const { data: allPPs } = await supabaseAdmin
+  // ── שלב 4: חישוב מחדש של יתרה לפי תנועות מקושרות ───────────────────────
+  const { data: allTuitionPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('id, amount, pp_type')
     .contains('parent_ids', [parentId])
     .or('pp_type.eq.tuition,pp_type.is.null')
 
-  for (const pp of allPPs ?? []) {
+  for (const pp of allTuitionPPs ?? []) {
     const { data: txs } = await supabaseAdmin
       .from('transactions')
       .select('amount')
@@ -117,7 +149,7 @@ export async function recalcPPs(parentId: string) {
     await supabaseAdmin.from('planned_payments').update({ balance }).eq('id', pp.id)
   }
 
-  // ── Step 5: update parent credit_balance + tuition_balance ──────────────
+  // ── שלב 5: עדכון יתרת שכ"ל וזיכוי הורה ────────────────────────────────
   const { data: finalPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('balance, pp_type')
@@ -132,9 +164,36 @@ export async function recalcPPs(parentId: string) {
     credit_balance:  Math.max(0, credit),
   }).eq('id', parentId)
 
+  // ── שלב 6: בדיקת קיזוז ממשכורת ─────────────────────────────────────────
+  // בדיקה אם יש תשלומי משכורת פתוחים שאמורים לכלול ניכוי שכ"ל
+  const { data: salaryPPs } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id, amount, balance, month_year')
+    .contains('parent_ids', [parentId])
+    .eq('pp_type', 'salary')
+    .gt('balance', 0)
+    .order('month_year', { ascending: false })
+    .limit(3)
+
+  const salaryOffsetMonths: string[] = []
+  for (const sp of salaryPPs ?? []) {
+    const { data: offsetTxs } = await supabaseAdmin
+      .from('transactions')
+      .select('id')
+      .contains('parent_ids', [parentId])
+      .eq('month_year', sp.month_year)
+      .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל', 'ניכוי שכ"ל'])
+      .limit(1)
+    if (!offsetTxs || offsetTxs.length === 0) {
+      salaryOffsetMonths.push(sp.month_year as string)
+    }
+  }
+
   return {
     unlinkedMatched: (rawTxs ?? []).length,
+    unlinkedWrong,
     leftoverCredit: Math.max(0, credit),
     tuitionBalance,
+    salaryOffsetMonths, // חודשים שיש בהם משכורת פתוחה ללא קיזוז שכ"ל
   }
 }
