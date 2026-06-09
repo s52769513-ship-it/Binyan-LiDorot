@@ -23,11 +23,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
 export async function recalcPPs(parentId: string) {
   // ── Load open tuition PPs sorted oldest first ────────────────────────────
+  // Include pp_type = 'tuition' OR null (old records from generate-year before fix)
   const { data: rawPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('id, amount, balance, month_year, pp_type')
     .contains('parent_ids', [parentId])
-    .eq('pp_type', 'tuition')
+    .or('pp_type.eq.tuition,pp_type.is.null')
     .gt('balance', 0)
     .order('month_year', { ascending: true })
 
@@ -97,11 +98,12 @@ export async function recalcPPs(parentId: string) {
     }
   }
 
-  // ── Step 4: recalc all linked PPs ───────────────────────────────────────
+  // ── Step 4: recalc all linked tuition PPs ───────────────────────────────
   const { data: allPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('id, amount, pp_type')
     .contains('parent_ids', [parentId])
+    .or('pp_type.eq.tuition,pp_type.is.null')
 
   for (const pp of allPPs ?? []) {
     const { data: txs } = await supabaseAdmin

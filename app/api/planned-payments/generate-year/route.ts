@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseAdmin.from('planned_payments').insert({
         id:         crypto.randomUUID(),
         name:       name || 'שכ"ל',
+        pp_type:    'tuition',
         amount:     Number(amount),
         balance:    Number(amount),
         date,
