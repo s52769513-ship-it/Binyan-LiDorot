@@ -121,14 +121,29 @@ export async function recalcPPs(parentId: string) {
   const existingCredit = Number(parentRow?.credit_balance ?? 0) + Number(parentRow?.pp_credit ?? 0)
   let credit = existingCredit + leftover
 
-  // ── שלב 3: יישום זיכוי על תשלומים פתוחים ───────────────────────────────
+  // ── שלב 3: יישום זיכוי על תשלומים פתוחים (יוצר תנועת זיכוי אמיתית) ────
+  // חייב להיות לפני שלב 4 כדי שהתנועה תיספר בחישוב המחודש
+  const today = new Date().toISOString().split('T')[0]
   if (credit > 0) {
     for (const pp of openPPs) {
       if (pp.balance <= 0 || credit <= 0) continue
       const apply = Math.min(credit, pp.balance)
       pp.balance = Math.round((pp.balance - apply) * 100) / 100
       credit     = Math.round((credit - apply) * 100) / 100
-      await supabaseAdmin.from('planned_payments').update({ balance: pp.balance }).eq('id', pp.id)
+      // יצירת תנועת זיכוי מקושרת — כך שלב 4 יספור אותה
+      await supabaseAdmin.from('transactions').insert({
+        id:                 crypto.randomUUID(),
+        amount:             apply,
+        planned_payment_id: pp.id,
+        parent_ids:         [parentId],
+        date:               today,
+        month_year:         pp.month_year ?? '',
+        notes:              'זיכוי שמור',
+        type:               'זיכוי',
+        project_ids:        [],
+        project_names:      ['בנין לדורות'],
+        synced_at:          '2099-12-31T23:59:59.999Z',
+      })
     }
   }
 
