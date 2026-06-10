@@ -138,11 +138,11 @@ export async function recalcPPs(parentId: string) {
     .or('pp_type.eq.tuition,pp_type.is.null')
 
   for (const pp of allTuitionPPs ?? []) {
+    // Count ALL linked positive transactions (incl. offset types like קיזוז שכ"ל)
     const { data: txs } = await supabaseAdmin
       .from('transactions')
       .select('amount')
       .eq('planned_payment_id', pp.id)
-      .contains('project_names', ['בנין לדורות'])
       .gt('amount', 0)
     const paid    = (txs ?? []).reduce((s, t) => s + Number(t.amount), 0)
     const balance = Math.max(0, Number(pp.amount) - paid)
