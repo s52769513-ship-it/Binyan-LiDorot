@@ -113,11 +113,13 @@ export async function recalcPPs(parentId: string) {
   // ── שלב 2: עודף תנועות → הוספה לזיכוי ─────────────────────────────────
   const { data: parentRow } = await supabaseAdmin
     .from('parents')
-    .select('credit_balance')
+    .select('credit_balance, pp_credit')
     .eq('id', parentId)
     .single()
 
-  let credit = Number(parentRow?.credit_balance ?? 0) + leftover
+  // איחוד שני שדות הזיכוי לשדה אחד (credit_balance)
+  const existingCredit = Number(parentRow?.credit_balance ?? 0) + Number(parentRow?.pp_credit ?? 0)
+  let credit = existingCredit + leftover
 
   // ── שלב 3: יישום זיכוי על תשלומים פתוחים ───────────────────────────────
   if (credit > 0) {
@@ -159,9 +161,11 @@ export async function recalcPPs(parentId: string) {
     .filter(p => p.pp_type !== 'משכורת')
     .reduce((s, p) => s + Number(p.balance ?? 0), 0)
 
+  // מאחד לשדה אחד ומאפס את pp_credit הישן
   await supabaseAdmin.from('parents').update({
     tuition_balance: tuitionBalance,
     credit_balance:  Math.max(0, credit),
+    pp_credit:       0,
   }).eq('id', parentId)
 
   // ── שלב 6: בדיקת קיזוז ממשכורת ─────────────────────────────────────────

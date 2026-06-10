@@ -253,10 +253,10 @@ export async function POST(req: NextRequest) {
               remaining -= applied
             }
 
-            // Store any leftover as pp_credit for future payments
+            // Store any leftover as credit_balance for future payments
             if (remaining > 0) {
-              const { data: par } = await supabaseAdmin.from('parents').select('pp_credit').eq('id', pid).single()
-              await supabaseAdmin.from('parents').update({ pp_credit: (par?.pp_credit || 0) + remaining }).eq('id', pid)
+              const { data: par } = await supabaseAdmin.from('parents').select('credit_balance').eq('id', pid).single()
+              await supabaseAdmin.from('parents').update({ credit_balance: (Number(par?.credit_balance) || 0) + remaining }).eq('id', pid)
             }
           }
         }
