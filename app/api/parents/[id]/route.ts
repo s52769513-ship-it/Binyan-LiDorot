@@ -37,6 +37,8 @@ const FIELD_MAP: Record<string, string> = {
   calculateWifeTuition:  'calculate_wife_tuition',
   salaryGross:           'salary_gross',
   salaryAfterTuition:    'salary_after_tuition',
+  creditBalance:         'credit_balance',
+  ppCredit:              'pp_credit',
 }
 
 export async function PATCH(
@@ -259,7 +261,7 @@ export async function GET(
       calculateWifeTuition: p.calculate_wife_tuition ?? false,
       salaryGross: p.salary_gross ?? 0,
       salaryNet: p.salary_after_tuition ?? 0,
-      ppCredit: p.pp_credit ?? 0,
+      ppCredit: (Number(p.pp_credit ?? 0)) + (Number(p.credit_balance ?? 0)),
       birthDate: p.birth_date ?? '',
 
       women: (womenRes.data ?? []).map(w => ({

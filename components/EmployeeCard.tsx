@@ -258,6 +258,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
   const [tab, setTab]             = useState<TabKey>('details')
   const [recalcPPRunning, setRecalcPPRunning] = useState(false)
   const [recalcPPResult, setRecalcPPResult]   = useState<string | null>(null)
+  const [showCreditDetail, setShowCreditDetail] = useState(false)
+  const [creditEditVal, setCreditEditVal]       = useState('')
+  const [savingCredit, setSavingCredit]         = useState(false)
 
   const runRecalcPP = async () => {
     if (!parent) return
@@ -820,12 +823,62 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
 
               {/* Credit badge */}
               {(parent.ppCredit ?? 0) > 0 && (
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
-                  <span className="text-emerald-600 text-lg">💚</span>
-                  <div>
-                    <p className="text-xs text-emerald-500">זיכוי שמור</p>
-                    <p className="text-sm font-bold text-emerald-700">{fmt(parent.ppCredit)} יוחלו על התשלום הבא</p>
-                  </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl overflow-hidden">
+                  <button
+                    className="flex items-center justify-between w-full px-4 py-2.5 hover:bg-emerald-100 transition-colors"
+                    onClick={() => { setShowCreditDetail(v => !v); setCreditEditVal(String(parent.ppCredit ?? 0)) }}
+                  >
+                    <span className="text-xs text-emerald-500">לחץ לפרטים ▾</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-600 text-lg">💚</span>
+                      <div className="text-right">
+                        <p className="text-xs text-emerald-500">זיכוי שמור</p>
+                        <p className="text-sm font-bold text-emerald-700">{fmt(parent.ppCredit)} יוחלו על התשלום הבא</p>
+                      </div>
+                    </div>
+                  </button>
+                  {showCreditDetail && (
+                    <div className="px-4 pb-3 border-t border-emerald-200 bg-white space-y-2 pt-2" dir="rtl">
+                      <p className="text-xs text-gray-500">הזיכוי נצבר מתשלומים שעברו על הסכום המתוכנן. ניתן לערוך או למחוק.</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">סכום:</span>
+                        <input
+                          type="number" value={creditEditVal} min="0" step="0.01"
+                          onChange={e => setCreditEditVal(e.target.value)}
+                          className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-sm text-left"
+                          dir="ltr"
+                        />
+                        <button
+                          disabled={savingCredit}
+                          onClick={async () => {
+                            setSavingCredit(true)
+                            const val = Math.max(0, Number(creditEditVal) || 0)
+                            await fetch(`/api/parents/${parentId}`, {
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ creditBalance: val, ppCredit: 0 }),
+                            })
+                            load(); setShowCreditDetail(false)
+                            setSavingCredit(false)
+                          }}
+                          className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs hover:bg-emerald-700 disabled:opacity-50"
+                        >שמור</button>
+                        <button
+                          disabled={savingCredit}
+                          onClick={async () => {
+                            if (!confirm('למחוק את הזיכוי לגמרי?')) return
+                            setSavingCredit(true)
+                            await fetch(`/api/parents/${parentId}`, {
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ creditBalance: 0, ppCredit: 0 }),
+                            })
+                            load(); setShowCreditDetail(false)
+                            setSavingCredit(false)
+                          }}
+                          className="px-3 py-1 rounded-lg bg-red-100 text-red-600 text-xs hover:bg-red-200 disabled:opacity-50"
+                        >מחק זיכוי</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
