@@ -80,33 +80,25 @@ export async function recalcPPs(parentId: string) {
 
   let leftover = 0
 
-  // ── שלב 1: קישור תנועות לתשלומים לפי חודש עם מעבר לבא ─────────────────
+  // ── שלב 1: קישור תנועות לתשלום המתאים לפי חודש ─────────────────────────
+  // תנועה מקושרת לתשלום הראשון בלבד — עודף עובר לזיכוי ויוצר תנועה אמיתית בשלב 3
   for (const tx of rawTxs ?? []) {
     let remaining = Number(tx.amount)
 
     const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
     const firstOpen  = openPPs.findIndex(p => p.balance > 0)
-    let ppIdx = monthMatch >= 0 ? monthMatch : firstOpen
+    const ppIdx = monthMatch >= 0 ? monthMatch : firstOpen
     if (ppIdx < 0) { leftover += remaining; continue }
 
-    let firstLinked = true
-    while (remaining > 0 && ppIdx >= 0) {
-      const pp = openPPs[ppIdx]
-      const apply = Math.min(remaining, pp.balance)
-      pp.balance = Math.round((pp.balance - apply) * 100) / 100
-      remaining  = Math.round((remaining - apply) * 100) / 100
+    const pp    = openPPs[ppIdx]
+    const apply = Math.min(remaining, pp.balance)
+    pp.balance  = Math.round((pp.balance - apply) * 100) / 100
+    remaining   = Math.round((remaining - apply) * 100) / 100
 
-      await supabaseAdmin.from('planned_payments').update({ balance: pp.balance }).eq('id', pp.id)
-      if (firstLinked) {
-        await supabaseAdmin.from('transactions').update({ planned_payment_id: pp.id }).eq('id', tx.id)
-        firstLinked = false
-      }
+    // קישור התנועה לתשלום הראשון
+    await supabaseAdmin.from('transactions').update({ planned_payment_id: pp.id }).eq('id', tx.id)
 
-      if (remaining > 0) {
-        ppIdx = openPPs.findIndex((p, i) => i > ppIdx && p.balance > 0)
-        if (ppIdx < 0) ppIdx = openPPs.findIndex(p => p.balance > 0)
-      }
-    }
+    // עודף → זיכוי (יוחל בשלב 3 עם תנועה אמיתית)
     leftover += remaining
   }
 
