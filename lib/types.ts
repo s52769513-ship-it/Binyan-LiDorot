@@ -11,6 +11,7 @@ export interface ParentSummary {
   childrenCount: number
   tuitionTotal: number
   tuitionBalance: number
+  overdueBalance: number
 }
 
 export interface StudentDetail {
