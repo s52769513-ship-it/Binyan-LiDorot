@@ -91,39 +91,45 @@ export async function PATCH(
           }
         }
 
-        // ── Adjust offset transactions if old offset > new salary ───────────
+        // ── Adjust offset transactions (both increase and decrease) ──────────
         if (tuitionOffsetTx) {
           const oldOffset = Math.abs(Number(tuitionOffsetTx.amount))
-          if (oldOffset <= newSalary) continue  // offset still valid, nothing to fix
 
-          // Find tuition PP to know original tuition amount
+          // Find tuition PP
           const { data: tuitionPPs } = await supabaseAdmin
             .from('planned_payments').select('id, amount, balance')
             .contains('parent_ids', [id]).eq('month_year', my).eq('pp_type', 'tuition').limit(1)
-          const tuitionPP   = tuitionPPs?.[0]
-          const newOffset   = Math.min(newSalary, tuitionPP ? Number(tuitionPP.amount) : oldOffset)
-          const offsetDelta = oldOffset - newOffset  // positive = amount returned to tuition
+          const tuitionPP = tuitionPPs?.[0]
+
+          // Undo old offset to get real outstanding, then recalculate: min(salary, outstanding)
+          const effectiveTuition = tuitionPP
+            ? Number(tuitionPP.balance) + oldOffset
+            : oldOffset
+          const newOffset   = Math.min(newSalary, effectiveTuition)
+          const offsetDelta = newOffset - oldOffset  // positive = more offset, negative = less
+
+          if (offsetDelta === 0) continue  // nothing changed
 
           // Update tuition-side offset tx
           await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', tuitionOffsetTx.id)
 
-          // Restore delta to tuition PP balance
+          // More offset → tuition balance decreases; less offset → balance increases
           if (tuitionPP) {
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: Number(tuitionPP.balance) + offsetDelta })
+              .update({ balance: Math.max(0, Number(tuitionPP.balance) - offsetDelta) })
               .eq('id', tuitionPP.id)
           }
 
-          // Restore delta to parent tuition_balance
+          // Update parent tuition_balance accordingly
           const { data: parentRow } = await supabaseAdmin
             .from('parents').select('tuition_balance').eq('id', id).single()
           if (parentRow) {
             await supabaseAdmin.from('parents')
-              .update({ tuition_balance: (Number(parentRow.tuition_balance) || 0) + offsetDelta })
+              .update({ tuition_balance: Math.max(0, (Number(parentRow.tuition_balance) || 0) - offsetDelta) })
               .eq('id', id)
           }
 
-          // Update salary-side offset tx + salary PP balance
+          // Update salary-side offset tx
           if (salaryOffsetTx) {
             await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', salaryOffsetTx.id)
             if (salaryOffsetTx.planned_payment_id) {

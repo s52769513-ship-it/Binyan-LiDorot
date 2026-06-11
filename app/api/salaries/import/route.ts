@@ -36,9 +36,13 @@ export async function POST(req: NextRequest) {
       const row = rows[i]
       if (!row || row.length === 0) continue
 
-      const parentId      = String(row[COL.id]   || '').trim()
-      const parentName    = String(row[COL.name]  || '').trim()
-      const actualSalary  = Number(row[COL.husbandSalary] || 0)
+      const parentId        = String(row[COL.id]   || '').trim()
+      const parentName      = String(row[COL.name]  || '').trim()
+      const colC            = Number(row[2] || 0)   // husband salary
+      const colD            = Number(row[3] || 0)   // wife salary
+      const colE            = Number(row[4] || 0)   // family total (formula C+D, cached by Excel)
+      // Prefer E (formula result after Excel recalc), fall back to C+D
+      const actualSalary    = colE > 0 ? colE : colC + colD
       if (!parentId || !parentName) continue
 
       // Collect payment method amounts (columns H–L)
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
         if (val > 0) payments.push({ method: PAYMENT_METHODS[j], amount: val })
       }
 
-      // Skip rows with no salary change AND no payments
+      // Skip rows with no salary and no payments
       if (actualSalary === 0 && payments.length === 0) continue
 
       // Find salary PP for this parent + month
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
       // Track current PP balance (may be updated if salary changed)
       let currentPPBalance = Number(pp?.balance ?? 0)
 
-      // If Excel salary differs from PP amount → update PP amount + recalculate offset
+      // If Excel salary total differs from PP amount → update PP + recalculate offset
       if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.amount)) {
         const salaryDelta  = actualSalary - Number(pp.amount)
         currentPPBalance   = Math.max(0, currentPPBalance + salaryDelta)
@@ -73,7 +77,7 @@ export async function POST(req: NextRequest) {
           .update({ amount: actualSalary, balance: currentPPBalance })
           .eq('id', pp.id)
 
-        // Fetch existing offset transactions and tuition PP for this month
+        // Fetch existing offset txs and tuition PP in parallel
         const [{ data: salaryOffsetTxs }, { data: tuitionPPs }] = await Promise.all([
           supabaseAdmin.from('transactions')
             .select('id, amount')
@@ -91,9 +95,10 @@ export async function POST(req: NextRequest) {
         const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
         if (tuitionPP && oldOffset > 0) {
-          // New offset = min(new salary, tuition PP amount)
-          const newOffset  = Math.min(actualSalary, Number(tuitionPP.amount))
-          const offsetDelta = newOffset - oldOffset  // positive = increase, negative = decrease
+          // Undo old offset to get the real outstanding tuition, then recalculate
+          const effectiveTuition = Number(tuitionPP.balance) + oldOffset
+          const newOffset        = Math.min(actualSalary, effectiveTuition)
+          const offsetDelta      = newOffset - oldOffset  // positive = more offset, negative = less
 
           if (offsetDelta !== 0) {
             // Update ניכוי שכ"ל tx (linked to salary PP)
@@ -114,13 +119,11 @@ export async function POST(req: NextRequest) {
                 .eq('id', tuitionOffsetTxs![0].id)
             }
 
-            // Update tuition PP balance (offset increase → balance decreases)
-            const newTuitionBalance = Math.max(0, Number(tuitionPP.balance) - offsetDelta)
+            // More offset → tuition balance decreases; less offset → balance increases
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: newTuitionBalance })
+              .update({ balance: Math.max(0, Number(tuitionPP.balance) - offsetDelta) })
               .eq('id', tuitionPP.id)
 
-            // Update parent tuition_balance
             const { data: par } = await supabaseAdmin.from('parents')
               .select('tuition_balance').eq('id', parentId).single()
             if (par) {
