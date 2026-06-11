@@ -1287,7 +1287,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
                           onClick={async () => {
                             setSavingSettings(true)
                             try {
-                              await patch(settingsDraft)
+                              const hourly = (Number(settingsDraft.baseHourlyRate) || 0) + (Number(settingsDraft.seniorityBonusHourly) || 0)
+                              const computed = hourly * (Number(settingsDraft.monthlyHoursDecimal) || 0)
+                                + (Number(settingsDraft.fixedBonus) || 0)
+                                + (Number(settingsDraft.exceptionalExpenses) || 0)
+                                + (Number(settingsDraft.transportReimbursement) || 0)
+                              await patch({ ...settingsDraft, salaryGross: computed })
                               setEditingSettings(false)
                             } finally { setSavingSettings(false) }
                           }}
