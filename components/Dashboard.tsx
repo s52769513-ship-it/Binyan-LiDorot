@@ -40,6 +40,11 @@ interface DashboardData {
   ppCreditList: { id: string; name: string; ppCredit: number }[]
   overdueAlerts: { id: string; parentId: string; parentName: string; balance: number; date: string; monthYear: string }[]
   salaryAlerts: { parentId: string; parentName: string; balance: number; monthYear: string }[]
+  activeStudents?: number
+  activeFamilies?: number
+  employeesCount?: number
+  salaryPaidThisMonth?: number
+  netThisMonth?: number
 }
 
 interface CashflowMonth {
@@ -520,6 +525,34 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               )
             })}
           </tbody>
+          {/* Totals footer */}
+          {(() => {
+            const tot = data.reduce((acc, r) => ({
+              tp: acc.tp + r.tuition.planned,   tc: acc.tc + r.tuition.collected, tr: acc.tr + r.tuition.remaining,
+              sp: acc.sp + r.salary.planned,    spd: acc.spd + r.salary.paid,     sr: acc.sr + r.salary.remaining,
+              net: acc.net + r.net,
+            }), { tp: 0, tc: 0, tr: 0, sp: 0, spd: 0, sr: 0, net: 0 })
+            const pct = tot.tp > 0 ? Math.round((tot.tc / tot.tp) * 100) : 0
+            return (
+              <tfoot>
+                <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold text-gray-800">
+                  <td className="px-3 py-2 whitespace-nowrap">סה״כ</td>
+                  <td className="px-2 py-2 text-center tabular-nums">₪{fmt(tot.tp)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums text-emerald-700">₪{fmt(tot.tc)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums text-amber-700">₪{fmt(tot.tr)}</td>
+                  <td className="px-2 py-2 text-center border-r border-gray-200">
+                    <span className="text-[10px] px-1 py-0.5 rounded-full bg-white border border-gray-200">{pct}%</span>
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums">₪{fmt(tot.sp)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums text-red-600">₪{fmt(tot.spd)}</td>
+                  <td className="px-2 py-2 text-center tabular-nums border-r border-gray-200 text-amber-700">₪{fmt(tot.sr)}</td>
+                  <td className={`px-3 py-2 text-center tabular-nums ${tot.net >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {tot.net >= 0 ? '+' : '−'}₪{fmt(Math.abs(tot.net))}
+                  </td>
+                </tr>
+              </tfoot>
+            )
+          })()}
         </table>
       </div>
     </div>
@@ -704,6 +737,31 @@ export default function Dashboard() {
       {/* ── CURRENT MONTH VIEW ── */}
       {view === 'current' && (
         <>
+          {/* Quick stats strip */}
+          {!loading && d && (
+            <div className="flex items-center gap-4 flex-wrap bg-white rounded-lg border border-gray-200 px-3 py-2 text-xs">
+              <span className="flex items-center gap-1.5 text-gray-600">
+                <span>👨‍👩‍👧‍👦</span>
+                <b className="tabular-nums">{d.activeFamilies ?? 0}</b> משפחות פעילות
+              </span>
+              <span className="flex items-center gap-1.5 text-gray-600">
+                <span>🎒</span>
+                <b className="tabular-nums">{d.activeStudents ?? 0}</b> תלמידים
+              </span>
+              <span className="flex items-center gap-1.5 text-gray-600">
+                <span>💼</span>
+                <b className="tabular-nums">{d.employeesCount ?? 0}</b> מקבלי משכורת
+              </span>
+              <span className="mr-auto flex items-center gap-1.5">
+                <span className="text-gray-400">נטו החודש:</span>
+                <b className={`tabular-nums ${(d.netThisMonth ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  {(d.netThisMonth ?? 0) >= 0 ? '+' : '−'}₪{fmt(d.netThisMonth ?? 0)}
+                </b>
+                <span className="text-[10px] text-gray-400">(נגבה − משכורות ששולמו)</span>
+              </span>
+            </div>
+          )}
+
           {/* KPI row — 6 cards in 3×2 grid */}
           <div className="grid grid-cols-3 gap-2">
             {loading ? [1,2,3,4,5,6].map(i => <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />) : (
