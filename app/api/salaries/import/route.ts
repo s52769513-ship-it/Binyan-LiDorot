@@ -77,11 +77,20 @@ export async function POST(req: NextRequest) {
           .update({ amount: actualSalary, balance: currentPPBalance })
           .eq('id', pp.id)
 
-        // Fetch existing offset txs and tuition PP in parallel
-        const [{ data: salaryOffsetTxs }, { data: tuitionPPs }] = await Promise.all([
+        // Fetch tuition-side offset, salary-side offset, and tuition PP in parallel
+        // Search by parent_ids+month_year (not planned_payment_id) to reliably find the transactions
+        const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: tuitionPPs }] = await Promise.all([
+          // Tuition-side offset (קיזוז שכ"ל / קיזוז ממשכורת) — authoritative source of old offset amount
           supabaseAdmin.from('transactions')
             .select('id, amount')
-            .eq('planned_payment_id', pp.id)
+            .contains('parent_ids', [parentId])
+            .eq('month_year', monthYear)
+            .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']),
+          // Salary-side offset (ניכוי שכ"ל)
+          supabaseAdmin.from('transactions')
+            .select('id, amount')
+            .contains('parent_ids', [parentId])
+            .eq('month_year', monthYear)
             .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל']),
           supabaseAdmin.from('planned_payments')
             .select('id, amount, balance')
@@ -92,32 +101,32 @@ export async function POST(req: NextRequest) {
         ])
 
         const tuitionPP = tuitionPPs?.[0]
-        const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+        // Derive oldOffset from tuition-side transactions (authoritative source)
+        const oldOffset = (tuitionOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
         if (tuitionPP && oldOffset > 0) {
-          // Undo old offset to get the real outstanding tuition, then recalculate
           const effectiveTuition = Number(tuitionPP.balance) + oldOffset
           const newOffset        = Math.min(actualSalary, effectiveTuition)
-          const offsetDelta      = newOffset - oldOffset  // positive = more offset, negative = less
+          const offsetDelta      = newOffset - oldOffset
 
           if (offsetDelta !== 0) {
-            // Update ניכוי שכ"ל tx (linked to salary PP)
-            await supabaseAdmin.from('transactions')
-              .update({ amount: newOffset })
-              .eq('id', (salaryOffsetTxs ?? [])[0].id)
-
-            // Update קיזוז שכ"ל tx (linked to tuition PP)
-            const { data: tuitionOffsetTxs } = await supabaseAdmin
-              .from('transactions')
-              .select('id, amount')
-              .contains('parent_ids', [parentId])
-              .eq('month_year', monthYear)
-              .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
+            // Update tuition-side offset tx (קיזוז שכ"ל / קיזוז ממשכורת)
             if ((tuitionOffsetTxs ?? []).length > 0) {
               await supabaseAdmin.from('transactions')
                 .update({ amount: newOffset })
                 .eq('id', tuitionOffsetTxs![0].id)
             }
+            // Update salary-side offset tx (ניכוי שכ"ל)
+            if ((salaryOffsetTxs ?? []).length > 0) {
+              await supabaseAdmin.from('transactions')
+                .update({ amount: newOffset })
+                .eq('id', salaryOffsetTxs![0].id)
+            }
+            // Adjust salary PP balance: more offset → less remaining to pay
+            currentPPBalance -= offsetDelta
+            await supabaseAdmin.from('planned_payments')
+              .update({ balance: currentPPBalance })
+              .eq('id', pp.id)
 
             // More offset → tuition balance decreases; less offset → balance increases
             await supabaseAdmin.from('planned_payments')
