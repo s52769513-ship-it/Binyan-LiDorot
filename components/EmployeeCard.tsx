@@ -1140,16 +1140,16 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
 
                       {/* ── תשלומים ששולמו ── */}
                       {(() => {
+                        // Only show salary-side transactions here.
+                        // Tuition-side offsets ('קיזוז שכ"ל', 'קיזוז ממשכורת') belong in the payments tab.
                         const salaryTxs = transactions.filter(t =>
                           (t.projectNames ?? []).includes('משכורת') ||
                           t.type === 'קיזוז משכר לימוד' ||
-                          t.type === 'קיזוז ממשכורת' ||
-                          t.type === 'ניכוי שכ"ל' ||
-                          t.type === 'קיזוז שכ"ל'
+                          t.type === 'ניכוי שכ"ל'
                         )
                         if (salaryTxs.length === 0) return null
                         const months = [...new Set(salaryTxs.map(t => t.monthYear).filter(Boolean))].sort().reverse()
-                        const OFFSET_TYPES = ['קיזוז משכר לימוד', 'קיזוז ממשכורת', 'ניכוי שכ"ל', 'קיזוז שכ"ל']
+                        const OFFSET_TYPES = ['קיזוז משכר לימוד', 'ניכוי שכ"ל']
                         return (
                           <SectionCard title="תשלומי משכורת ששולמו">
                             <div className="divide-y divide-gray-100">

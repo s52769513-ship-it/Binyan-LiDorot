@@ -96,6 +96,21 @@ export async function POST(req: NextRequest) {
             ...(so.linked_parent_id && so.linked_parent_id !== so.parent_id ? [so.linked_parent_id] : []),
           ].filter(Boolean) as string[]))
 
+          // Idempotency: skip if a credit transaction already exists for this SO + month
+          const { data: existingCreditTx } = await supabaseAdmin
+            .from('transactions')
+            .select('id')
+            .contains('parent_ids', payerParentIds.slice(0, 1))
+            .eq('month_year', pp.month_year)
+            .eq('type', 'זיכוי שכ"ל')
+            .ilike('notes', `%${so.external_id}%`)
+            .limit(1)
+          if ((existingCreditTx ?? []).length > 0) {
+            e({ type: 'progress', parentName: so.external_id, skipped: true, reason: 'זיכוי כבר קיים לחודש זה' })
+            actions.push({ externalId: so.external_id, creditBalance, skipped: true, reason: 'זיכוי כבר קיים לחודש זה' })
+            continue
+          }
+
           e({ type: 'progress', parentName: so.external_id, creditBalance, ppBalance, offset, skipped: false })
 
           if (!dryRun) {

@@ -199,7 +199,7 @@ export async function GET(
           .select('*')
           .contains('parent_ids', [id])
           .order('date', { ascending: false })
-          .limit(30),
+          .limit(150),
         supabaseAdmin.from('classes').select('class_name, framework'),
         supabaseAdmin.from('women').select('*').contains('parent_ids', [id]),
         supabaseAdmin

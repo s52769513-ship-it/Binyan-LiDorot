@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const { data: s } = await supabaseAdmin
     .from('institution_settings')
-    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_time, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_time, salary_pp_enabled')
+    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_time, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_time, salary_pp_enabled, credit_offset_day, credit_offset_hour, credit_offset_time, credit_offset_enabled')
     .limit(1)
     .single()
 
@@ -76,6 +76,27 @@ export async function GET(req: NextRequest) {
     results.salaryPP = { skipped: true, reason: !spOn ? 'disabled' : `day ${spDay} ≠ ${todayDate}` }
   }
 
+  // קיזוז זיכויי אשראי
+  const coDay = Number(s?.credit_offset_day ?? 2)
+  const coOn  = s?.credit_offset_enabled !== false
+
+  if (coOn && todayDate === coDay && matchTime(s?.credit_offset_time, Number(s?.credit_offset_hour ?? 8))) {
+    try {
+      const r    = await fetch(`${base}/api/automations/credit-offset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false, monthYear: currentMY }),
+      })
+      const text = await r.text()
+      const done = text.trim().split('\n')
+        .map(l => { try { return JSON.parse(l) } catch { return null } })
+        .find((l: { type?: string } | null) => l?.type === 'complete')
+      results.creditOffset = done ?? { raw: text.slice(0, 200) }
+    } catch (err) { results.creditOffset = { error: String(err) } }
+  } else {
+    results.creditOffset = { skipped: true, reason: !coOn ? 'disabled' : `day ${coDay} ≠ ${todayDate}` }
+  }
+
   try {
     await supabaseAdmin.from('automation_logs').insert({
       id:            crypto.randomUUID(),
@@ -86,7 +107,7 @@ export async function GET(req: NextRequest) {
       parent_name:   null,
       actions_count: 0,
       status:        'success',
-      summary:       `Cron יומי — קיזוז ${currentMY} (יום ${toDay}) · משכורת ${prevMY} (יום ${spDay})`,
+      summary:       `Cron יומי — קיזוז ${currentMY} (יום ${toDay}) · משכורת ${prevMY} (יום ${spDay}) · אשראי (יום ${coDay})`,
       details:       { todayDate, todayHour, todayMin, ...results },
     })
   } catch { /* best effort */ }
