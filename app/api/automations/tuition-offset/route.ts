@@ -11,6 +11,7 @@ export async function GET(_req: NextRequest) {
       .from('parents')
       .select('id, name, salary_gross')
       .gt('salary_gross', 0)
+      .eq('deduct_tuition', true)
       .order('name')
     return Response.json(data ?? [])
   } catch (err) {
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
           .from('parents')
           .select('id, name, salary_gross, tuition_balance')
           .gt('salary_gross', 0)
+          .eq('deduct_tuition', true)
         if (parentId) q = q.eq('id', parentId)
         const { data: parents } = await q
 
