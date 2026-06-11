@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
         const val = Number(row[COL.payStart + j] || 0)
         if (val > 0) payments.push({ method: PAYMENT_METHODS[j], amount: val })
       }
-      if (payments.length === 0) continue
+
+      // Skip rows with no salary change AND no payments
+      if (actualSalary === 0 && payments.length === 0) continue
 
       // Find salary PP for this parent + month
       const { data: pps } = await supabaseAdmin
@@ -132,34 +134,36 @@ export async function POST(req: NextRequest) {
 
       const txIds: string[] = []
 
-      for (const { method, amount } of payments) {
-        const txId = crypto.randomUUID()
-        if (!dryRun) {
-          await supabaseAdmin.from('transactions').insert({
-            id:                 txId,
-            amount,
-            type:               method,
-            date:               today,
-            month_year:         monthYear,
-            notes:              `משכורת ${monthYear}`,
-            parent_ids:         [parentId],
-            project_ids:        [],
-            project_names:      ['משכורת'],
-            planned_payment_id: pp?.id ?? null,
-            synced_at:          '2099-12-31T23:59:59.999Z',
-          })
+      if (payments.length > 0) {
+        for (const { method, amount } of payments) {
+          const txId = crypto.randomUUID()
+          if (!dryRun) {
+            await supabaseAdmin.from('transactions').insert({
+              id:                 txId,
+              amount,
+              type:               method,
+              date:               today,
+              month_year:         monthYear,
+              notes:              `משכורת ${monthYear}`,
+              parent_ids:         [parentId],
+              project_ids:        [],
+              project_names:      ['משכורת'],
+              planned_payment_id: pp?.id ?? null,
+              synced_at:          '2099-12-31T23:59:59.999Z',
+            })
+          }
+          txIds.push(txId)
+          totalCreated++
         }
-        txIds.push(txId)
-        totalCreated++
-      }
 
-      // Update PP balance once after all payment methods are processed
-      if (!dryRun && pp) {
-        const allAmounts = payments.reduce((s, p) => s + p.amount, 0)
-        await supabaseAdmin
-          .from('planned_payments')
-          .update({ balance: Math.max(0, currentPPBalance - allAmounts) })
-          .eq('id', pp.id)
+        // Update PP balance once after all payment methods are processed
+        if (!dryRun && pp) {
+          const allAmounts = payments.reduce((s, p) => s + p.amount, 0)
+          await supabaseAdmin
+            .from('planned_payments')
+            .update({ balance: Math.max(0, currentPPBalance - allAmounts) })
+            .eq('id', pp.id)
+        }
       }
 
       const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
