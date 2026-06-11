@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       // If Excel salary total differs from PP amount → update PP + recalculate offset
       if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.amount)) {
         const salaryDelta  = actualSalary - Number(pp.amount)
-        currentPPBalance   = Math.max(0, currentPPBalance + salaryDelta)
+        currentPPBalance   = currentPPBalance + salaryDelta
         await supabaseAdmin.from('planned_payments')
           .update({ amount: actualSalary, balance: currentPPBalance })
           .eq('id', pp.id)
@@ -121,14 +121,14 @@ export async function POST(req: NextRequest) {
 
             // More offset → tuition balance decreases; less offset → balance increases
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: Math.max(0, Number(tuitionPP.balance) - offsetDelta) })
+              .update({ balance: Number(tuitionPP.balance) - offsetDelta })
               .eq('id', tuitionPP.id)
 
             const { data: par } = await supabaseAdmin.from('parents')
               .select('tuition_balance').eq('id', parentId).single()
             if (par) {
               await supabaseAdmin.from('parents')
-                .update({ tuition_balance: Math.max(0, Number(par.tuition_balance) - offsetDelta) })
+                .update({ tuition_balance: Number(par.tuition_balance) - offsetDelta })
                 .eq('id', parentId)
             }
           }
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
           const allAmounts = payments.reduce((s, p) => s + p.amount, 0)
           await supabaseAdmin
             .from('planned_payments')
-            .update({ balance: Math.max(0, currentPPBalance - allAmounts) })
+            .update({ balance: currentPPBalance - allAmounts })
             .eq('id', pp.id)
         }
       }

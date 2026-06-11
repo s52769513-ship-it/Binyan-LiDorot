@@ -86,7 +86,7 @@ export async function PATCH(
           if (amountDelta !== 0) {
             await supabaseAdmin.from('planned_payments').update({
               amount:  newSalary,
-              balance: Math.max(0, Number(salaryPP.balance) + amountDelta),
+              balance: Number(salaryPP.balance) + amountDelta,
             }).eq('id', salaryPP.id)
           }
         }
@@ -116,7 +116,7 @@ export async function PATCH(
           // More offset → tuition balance decreases; less offset → balance increases
           if (tuitionPP) {
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: Math.max(0, Number(tuitionPP.balance) - offsetDelta) })
+              .update({ balance: Number(tuitionPP.balance) - offsetDelta })
               .eq('id', tuitionPP.id)
           }
 
@@ -125,7 +125,7 @@ export async function PATCH(
             .from('parents').select('tuition_balance').eq('id', id).single()
           if (parentRow) {
             await supabaseAdmin.from('parents')
-              .update({ tuition_balance: Math.max(0, (Number(parentRow.tuition_balance) || 0) - offsetDelta) })
+              .update({ tuition_balance: (Number(parentRow.tuition_balance) || 0) - offsetDelta })
               .eq('id', id)
           }
 
@@ -137,7 +137,7 @@ export async function PATCH(
                 .from('planned_payments').select('balance').eq('id', salaryOffsetTx.planned_payment_id).single()
               if (spp) {
                 await supabaseAdmin.from('planned_payments')
-                  .update({ balance: Math.max(0, Number(spp.balance) + offsetDelta) })
+                  .update({ balance: Number(spp.balance) + offsetDelta })
                   .eq('id', salaryOffsetTx.planned_payment_id)
               }
             }
