@@ -85,6 +85,20 @@ export async function POST(req: NextRequest) {
             continue
           }
 
+          // Idempotency: skip if an offset tx already exists for this parent+month
+          const { data: existingOffsets } = await supabaseAdmin
+            .from('transactions')
+            .select('id')
+            .contains('parent_ids', [parent.id])
+            .eq('month_year', targetMY)
+            .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
+            .limit(1)
+          if ((existingOffsets ?? []).length > 0) {
+            e({ type: 'progress', parentName: parent.name, skipped: true, reason: 'קיזוז כבר קיים לחודש זה' })
+            actions.push({ parentId: parent.id, parentName: parent.name, skipped: true, reason: 'קיזוז כבר קיים לחודש זה' })
+            continue
+          }
+
           const tuitionBalance = Number(pp.balance)
           const offset = Math.min(salary, tuitionBalance)
 
@@ -113,11 +127,49 @@ export async function POST(req: NextRequest) {
               synced_at:          '2099-12-31T23:59:59.999Z',
             })
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: Math.max(0, tuitionBalance - offset) })
+              .update({ balance: tuitionBalance - offset })
               .eq('id', pp.id)
             await supabaseAdmin.from('parents')
-              .update({ tuition_balance: Math.max(0, (Number(parent.tuition_balance) || 0) - offset) })
+              .update({ tuition_balance: (Number(parent.tuition_balance) || 0) - offset })
               .eq('id', parent.id)
+
+            // Mirror on salary side: if a salary PP exists for this month,
+            // record the ניכוי שכ"ל tx and reduce its balance (same single payment, two sides)
+            const { data: salaryPPs } = await supabaseAdmin
+              .from('planned_payments')
+              .select('id, balance')
+              .contains('parent_ids', [parent.id])
+              .eq('month_year', targetMY)
+              .eq('pp_type', 'salary')
+              .limit(1)
+            const salaryPP = salaryPPs?.[0]
+            if (salaryPP) {
+              const { data: existingDeduct } = await supabaseAdmin
+                .from('transactions')
+                .select('id')
+                .contains('parent_ids', [parent.id])
+                .eq('month_year', targetMY)
+                .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל'])
+                .limit(1)
+              if ((existingDeduct ?? []).length === 0) {
+                await supabaseAdmin.from('transactions').insert({
+                  id:                 crypto.randomUUID(),
+                  amount:             offset,
+                  planned_payment_id: salaryPP.id,
+                  parent_ids:         [parent.id],
+                  date:               today.toISOString().split('T')[0],
+                  month_year:         targetMY,
+                  notes:              `ניכוי שכ"ל ₪${offset}`,
+                  type:               'ניכוי שכ"ל',
+                  project_ids:        [],
+                  project_names:      [],
+                  synced_at:          '2099-12-31T23:59:59.999Z',
+                })
+                await supabaseAdmin.from('planned_payments')
+                  .update({ balance: Number(salaryPP.balance) - offset })
+                  .eq('id', salaryPP.id)
+              }
+            }
           }
 
           totalOffset += offset

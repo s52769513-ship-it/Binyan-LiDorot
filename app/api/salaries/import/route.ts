@@ -109,24 +109,11 @@ export async function POST(req: NextRequest) {
           const newOffset        = Math.min(actualSalary, effectiveTuition)
           const offsetDelta      = newOffset - oldOffset
 
+          // ── Tuition side: update קיזוז שכ"ל tx + tuition PP + parent balance ──
           if (offsetDelta !== 0) {
-            // Update tuition-side offset tx (קיזוז שכ"ל / קיזוז ממשכורת)
-            if ((tuitionOffsetTxs ?? []).length > 0) {
-              await supabaseAdmin.from('transactions')
-                .update({ amount: newOffset })
-                .eq('id', tuitionOffsetTxs![0].id)
-            }
-            // Update salary-side offset tx (ניכוי שכ"ל)
-            if ((salaryOffsetTxs ?? []).length > 0) {
-              await supabaseAdmin.from('transactions')
-                .update({ amount: newOffset })
-                .eq('id', salaryOffsetTxs![0].id)
-            }
-            // Adjust salary PP balance to reflect changed offset
-            currentPPBalance -= offsetDelta
-            await supabaseAdmin.from('planned_payments')
-              .update({ balance: currentPPBalance })
-              .eq('id', pp.id)
+            await supabaseAdmin.from('transactions')
+              .update({ amount: newOffset })
+              .eq('id', tuitionOffsetTxs![0].id)
 
             // More offset → tuition balance decreases; less offset → balance increases
             await supabaseAdmin.from('planned_payments')
@@ -140,6 +127,40 @@ export async function POST(req: NextRequest) {
                 .update({ tuition_balance: Number(par.tuition_balance) - offsetDelta })
                 .eq('id', parentId)
             }
+          }
+
+          // ── Salary side: update ניכוי שכ"ל tx, or create it if missing ──
+          const salaryDeductTx = (salaryOffsetTxs ?? [])[0]
+          if (salaryDeductTx) {
+            if (offsetDelta !== 0) {
+              await supabaseAdmin.from('transactions')
+                .update({ amount: newOffset })
+                .eq('id', salaryDeductTx.id)
+              currentPPBalance -= offsetDelta
+              await supabaseAdmin.from('planned_payments')
+                .update({ balance: currentPPBalance })
+                .eq('id', pp.id)
+            }
+          } else {
+            // ניכוי שכ"ל was never created — the salary PP balance doesn't yet
+            // reflect the offset at all, so create the tx and apply the full amount
+            await supabaseAdmin.from('transactions').insert({
+              id:                 crypto.randomUUID(),
+              amount:             newOffset,
+              planned_payment_id: pp.id,
+              parent_ids:         [parentId],
+              date:               today,
+              month_year:         monthYear,
+              notes:              `ניכוי שכ"ל ₪${newOffset}`,
+              type:               'ניכוי שכ"ל',
+              project_ids:        [],
+              project_names:      [],
+              synced_at:          '2099-12-31T23:59:59.999Z',
+            })
+            currentPPBalance -= newOffset
+            await supabaseAdmin.from('planned_payments')
+              .update({ balance: currentPPBalance })
+              .eq('id', pp.id)
           }
         }
       }

@@ -129,17 +129,40 @@ export async function PATCH(
               .eq('id', id)
           }
 
-          // Update salary-side offset tx
+          // Update salary-side offset tx (more offset → salary PP balance decreases)
           if (salaryOffsetTx) {
             await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', salaryOffsetTx.id)
-            if (salaryOffsetTx.planned_payment_id) {
+            const sppId = salaryOffsetTx.planned_payment_id ?? salaryPP?.id
+            if (sppId) {
               const { data: spp } = await supabaseAdmin
-                .from('planned_payments').select('balance').eq('id', salaryOffsetTx.planned_payment_id).single()
+                .from('planned_payments').select('balance').eq('id', sppId).single()
               if (spp) {
                 await supabaseAdmin.from('planned_payments')
-                  .update({ balance: Number(spp.balance) + offsetDelta })
-                  .eq('id', salaryOffsetTx.planned_payment_id)
+                  .update({ balance: Number(spp.balance) - offsetDelta })
+                  .eq('id', sppId)
               }
+            }
+          } else if (salaryPP) {
+            // ניכוי שכ"ל was never created — create it and apply the full offset
+            await supabaseAdmin.from('transactions').insert({
+              id:                 crypto.randomUUID(),
+              amount:             newOffset,
+              planned_payment_id: salaryPP.id,
+              parent_ids:         [id],
+              date:               today.toISOString().split('T')[0],
+              month_year:         my,
+              notes:              `ניכוי שכ"ל ₪${newOffset}`,
+              type:               'ניכוי שכ"ל',
+              project_ids:        [],
+              project_names:      [],
+              synced_at:          '2099-12-31T23:59:59.999Z',
+            })
+            const { data: spp } = await supabaseAdmin
+              .from('planned_payments').select('balance').eq('id', salaryPP.id).single()
+            if (spp) {
+              await supabaseAdmin.from('planned_payments')
+                .update({ balance: Number(spp.balance) - newOffset })
+                .eq('id', salaryPP.id)
             }
           }
         }

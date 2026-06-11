@@ -142,24 +142,34 @@ export async function POST(req: NextRequest) {
             const offsetTotal = (offsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
             if (offsetTotal > 0 && ppId && !dryRun) {
-              await supabaseAdmin.from('transactions').insert({
-                id:                 crypto.randomUUID(),
-                amount:             offsetTotal,
-                planned_payment_id: ppId,
-                parent_ids:         [parent.id],
-                date:               today.toISOString().split('T')[0],
-                month_year:         targetMY,
-                notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
-                type:               'ניכוי שכ"ל',
-                project_ids:        [],
-                project_names:      [],
-                synced_at:          '2099-12-31T23:59:59.999Z',
-              })
-              const currentBalance = existingPP ? Number(existingPP.balance) : salary
-              await supabaseAdmin.from('planned_payments')
-                .update({ balance: Math.max(0, currentBalance - offsetTotal) })
-                .eq('id', ppId)
-              totalOffset += offsetTotal
+              // Idempotency: skip if a ניכוי שכ"ל tx already exists for this parent+month
+              const { data: existingDeduct } = await supabaseAdmin
+                .from('transactions')
+                .select('id')
+                .contains('parent_ids', [parent.id])
+                .eq('month_year', targetMY)
+                .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל'])
+                .limit(1)
+              if ((existingDeduct ?? []).length === 0) {
+                await supabaseAdmin.from('transactions').insert({
+                  id:                 crypto.randomUUID(),
+                  amount:             offsetTotal,
+                  planned_payment_id: ppId,
+                  parent_ids:         [parent.id],
+                  date:               today.toISOString().split('T')[0],
+                  month_year:         targetMY,
+                  notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
+                  type:               'ניכוי שכ"ל',
+                  project_ids:        [],
+                  project_names:      [],
+                  synced_at:          '2099-12-31T23:59:59.999Z',
+                })
+                const currentBalance = existingPP ? Number(existingPP.balance) : salary
+                await supabaseAdmin.from('planned_payments')
+                  .update({ balance: currentBalance - offsetTotal })
+                  .eq('id', ppId)
+                totalOffset += offsetTotal
+              }
             }
 
             actions.push({ parentId: parent.id, parentName: parent.name, monthYear: targetMY, salary, ppCreated, ppExists: !!existingPP, offsetFound: offsetTotal, skipped: false })
