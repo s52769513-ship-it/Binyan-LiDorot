@@ -1068,32 +1068,71 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent, onUpdat
 
                       {/* ── תשלומים מתוכננים של משכורת ── */}
                       {salaryPPs_all.length > 0 && (() => {
-                        const salaryOverdue  = salaryPPs_all.filter(isOverdue)
-                        const salaryPending  = salaryPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
-                        const salaryPaid     = salaryPPs_all.filter(pp => pp.balance <= 0)
+                        const salaryOverdue = salaryPPs_all.filter(isOverdue)
+                        const salaryPending = salaryPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
+                        const salaryPaid    = salaryPPs_all.filter(pp => pp.balance <= 0)
                         return (
                           <SectionCard title="תשלומים מתוכננים - משכורת">
-                            <div className="divide-y divide-gray-50">
-                              {[...salaryOverdue, ...salaryPending].map(pp => (
-                                <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                                  className={`w-full text-right flex justify-between items-center px-4 py-2.5 hover:bg-gray-50 transition-colors ${isOverdue(pp) ? 'bg-red-50' : ''}`}>
-                                  <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>{fmt(pp.balance)}</span>
-                                  <div className="text-right">
-                                    <p className="text-xs text-gray-500">{pp.monthYear}</p>
-                                    {isOverdue(pp) && <p className="text-[10px] text-red-400">⚠ באיחור</p>}
-                                  </div>
-                                </button>
-                              ))}
-                              {salaryPaid.map(pp => (
-                                <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                                  className="w-full text-right flex justify-between items-center px-4 py-2.5 hover:bg-emerald-50 transition-colors">
-                                  <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
-                                  <p className="text-xs text-gray-500">{pp.monthYear}</p>
-                                </button>
-                              ))}
-                              {salaryOverdue.length === 0 && salaryPending.length === 0 && salaryPaid.length === 0 && (
-                                <p className="text-xs text-gray-400 text-center py-3">אין תשלומים</p>
-                              )}
+                            <div className="p-3 grid grid-cols-2 gap-3">
+                              {/* Right: pending/overdue */}
+                              <div>
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                                  ממתין ({salaryOverdue.length + salaryPending.length})
+                                </h4>
+                                <div className="space-y-1.5">
+                                  {[...salaryOverdue, ...salaryPending].map(pp => (
+                                    <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                                      className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                                        isOverdue(pp)
+                                          ? 'bg-red-50 border-red-200 hover:border-red-400'
+                                          : 'bg-white border-gray-200 hover:border-indigo-300'
+                                      }`}>
+                                      <div className="flex justify-between items-center">
+                                        <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                                          {fmt(pp.balance)}
+                                        </span>
+                                        <div className="text-right">
+                                          <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                          {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                            <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                                      {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
+                                    </button>
+                                  ))}
+                                  {salaryOverdue.length === 0 && salaryPending.length === 0 && (
+                                    <p className="text-xs text-gray-400 text-center py-3">אין ממתינים</p>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Left: paid */}
+                              <div>
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                                  שולם ({salaryPaid.length})
+                                </h4>
+                                <div className="space-y-1.5">
+                                  {salaryPaid.map(pp => (
+                                    <button key={pp.id} onClick={() => setSelectedPP(pp)}
+                                      className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                                        <div className="text-right">
+                                          <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                          {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                            <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                                    </button>
+                                  ))}
+                                  {salaryPaid.length === 0 && (
+                                    <p className="text-xs text-gray-400 text-center py-3">אין שולם</p>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </SectionCard>
                         )
