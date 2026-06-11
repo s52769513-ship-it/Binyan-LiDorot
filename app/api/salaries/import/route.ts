@@ -69,18 +69,19 @@ export async function POST(req: NextRequest) {
       // Track current PP balance (may be updated if salary changed)
       let currentPPBalance = Number(pp?.balance ?? 0)
 
-      // If Excel salary total differs from PP amount → update PP + recalculate offset
+      // Step 1: If Excel salary differs from PP amount → update PP amount+balance
       if (!dryRun && pp && actualSalary > 0 && actualSalary !== Number(pp.amount)) {
-        const salaryDelta  = actualSalary - Number(pp.amount)
-        currentPPBalance   = currentPPBalance + salaryDelta
+        const salaryDelta = actualSalary - Number(pp.amount)
+        currentPPBalance  = currentPPBalance + salaryDelta
         await supabaseAdmin.from('planned_payments')
           .update({ amount: actualSalary, balance: currentPPBalance })
           .eq('id', pp.id)
+      }
 
-        // Fetch tuition-side offset, salary-side offset, and tuition PP in parallel
-        // Search by parent_ids+month_year (not planned_payment_id) to reliably find the transactions
+      // Step 2: Always sync offset transactions when salary PP exists (idempotent)
+      if (!dryRun && pp && actualSalary > 0) {
         const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: tuitionPPs }] = await Promise.all([
-          // Tuition-side offset (קיזוז שכ"ל / קיזוז ממשכורת) — authoritative source of old offset amount
+          // Tuition-side offset (קיזוז שכ"ל / קיזוז ממשכורת) — authoritative source of old offset
           supabaseAdmin.from('transactions')
             .select('id, amount')
             .contains('parent_ids', [parentId])
@@ -101,8 +102,7 @@ export async function POST(req: NextRequest) {
         ])
 
         const tuitionPP = tuitionPPs?.[0]
-        // Derive oldOffset from tuition-side transactions (authoritative source)
-        const oldOffset = (tuitionOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+        const oldOffset  = (tuitionOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
         if (tuitionPP && oldOffset > 0) {
           const effectiveTuition = Number(tuitionPP.balance) + oldOffset
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
                 .update({ amount: newOffset })
                 .eq('id', salaryOffsetTxs![0].id)
             }
-            // Adjust salary PP balance: more offset → less remaining to pay
+            // Adjust salary PP balance to reflect changed offset
             currentPPBalance -= offsetDelta
             await supabaseAdmin.from('planned_payments')
               .update({ balance: currentPPBalance })
