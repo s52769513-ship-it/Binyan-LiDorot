@@ -38,21 +38,32 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const [incomeRes, expenseRes, allTxRes] = await Promise.all([
-      supabaseAdmin.from('transactions').select('month_year, amount').gt('amount', 0).in('month_year', months),
-      supabaseAdmin.from('transactions').select('month_year, amount').lt('amount', 0).in('month_year', months),
-      supabaseAdmin.from('transactions').select('type, amount, bank_classification, payment_method').in('month_year', months),
-    ])
+    const { data: allTxs } = await supabaseAdmin
+      .from('transactions')
+      .select('month_year, type, amount, project_names, bank_classification, payment_method')
+      .in('month_year', months)
+    const allTxRes = { data: allTxs }
+
+    // Salary payments are stored as positive amounts (project 'משכורת') —
+    // they are expenses, not income. ניכוי שכ"ל mirrors the tuition-side offset
+    // and belongs on the expense side (double-entry: offset = tuition income + salary expense).
+    const SALARY_SIDE_TYPES = new Set(['ניכוי שכ"ל', 'קיזוז משכר לימוד'])
+    const isSalaryExpense = (r: { type?: string | null; project_names?: unknown }) =>
+      SALARY_SIDE_TYPES.has(String(r.type ?? '')) ||
+      ((r.project_names as string[] | null) ?? []).includes('משכורת')
 
     // Monthly income / expenses
     const incByMonth: Record<string, number> = {}
     const expByMonth: Record<string, number> = {}
     for (const m of months) { incByMonth[m] = 0; expByMonth[m] = 0 }
 
-    for (const r of incomeRes.data ?? [])
-      if (r.month_year in incByMonth) incByMonth[r.month_year] += Number(r.amount) || 0
-    for (const r of expenseRes.data ?? [])
-      if (r.month_year in expByMonth) expByMonth[r.month_year] += Math.abs(Number(r.amount)) || 0
+    for (const r of allTxs ?? []) {
+      if (!(r.month_year in incByMonth)) continue
+      const amount = Number(r.amount) || 0
+      if (amount < 0) expByMonth[r.month_year] += Math.abs(amount)
+      else if (isSalaryExpense(r)) expByMonth[r.month_year] += amount
+      else incByMonth[r.month_year] += amount
+    }
 
     const monthlyData = months.map(m => ({
       month: m,
@@ -70,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     for (const r of allTxRes.data ?? []) {
       const amount = Number(r.amount) || 0
-      if (amount <= 0) continue // only income for breakdowns
+      if (amount <= 0 || isSalaryExpense(r)) continue // only income for breakdowns
 
       const type = String(r.type || 'אחר') || 'אחר'
       const bank = String(r.bank_classification || '') || 'לא מסווג'
