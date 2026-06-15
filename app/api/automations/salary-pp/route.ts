@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
                 })
                 const currentBalance = existingPP ? Number(existingPP.balance) : salary
                 await supabaseAdmin.from('planned_payments')
-                  .update({ balance: currentBalance - offsetTotal })
+                  .update({ balance: Math.max(0, currentBalance - offsetTotal) })
                   .eq('id', ppId)
                 totalOffset += offsetTotal
               }

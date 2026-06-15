@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
               .update({ balance: tuitionBalance - offset })
               .eq('id', pp.id)
             await supabaseAdmin.from('parents')
-              .update({ tuition_balance: (Number(parent.tuition_balance) || 0) - offset })
+              .update({ tuition_balance: Math.max(0, (Number(parent.tuition_balance) || 0) - offset) })
               .eq('id', parent.id)
 
             // Mirror on salary side: if a salary PP exists for this month,
@@ -143,6 +143,9 @@ export async function POST(req: NextRequest) {
               .eq('pp_type', 'salary')
               .limit(1)
             const salaryPP = salaryPPs?.[0]
+            if (!salaryPP) {
+              e({ type: 'log', message: `${parent.name}: אין PP משכורת לחודש ${targetMY} — ניכוי שכ"ל יווצר כאשר salary-pp ירוץ` })
+            }
             if (salaryPP) {
               const { data: existingDeduct } = await supabaseAdmin
                 .from('transactions')
@@ -166,7 +169,7 @@ export async function POST(req: NextRequest) {
                   synced_at:          '2099-12-31T23:59:59.999Z',
                 })
                 await supabaseAdmin.from('planned_payments')
-                  .update({ balance: Number(salaryPP.balance) - offset })
+                  .update({ balance: Math.max(0, Number(salaryPP.balance) - offset) })
                   .eq('id', salaryPP.id)
               }
             }
