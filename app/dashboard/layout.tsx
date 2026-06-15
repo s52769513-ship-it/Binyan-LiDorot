@@ -27,6 +27,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [logoUrl, setLogoUrl]               = useState('')
   const [institutionName, setInstitutionName] = useState('בנין לדורות')
   const [sideW, setSideW]                   = useState(DEFAULT_W)
+  const [navMode, setNavMode]               = useState<'sidebar' | 'topbar'>(() => {
+    if (typeof window === 'undefined') return 'sidebar'
+    return (localStorage.getItem('nav_mode') as 'sidebar' | 'topbar') ?? 'sidebar'
+  })
   const dragging = useRef(false)
   const startX   = useRef(0)
   const startW   = useRef(0)
@@ -41,6 +45,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => {})
   }, [])
 
+  const toggleNavMode = () => {
+    const next = navMode === 'sidebar' ? 'topbar' : 'sidebar'
+    setNavMode(next)
+    localStorage.setItem('nav_mode', next)
+  }
+
   const onMouseDown = (e: React.MouseEvent) => {
     dragging.current = true
     startX.current   = e.clientX
@@ -50,7 +60,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const onMove = (ev: MouseEvent) => {
       if (!dragging.current) return
-      // sidebar is on the right; dragging right = smaller sidebar
       const delta = startX.current - ev.clientX
       setSideW(Math.min(MAX_W, Math.max(MIN_W, startW.current + delta)))
     }
@@ -63,6 +72,69 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup',   onUp)
+  }
+
+  if (navMode === 'topbar') {
+    return (
+      <div className="min-h-screen bg-gray-50" dir="rtl">
+        {/* ── Top bar ── */}
+        <header
+          className="fixed top-0 right-0 left-0 z-30 flex items-center gap-1 px-4 shadow-md select-none overflow-x-auto"
+          style={{ background: 'linear-gradient(90deg, #0d1f52 0%, #1a3a7a 100%)', height: 48 }}
+        >
+          {/* Logo / name */}
+          <div className="flex items-center gap-2 pl-4 border-l border-white/20 shrink-0">
+            {logoUrl && (
+              <img src={logoUrl} alt="לוגו"
+                className="h-7 w-7 object-contain rounded bg-white/10 p-0.5"
+              />
+            )}
+            <span className="text-sm font-bold whitespace-nowrap" style={{ color: '#d4a921' }}>
+              {institutionName}
+            </span>
+          </div>
+
+          {/* Nav links */}
+          <nav className="flex items-center gap-0.5 flex-1 overflow-x-auto">
+            {NAV_LINKS.map(({ href, label }) => {
+              const isActive = href === '/dashboard'
+                ? pathname === '/dashboard'
+                : pathname.startsWith(href)
+              return (
+                <Link key={href} href={href}
+                  className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${
+                    isActive
+                      ? 'text-[#0d1f52] font-bold'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                  style={isActive ? { backgroundColor: '#d4a921' } : {}}
+                >
+                  {label}
+                </Link>
+              )
+            })}
+          </nav>
+
+          {/* Controls */}
+          <div className="flex items-center gap-2 shrink-0 pr-1">
+            <button onClick={toggleNavMode}
+              title="עבור לסרגל צד"
+              className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-colors">
+              ◀ צד
+            </button>
+            <button onClick={() => router.push('/')}
+              className="text-xs px-2 py-1 rounded border transition-colors hover:bg-white/10"
+              style={{ borderColor: '#c9a22740', color: '#c9a227' }}>
+              יציאה
+            </button>
+          </div>
+        </header>
+
+        <main className="min-h-screen py-6 px-4 sm:px-6" style={{ paddingTop: 64 }} dir="rtl">
+          {children}
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -112,8 +184,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
+        {/* Toggle to topbar */}
+        <div className="px-3 pt-2 border-t border-white/10">
+          <button onClick={toggleNavMode}
+            className="w-full text-[10px] px-2 py-1.5 rounded border border-white/20 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors text-right mb-1">
+            ▲ עבור לסרגל עליון
+          </button>
+        </div>
+
         {/* Exit */}
-        <div className="px-3 py-3 border-t border-white/10">
+        <div className="px-3 py-3">
           <button
             onClick={() => router.push('/')}
             className="w-full text-xs px-3 py-1.5 rounded-lg border transition-colors hover:bg-white/10 text-right"

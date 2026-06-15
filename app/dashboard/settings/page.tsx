@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
+import MergeParentsTab from '@/components/MergeParentsModal'
 
-type SettingsTab = 'general' | 'automations'
+type SettingsTab = 'general' | 'automations' | 'merge'
 
 interface Settings {
   institution_name?: string
@@ -261,6 +263,7 @@ function SyncSection() {
 
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
+  const router = useRouter()
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
@@ -325,6 +328,7 @@ export default function SettingsPage() {
         {([
           { key: 'general',     label: 'הגדרות מוסד' },
           { key: 'automations', label: '🤖 אוטומציות' },
+          { key: 'merge',       label: '🔗 איחוד כרטיסים' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -338,6 +342,7 @@ export default function SettingsPage() {
       </div>
 
       {settingsTab === 'automations' && <AutomationsTab />}
+      {settingsTab === 'merge'       && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
@@ -424,6 +429,9 @@ export default function SettingsPage() {
   address TEXT,
   phone TEXT,
   primary_color TEXT DEFAULT '#1a3a7a',
+  automation_day INTEGER DEFAULT 1,
+  automation_hour INTEGER DEFAULT 8,
+  automation_enabled BOOLEAN DEFAULT true,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -432,7 +440,12 @@ INSERT INTO institution_settings (id) VALUES (1);
 ALTER TABLE institution_settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "service_role_all" ON institution_settings
-  FOR ALL TO service_role USING (true) WITH CHECK (true);`}</pre>
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- If the table already exists, run these to add the new columns:
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_day INTEGER DEFAULT 1;
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_hour INTEGER DEFAULT 8;
+-- ALTER TABLE institution_settings ADD COLUMN IF NOT EXISTS automation_enabled BOOLEAN DEFAULT true;`}</pre>
         <p className="text-xs mt-2">את ה-bucket ליצור דרך Storage → New bucket, שם: <strong>institution</strong>, ציבורי ✓</p>
       </div>
       </>}
