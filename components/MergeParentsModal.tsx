@@ -79,7 +79,15 @@ async function fetchParentData(id: string): Promise<ParentData> {
   const soJson  = await soRes.json()
   const stuJson = await stuRes.json()
 
-  const parent: ParentFull = pJson.parent ?? pJson
+  const raw = pJson.parent ?? pJson
+  const parent: ParentFull = {
+    ...raw,
+    first_name:   raw.first_name   ?? raw.firstName,
+    last_name:    raw.last_name    ?? raw.lastName,
+    father_phone: raw.father_phone ?? raw.fatherPhone,
+    mother_phone: raw.mother_phone ?? raw.motherPhone,
+    id_number:    raw.id_number    ?? raw.idNumber,
+  }
 
   const toRecs = (
     arr: unknown[],

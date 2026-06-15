@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 
 /** Returns all months of the current Hebrew year (Tishrei–Elul ≈ Sep–Aug) */
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseAdmin.from('planned_payments').insert({
         id:         crypto.randomUUID(),
         name:       name || 'שכ"ל',
+        pp_type:    'tuition',
         amount:     Number(amount),
         balance:    Number(amount),
         date,
@@ -69,6 +71,10 @@ export async function POST(req: NextRequest) {
       } else {
         created.push(monthYear)
       }
+    }
+
+    if (created.length > 0) {
+      void recalcPPs(parentId).catch(() => {})
     }
 
     return NextResponse.json({ created, skipped })

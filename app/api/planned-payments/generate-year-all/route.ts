@@ -30,7 +30,7 @@ function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
 /** GET — preview: returns what would be created without committing */
 export async function GET(_req: NextRequest) {
   try {
-    const months    = getFutureHebrewYearMonths()
+    const months    = getFullHebrewYearMonths()
     const monthYears = months.map(m => m.monthYear)
 
     // Get all parents that have tuition (i.e. active children)
@@ -88,7 +88,7 @@ export async function GET(_req: NextRequest) {
 /** POST — execute: create all missing planned payments */
 export async function POST(_req: NextRequest) {
   try {
-    const months     = getFutureHebrewYearMonths()
+    const months     = getFullHebrewYearMonths()
     const monthYears = months.map(m => m.monthYear)
 
     const { data: parents } = await supabaseAdmin
@@ -127,6 +127,7 @@ export async function POST(_req: NextRequest) {
         const { error } = await supabaseAdmin.from('planned_payments').insert({
           id:         crypto.randomUUID(),
           name:       'שכ"ל',
+          pp_type:    'tuition',
           amount,
           balance:    amount,
           date,

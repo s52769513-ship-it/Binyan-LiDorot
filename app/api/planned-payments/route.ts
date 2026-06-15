@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 
 export async function GET(req: NextRequest) {
   try {
@@ -88,13 +89,14 @@ export async function PATCH(req: NextRequest) {
 
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('planned_payments')
-      .select('amount, balance')
+      .select('amount, balance, pp_type, parent_ids, month_year')
       .eq('id', id)
       .single()
     if (fetchErr || !existing) throw fetchErr ?? new Error('לא נמצא')
 
     const newAmount = Number(amount)
-    const delta = newAmount - (existing.amount ?? 0)
+    const oldAmount = Number(existing.amount) || 0
+    const delta = newAmount - oldAmount
     const newBalance = Math.max(0, (existing.balance ?? 0) + delta)
 
     const { error } = await supabaseAdmin
@@ -102,6 +104,83 @@ export async function PATCH(req: NextRequest) {
       .update({ amount: newAmount, balance: newBalance })
       .eq('id', id)
     if (error) throw error
+
+    // If this is a salary PP and the amount decreased, recalculate offsets
+    if (existing.pp_type === 'salary' && delta < 0) {
+      try {
+        const parentId = (existing.parent_ids as string[])?.[0]
+        const monthYear = existing.month_year as string
+
+        // Find existing salary-side offset transactions linked to this PP
+        const { data: salaryOffsetTxs } = await supabaseAdmin
+          .from('transactions')
+          .select('id, amount')
+          .eq('planned_payment_id', id)
+          .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל'])
+
+        if ((salaryOffsetTxs ?? []).length > 0 && parentId) {
+          const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+
+          // Find tuition PP for this parent/month to know tuition amount
+          const { data: tuitionPPs } = await supabaseAdmin
+            .from('planned_payments')
+            .select('id, amount, balance')
+            .contains('parent_ids', [parentId])
+            .eq('month_year', monthYear)
+            .eq('pp_type', 'tuition')
+            .limit(1)
+
+          const tuitionPP = tuitionPPs?.[0]
+          const tuitionAmount = tuitionPP ? Number(tuitionPP.amount) : oldOffset
+
+          const newOffset = Math.min(newAmount, tuitionAmount)
+          const offsetDelta = newOffset - oldOffset  // negative = we owe back to tuition
+
+          if (offsetDelta < 0 && tuitionPP) {
+            // Update salary-side offset transaction (take the first one, adjust)
+            const mainTx = (salaryOffsetTxs ?? [])[0]
+            await supabaseAdmin.from('transactions')
+              .update({ amount: Math.max(0, Number(mainTx.amount) + offsetDelta) })
+              .eq('id', mainTx.id)
+
+            // Update tuition-side offset transactions
+            const { data: tuitionOffsetTxs } = await supabaseAdmin
+              .from('transactions')
+              .select('id, amount')
+              .contains('parent_ids', [parentId])
+              .eq('month_year', monthYear)
+              .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
+            if ((tuitionOffsetTxs ?? []).length > 0) {
+              const mainTuitionTx = (tuitionOffsetTxs ?? [])[0]
+              await supabaseAdmin.from('transactions')
+                .update({ amount: Math.max(0, Number(mainTuitionTx.amount) + offsetDelta) })
+                .eq('id', mainTuitionTx.id)
+            }
+
+            // Return difference to tuition PP balance
+            await supabaseAdmin.from('planned_payments')
+              .update({ balance: Math.min(tuitionAmount, Number(tuitionPP.balance) - offsetDelta) })
+              .eq('id', tuitionPP.id)
+
+            // Return difference to parent tuition_balance
+            const { data: par } = await supabaseAdmin.from('parents').select('tuition_balance').eq('id', parentId).single()
+            if (par) {
+              await supabaseAdmin.from('parents')
+                .update({ tuition_balance: Math.max(0, Number(par.tuition_balance) - offsetDelta) })
+                .eq('id', parentId)
+            }
+          }
+        }
+      } catch { /* offset recalc is best-effort */ }
+    }
+
+    // Recalc credits for affected parents when tuition PP changes
+    if (existing.pp_type !== 'salary') {
+      const pids = (existing.parent_ids as string[]) ?? []
+      for (const pid of pids) {
+        void recalcPPs(pid).catch(() => {})
+      }
+    }
 
     return NextResponse.json({ success: true, amount: newAmount, balance: newBalance })
   } catch (err) {
@@ -136,44 +215,10 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
-    // Apply any existing credit from parent
-    try {
-      const parentIdsList = Array.isArray(parentIds) ? parentIds : []
-      for (const parentId of parentIdsList) {
-        const { data: par } = await supabaseAdmin
-          .from('parents')
-          .select('pp_credit')
-          .eq('id', parentId)
-          .single()
-        const credit = par?.pp_credit || 0
-        if (credit > 0) {
-          const applied    = Math.min(credit, Number(amount))
-          const newBalance = Number(amount) - applied
-          const newCredit  = credit - applied
-          await Promise.all([
-            supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', id),
-            supabaseAdmin.from('parents').update({ pp_credit: newCredit }).eq('id', parentId),
-            // Create a visible credit transaction so the balance reduction is explained
-            supabaseAdmin.from('transactions').insert({
-              id:                 crypto.randomUUID(),
-              amount:             applied,
-              planned_payment_id: id,
-              parent_ids:         [parentId],
-              date:               new Date().toISOString().split('T')[0],
-              month_year:         monthYear || '',
-              notes:              'זיכוי עודף שמור',
-              type:               '',
-              project_ids:        [],
-              project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
-            }),
-          ])
-          break
-        }
-      }
-    } catch (creditErr) {
-      console.error('pp credit apply error:', creditErr)
-      // Do not fail the creation — payment was already saved
+    // Apply existing credit_balance to new PP (and recalc tuition_balance)
+    const parentIdsList = Array.isArray(parentIds) ? parentIds : []
+    for (const pid of parentIdsList) {
+      void recalcPPs(pid).catch(() => {})
     }
 
     return NextResponse.json({ success: true, id })
