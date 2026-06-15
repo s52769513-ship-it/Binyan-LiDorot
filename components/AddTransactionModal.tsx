@@ -68,6 +68,12 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
       .catch(() => {})
   }, [])
 
+  // Always include "משכורת" in the list for הוצאה
+  const SALARY_PROJECT = 'משכורת'
+  const displayProjects = direction === 'הוצאה' && !projects.includes(SALARY_PROJECT)
+    ? [SALARY_PROJECT, ...projects]
+    : projects
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (parentRef.current && !parentRef.current.contains(e.target as Node)) setShowParentDrop(false)
@@ -80,14 +86,16 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const effectiveParentId = selectedParent?.id ?? parentId
   useEffect(() => {
     if (plannedPaymentId) return  // already linked from outside
-    if (!effectiveParentId) { setOpenPayments([]); setLinkedPayment(null); return }
+    setLinkedPayment(null)
+    if (!effectiveParentId) { setOpenPayments([]); return }
     setLoadingPayments(true)
-    fetch(`/api/planned-payments?parentId=${encodeURIComponent(effectiveParentId)}&open=true`)
+    const ppType = direction === 'הוצאה' ? 'salary' : 'tuition'
+    fetch(`/api/planned-payments?parentId=${encodeURIComponent(effectiveParentId)}&open=true&ppType=${ppType}&limit=50`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setOpenPayments(d); else setOpenPayments([]) })
       .catch(() => setOpenPayments([]))
       .finally(() => setLoadingPayments(false))
-  }, [effectiveParentId, plannedPaymentId])
+  }, [effectiveParentId, plannedPaymentId, direction])
 
   useEffect(() => {
     if (parentId) return  // pre-linked
@@ -219,11 +227,13 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           {!plannedPaymentId && effectiveParentId && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                קישור לתשלום מתוכנן
+                {direction === 'הוצאה' ? 'קישור ל-PP משכורת (לא חובה)' : 'קישור לתשלום מתוכנן'}
                 {loadingPayments && <span className="text-xs text-gray-400 mr-2">טוען...</span>}
               </label>
               {!loadingPayments && openPayments.length === 0 ? (
-                <p className="text-xs text-gray-400 py-1">אין תשלומים פתוחים להורה זה</p>
+                <p className="text-xs text-gray-400 py-1">
+                  {direction === 'הוצאה' ? 'אין PP משכורת פתוח לחודש זה' : 'אין תשלומים פתוחים להורה זה'}
+                </p>
               ) : (
                 <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-0.5">
                   <button
@@ -283,7 +293,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           {/* Project */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">קטגוריה / פרויקט</label>
-            {projects.length > 0 ? (
+            {displayProjects.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 <button type="button" onClick={() => setProject('')}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
@@ -291,7 +301,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                   }`}>
                   ללא
                 </button>
-                {projects.map(p => (
+                {displayProjects.map(p => (
                   <button key={p} type="button" onClick={() => setProject(p)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                       project === p

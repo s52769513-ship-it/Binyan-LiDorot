@@ -15,18 +15,24 @@ export async function GET() {
 
     if (error) throw error
 
+    const normalize = (raw: string) => {
+      if (raw === 'משכורות') return 'משכורת'
+      if (raw === 'בנין לדורות') return 'בניין לדורות'
+      return raw
+    }
+
     const all = new Set<string>()
     for (const row of data ?? []) {
       for (const raw of (row.project_names as string[]) ?? []) {
-        const name = raw === 'משכורות' ? 'משכורת' : raw
+        const name = normalize(raw)
         if (name) all.add(name)
       }
     }
 
-    // Sort: בנין לדורות first, then alphabetically
+    // Sort: בניין לדורות first, then alphabetically
     const sorted = [...all].sort((a, b) => {
-      if (a === 'בנין לדורות') return -1
-      if (b === 'בנין לדורות') return 1
+      if (a === 'בניין לדורות') return -1
+      if (b === 'בניין לדורות') return 1
       return a.localeCompare(b, 'he')
     })
 
