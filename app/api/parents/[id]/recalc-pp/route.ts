@@ -165,7 +165,7 @@ export async function recalcPPs(parentId: string) {
     .contains('parent_ids', [parentId])
 
   const tuitionBalance = (finalPPs ?? [])
-    .filter(p => p.pp_type !== 'משכורת')
+    .filter(p => p.pp_type !== 'salary')
     .reduce((s, p) => s + Number(p.balance ?? 0), 0)
 
   // מאחד לשדה אחד ומאפס את pp_credit הישן

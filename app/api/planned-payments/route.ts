@@ -175,7 +175,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Recalc credits for affected parents when tuition PP changes
-    if (existing.pp_type !== 'משכורת') {
+    if (existing.pp_type !== 'salary') {
       const pids = (existing.parent_ids as string[]) ?? []
       for (const pid of pids) {
         void recalcPPs(pid).catch(() => {})

@@ -92,7 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .select('balance, pp_type')
         .contains('parent_ids', [parentId])
       const tuitionBalance = (allPPs ?? [])
-        .filter(p => p.pp_type !== 'משכורת')
+        .filter(p => p.pp_type !== 'salary')
         .reduce((s, p) => s + Number(p.balance ?? 0), 0)
       await supabaseAdmin.from('parents').update({ tuition_balance: tuitionBalance }).eq('id', parentId)
     }

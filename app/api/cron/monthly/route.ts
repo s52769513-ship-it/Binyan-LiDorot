@@ -26,19 +26,15 @@ export async function GET(req: NextRequest) {
   const prev      = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const prevMY    = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
 
-  const matchTime = (timeStr: string | null | undefined, fallbackHour: number) => {
-    if (timeStr) {
-      const [h, m] = timeStr.split(':').map(Number)
-      return todayHour === h && todayMin >= m && todayMin < m + 5
-    }
-    return todayHour === fallbackHour
-  }
+  // The Vercel cron fires once per day (vercel.json: "0 6 * * *" → 06:00 UTC),
+  // so the configured hour cannot be honored — we gate on day-of-month only.
+  // The automations are idempotent, so a single run on the matching day is safe.
 
   // קיזוז שכ"ל — רץ לפי ההגדרות של האוטומציה הזו
   const toDay  = Number(s?.tuition_offset_day  ?? 1)
   const toOn   = s?.tuition_offset_enabled !== false
 
-  if (toOn && todayDate === toDay && matchTime(s?.tuition_offset_time, Number(s?.tuition_offset_hour ?? 8))) {
+  if (toOn && todayDate === toDay) {
     try {
       const r    = await fetch(`${base}/api/automations/tuition-offset`, {
         method: 'POST',
@@ -59,7 +55,7 @@ export async function GET(req: NextRequest) {
   const spDay = Number(s?.salary_pp_day ?? 1)
   const spOn  = s?.salary_pp_enabled !== false
 
-  if (spOn && todayDate === spDay && matchTime(s?.salary_pp_time, Number(s?.salary_pp_hour ?? 8))) {
+  if (spOn && todayDate === spDay) {
     try {
       const r    = await fetch(`${base}/api/automations/salary-pp`, {
         method: 'POST',
@@ -80,7 +76,7 @@ export async function GET(req: NextRequest) {
   const coDay = Number(s?.credit_offset_day ?? 2)
   const coOn  = s?.credit_offset_enabled !== false
 
-  if (coOn && todayDate === coDay && matchTime(s?.credit_offset_time, Number(s?.credit_offset_hour ?? 8))) {
+  if (coOn && todayDate === coDay) {
     try {
       const r    = await fetch(`${base}/api/automations/credit-offset`, {
         method: 'POST',
