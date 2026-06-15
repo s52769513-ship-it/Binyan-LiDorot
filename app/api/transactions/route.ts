@@ -52,12 +52,32 @@ export async function GET(req: NextRequest) {
       })))
     }
 
-    const page    = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
-    const search  = searchParams.get('search') ?? ''   // parent name search
-    const month   = searchParams.get('month') ?? ''
-    const type    = searchParams.get('type') ?? ''
-    const project = searchParams.get('project') ?? ''
-    const dir     = searchParams.get('dir') ?? 'desc'
+    const page      = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
+    const search    = searchParams.get('search') ?? ''   // parent name search
+    const parentId  = searchParams.get('parentId') ?? ''
+    const month     = searchParams.get('month') ?? ''
+    const type      = searchParams.get('type') ?? ''
+    const project   = searchParams.get('project') ?? ''
+    const dir       = searchParams.get('dir') ?? 'desc'
+
+    // Direct parentId filter takes priority
+    if (parentId) {
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+        .contains('parent_ids', [parentId])
+        .order('date', { ascending: false })
+        .limit(500)
+      if (error) throw error
+      return NextResponse.json({
+        data: (data ?? []).map(t => ({
+          id: t.id, amount: t.amount, type: t.type, date: t.date,
+          monthYear: t.month_year, notes: t.notes ?? '',
+          parentIds: t.parent_ids ?? [], projectNames: t.project_names ?? [],
+        })),
+        total: (data ?? []).length, months: [], types: [], projects: [],
+      })
+    }
 
     // If searching by parent name, first find matching parent IDs
     let parentIdFilter: string[] | null = null
@@ -233,10 +253,10 @@ export async function POST(req: NextRequest) {
               remaining -= applied
             }
 
-            // Store any leftover as pp_credit for future payments
+            // Store any leftover as credit_balance for future payments
             if (remaining > 0) {
-              const { data: par } = await supabaseAdmin.from('parents').select('pp_credit').eq('id', pid).single()
-              await supabaseAdmin.from('parents').update({ pp_credit: (par?.pp_credit || 0) + remaining }).eq('id', pid)
+              const { data: par } = await supabaseAdmin.from('parents').select('credit_balance').eq('id', pid).single()
+              await supabaseAdmin.from('parents').update({ credit_balance: (Number(par?.credit_balance) || 0) + remaining }).eq('id', pid)
             }
           }
         }

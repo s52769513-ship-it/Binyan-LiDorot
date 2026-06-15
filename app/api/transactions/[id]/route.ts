@@ -25,6 +25,26 @@ export async function PATCH(
       if (key in body) update[key] = body[key]
     }
 
+    // If unlinking from PP (planned_payment_id → null), restore PP balance
+    if ('planned_payment_id' in body && body.planned_payment_id === null) {
+      const { data: oldTx } = await supabaseAdmin
+        .from('transactions')
+        .select('amount, planned_payment_id')
+        .eq('id', id)
+        .single()
+      if (oldTx?.planned_payment_id) {
+        const { data: pp } = await supabaseAdmin
+          .from('planned_payments')
+          .select('balance, amount')
+          .eq('id', oldTx.planned_payment_id)
+          .single()
+        if (pp) {
+          const restored = Math.min(Number(pp.amount), Number(pp.balance) + Math.abs(Number(oldTx.amount)))
+          await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', oldTx.planned_payment_id)
+        }
+      }
+    }
+
     // If amount is changing, adjust the linked planned payment's balance
     if ('amount' in body) {
       const { data: oldTx } = await supabaseAdmin

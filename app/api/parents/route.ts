@@ -52,11 +52,34 @@ export async function GET(req: NextRequest) {
     query = query.order(safeSort, { ascending: dir !== 'desc' })
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
+    const todayStr = new Date().toISOString().slice(0, 10)
+
     const [{ data, error, count }, { data: allStatuses }] = await Promise.all([
       query,
       supabaseAdmin.from('parents').select('status'),
     ])
     if (error) throw error
+
+    // Compute overdue balance (past-date PPs only) per parent
+    const parentIds = (data ?? []).map(p => p.id as string)
+    const overdueByParent: Record<string, number> = {}
+    if (parentIds.length > 0) {
+      const { data: overduePPs } = await supabaseAdmin
+        .from('planned_payments')
+        .select('parent_ids, balance')
+        .eq('pp_type', 'tuition')
+        .gt('balance', 0)
+        .lt('date', todayStr)
+        .overlaps('parent_ids', parentIds)
+      const parentIdSet = new Set(parentIds)
+      for (const pp of overduePPs ?? []) {
+        for (const pid of (pp.parent_ids as string[]) ?? []) {
+          if (parentIdSet.has(pid)) {
+            overdueByParent[pid] = (overdueByParent[pid] ?? 0) + Number(pp.balance)
+          }
+        }
+      }
+    }
 
     const statusSet = new Set<string>()
     for (const row of allStatuses ?? []) {
@@ -79,6 +102,7 @@ export async function GET(req: NextRequest) {
       childrenCount: p.children_count ?? 0,
       tuitionTotal: p.tuition_total ?? 0,
       tuitionBalance: p.tuition_balance ?? 0,
+      overdueBalance: Math.round(overdueByParent[p.id as string] ?? 0),
     }))
 
     return NextResponse.json({ data: mapped, total: count ?? 0, statusOptions })
