@@ -664,9 +664,12 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                             plannedPaymentId: selectedPP.id,
                           })}
                         >
-                          <div className="flex items-center gap-2">
-                            {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
-                            {tx.date && <span className="text-xs text-gray-400">{new Intl.DateTimeFormat('he-IL').format(new Date(tx.date))}</span>}
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
+                              {tx.date && <span className="text-xs text-gray-400">{new Intl.DateTimeFormat('he-IL').format(new Date(tx.date))}</span>}
+                            </div>
+                            {tx.notes && <span className="text-[10px] text-gray-400 italic">{tx.notes}</span>}
                           </div>
                           <span className="text-sm font-bold text-emerald-700">
                             ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(tx.amount))}

@@ -112,6 +112,9 @@ export async function POST(req: NextRequest) {
           e({ type: 'progress', parentName: parent.name, salary, tuitionBalance, offset, skipped: false })
 
           // Step 3 — action
+          // Salary month S = tuition month T − 1
+          const salaryMY = salaryMonthForTuition(targetMY)
+
           if (!dryRun) {
             e({ type: 'step', step: 3, msg: `יוצר תנועת קיזוז עבור ${parent.name}...` })
             await supabaseAdmin.from('transactions').insert({
@@ -121,7 +124,7 @@ export async function POST(req: NextRequest) {
               parent_ids:         [parent.id],
               date:               today.toISOString().split('T')[0],
               month_year:         targetMY,
-              notes:              'שולם שכ"ל מקיזוז משכורת',
+              notes:              `קוזז ממשכורת חודש ${salaryMY}`,
               type:               'קיזוז שכ"ל',
               project_ids:        [],
               project_names:      [],
@@ -136,7 +139,6 @@ export async function POST(req: NextRequest) {
 
             // Mirror on salary side: שכ"ל של חודש T מקוזז ממשכורת של חודש S = T−1.
             // record the ניכוי שכ"ל tx (מתויג בחודש המשכורת S) ומורידים את יתרת ה-PP משכורת.
-            const salaryMY = salaryMonthForTuition(targetMY)
             const { data: salaryPPs } = await supabaseAdmin
               .from('planned_payments')
               .select('id, balance')

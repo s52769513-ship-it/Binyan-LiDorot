@@ -1123,7 +1123,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         const salaryTxs = transactions.filter(t =>
                           (t.projectNames ?? []).includes('משכורת') ||
                           t.type === 'קיזוז משכר לימוד' ||
-                          t.type === 'קיזוז ממשכורת'
+                          t.type === 'קיזוז ממשכורת' ||
+                          t.type === 'ניכוי שכ"ל'
                         )
                         if (salaryTxs.length === 0) return null
                         const months = [...new Set(salaryTxs.map(t => t.monthYear).filter(Boolean))].sort().reverse()
@@ -1142,15 +1143,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                                     </div>
                                     <div className="space-y-1">
                                       {mTxs.map(t => {
-                                        const isOffset = t.type === 'קיזוז משכר לימוד' || t.type === 'קיזוז ממשכורת'
+                                        const isOffset = t.type === 'קיזוז משכר לימוד' || t.type === 'קיזוז ממשכורת' || t.type === 'ניכוי שכ"ל'
                                         return (
-                                          <div key={t.id} className="flex justify-between items-center text-sm">
+                                          <div key={t.id} className="flex justify-between items-start text-sm">
                                             <span className={`tabular-nums font-semibold ${isOffset ? 'text-red-500' : 'text-emerald-700'}`}>
                                               {isOffset ? '− ' : ''}{fmt(Math.abs(t.amount))}
                                             </span>
-                                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${isOffset ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-700'}`}>
-                                              {t.type || 'משכורת'}
-                                            </span>
+                                            <div className="flex flex-col items-end gap-0.5">
+                                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${isOffset ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-700'}`}>
+                                                {t.type || 'משכורת'}
+                                              </span>
+                                              {t.notes && <span className="text-[10px] text-gray-400 italic">{t.notes}</span>}
+                                            </div>
                                           </div>
                                         )
                                       })}
@@ -1610,9 +1614,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             plannedPaymentId: selectedPP?.id ?? null,
                           })}
                         >
-                          <div className="flex items-center gap-2">
-                            {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
-                            {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
+                              {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
+                            </div>
+                            {tx.notes && <span className="text-[10px] text-gray-400 italic">{tx.notes}</span>}
                           </div>
                           <span className="text-sm font-bold text-emerald-700">{fmt(Math.abs(tx.amount))}</span>
                         </button>
