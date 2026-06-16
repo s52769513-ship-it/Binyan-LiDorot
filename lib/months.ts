@@ -2,12 +2,10 @@
  * עזרי חודשים בפורמט "MM/YYYY".
  *
  * מודל הקיזוז שכ"ל↔משכורת:
- *   המשכורת נוצרת עבור החודש שעבר (S), ומקוזזת מול שכר הלימוד של החודש הנוכחי (T).
- *   לכן: חודש שכ"ל  T = חודש משכורת S + 1
- *        חודש משכורת S = חודש שכ"ל  T − 1
+ *   PP שכ"ל של חודש T מתקזז מול PP משכורת של אותו חודש T.
  *
- *   תנועת "ניכוי שכ"ל" (צד המשכורת) מתויגת בחודש המשכורת  S.
- *   תנועת "קיזוז שכ"ל" (צד השכ"ל)   מתויגת בחודש השכ"ל   T.
+ *   תנועת "ניכוי שכ"ל" (צד המשכורת) מתויגת בחודש T.
+ *   תנועת "קיזוז שכ"ל" (צד השכ"ל)   מתויגת בחודש T.
  */
 
 /** מחזיר חודש מוזז ב-delta חודשים, בפורמט "MM/YYYY". */
@@ -18,8 +16,8 @@ export function shiftMonth(my: string, delta: number): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-/** חודש השכ"ל המתאים למשכורת של חודש S (S + 1). */
-export const tuitionMonthForSalary = (salaryMY: string) => shiftMonth(salaryMY, +1)
+/** חודש המשכורת המתאים לשכ"ל של חודש T — אותו חודש. */
+export const tuitionMonthForSalary = (salaryMY: string) => shiftMonth(salaryMY, 0)
 
-/** חודש המשכורת המתאים לשכ"ל של חודש T (T − 1). */
-export const salaryMonthForTuition = (tuitionMY: string) => shiftMonth(tuitionMY, -1)
+/** חודש השכ"ל המתאים למשכורת של חודש T — אותו חודש. */
+export const salaryMonthForTuition = (tuitionMY: string) => shiftMonth(tuitionMY, 0)
