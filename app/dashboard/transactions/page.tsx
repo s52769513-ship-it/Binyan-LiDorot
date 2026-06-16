@@ -42,12 +42,13 @@ function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: ()
   const today = new Date().toISOString().split('T')[0]
   const [from, setFrom]       = useState('')
   const [to, setTo]           = useState(today)
-  const [dryRun, setDryRun]   = useState(false)
-  const [lastTo, setLastTo]   = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const [lines, setLines]     = useState<{ text: string; kind: string }[]>([])
-  const [done, setDone]       = useState(false)
-  const [summary, setSummary] = useState<{ imported: number; returned: number; skipped: number; totalAmount: number } | null>(null)
+  const [dryRun, setDryRun]               = useState(false)
+  const [skipDup, setSkipDup]             = useState(false)
+  const [lastTo, setLastTo]               = useState<string | null>(null)
+  const [running, setRunning]             = useState(false)
+  const [lines, setLines]                 = useState<{ text: string; kind: string }[]>([])
+  const [done, setDone]                   = useState(false)
+  const [summary, setSummary]             = useState<{ imported: number; returned: number; skipped: number; totalAmount: number; totalReturnAmount: number } | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -84,7 +85,7 @@ function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: ()
       const res = await fetch('/api/automations/nedarim-pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, dryRun }),
+        body: JSON.stringify({ from, to, dryRun, skipDuplicateCheck: skipDup }),
       })
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
@@ -101,11 +102,18 @@ function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: ()
             const ev = JSON.parse(line)
             if (ev.type === 'step')     addLine(ev.msg, 'step')
             else if (ev.type === 'progress') {
-              if (ev.skipped) addLine(`⏭ ${ev.donorName} (${ev.hokNumber}) — ${ev.reason}`, 'skip')
-              else            addLine(`✓ ${ev.donorName} (${ev.hokNumber}) ₪${ev.amount}`, 'ok')
+              if (ev.skipped) {
+                addLine(`⏭ ${ev.donorName} (${ev.hokNumber}) — ${ev.reason}`, 'skip')
+              } else if (ev.amount < 0 || (ev.status && String(ev.status).includes('חזרה'))) {
+                addLine(`↩ ${ev.donorName} (${ev.hokNumber}) החזרה ₪${Math.abs(ev.amount)} | ${ev.dateRaw || ''}`, 'err')
+              } else {
+                const ppTag = ev.ppLinked ? ' [PP✓]' : ''
+                addLine(`✓ ${ev.donorName} (${ev.hokNumber}) ₪${ev.amount} | ${ev.dateRaw || ''}${ppTag}`, 'ok')
+              }
             } else if (ev.type === 'complete') {
-              setSummary({ imported: ev.imported, returned: ev.returned, skipped: ev.skipped, totalAmount: ev.totalAmount })
-              addLine(`הושלם: יובאו ${ev.imported} · החזרות ${ev.returned} · דולגו ${ev.skipped}${ev.dryRun ? ' [בדיקה בלבד]' : ''}`, 'done')
+              setSummary({ imported: ev.imported, returned: ev.returned, skipped: ev.skipped, totalAmount: ev.totalAmount, totalReturnAmount: ev.totalReturnAmount ?? 0 })
+              const net = (ev.totalAmount ?? 0) - (ev.totalReturnAmount ?? 0)
+              addLine(`הושלם${ev.dryRun ? ' [בדיקה]' : ''}: +₪${ev.totalAmount} נכנס · −₪${ev.totalReturnAmount ?? 0} חזר · נטו ₪${net}`, 'done')
               setDone(true)
               if (!ev.dryRun) onDone()
             } else if (ev.type === 'error') {
@@ -144,10 +152,16 @@ function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: ()
           </div>
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-          <span className="text-sm text-gray-700">בדיקה בלבד — לא ישמור בסיס נתונים</span>
-        </label>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+            <span className="text-sm text-gray-700">בדיקה בלבד — לא ישמור בסיס נתונים</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={skipDup} onChange={e => setSkipDup(e.target.checked)} className="w-4 h-4 accent-rose-500" />
+            <span className="text-sm text-gray-700">התעלם מיבוא קודם — ייבא הכל מחדש</span>
+          </label>
+        </div>
 
         {lines.length > 0 && (
           <div ref={logRef} className="font-mono text-xs bg-gray-950 rounded-xl p-3 h-44 overflow-y-auto scroll-smooth" dir="ltr">
@@ -165,18 +179,26 @@ function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: ()
         )}
 
         {summary && !running && (
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-emerald-50 rounded-xl p-3">
-              <p className="text-lg font-bold text-emerald-700">{summary.imported}</p>
-              <p className="text-xs text-gray-500">יובאו</p>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                <p className="text-base font-bold text-emerald-700">+₪{fmt(summary.totalAmount)}</p>
+                <p className="text-[10px] text-gray-500">{summary.imported} תנועות נכנסו</p>
+              </div>
+              <div className="bg-red-50 rounded-xl p-3 text-center">
+                <p className="text-base font-bold text-red-600">−₪{fmt(summary.totalReturnAmount)}</p>
+                <p className="text-[10px] text-gray-500">{summary.returned} החזרות</p>
+              </div>
             </div>
-            <div className="bg-amber-50 rounded-xl p-3">
-              <p className="text-lg font-bold text-amber-700">{summary.returned}</p>
-              <p className="text-xs text-gray-500">החזרות</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-lg font-bold text-gray-600">{summary.skipped}</p>
-              <p className="text-xs text-gray-500">דולגו</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-blue-50 rounded-xl p-3 text-center">
+                <p className="text-base font-bold text-blue-700">₪{fmt(summary.totalAmount - summary.totalReturnAmount)}</p>
+                <p className="text-[10px] text-gray-500">נטו</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3 text-center">
+                <p className="text-base font-bold text-gray-500">{summary.skipped}</p>
+                <p className="text-[10px] text-gray-500">דולגו</p>
+              </div>
             </div>
           </div>
         )}

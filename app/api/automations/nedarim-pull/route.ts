@@ -45,7 +45,7 @@ export async function GET() {
 // POST — pull data
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { from, to, dryRun = false, parentId } = body as { from: string; to: string; dryRun: boolean; parentId?: string }
+  const { from, to, dryRun = false, parentId, skipDuplicateCheck = false } = body as { from: string; to: string; dryRun: boolean; parentId?: string; skipDuplicateCheck?: boolean }
 
   if (!from || !to) {
     return NextResponse.json({ error: 'חסרים from/to' }, { status: 400 })
@@ -59,10 +59,11 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const e = (ev: object) => emit(controller, encoder, ev)
 
-      let totalImported = 0
-      let totalReturned = 0
-      let totalSkipped  = 0
-      let totalAmount   = 0
+      let totalImported     = 0
+      let totalReturned     = 0
+      let totalSkipped      = 0
+      let totalAmount       = 0
+      let totalReturnAmount = 0
 
       // If parentId provided — build a set of allowed hokNumbers for this parent
       let parentHokNumbers: Set<string> | null = null
@@ -140,15 +141,15 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Skip already imported
-          if (rowId && importedRowIds.has(rowId)) {
+          // Skip already imported (unless skipDuplicateCheck is set)
+          if (!skipDuplicateCheck && rowId && importedRowIds.has(rowId)) {
             totalSkipped++
             e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status, skipped: true, reason: 'יובא כבר' })
             actions.push({ hokNumber, donorName, skipped: true, reason: 'יובא כבר' })
             continue
           }
 
-          e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status })
+          e({ type: 'progress', current: i + 1, total: records.length, hokNumber, donorName, amount, status, dateRaw })
 
           const isReturned = status === 'החזרת הוראת קבע' || status.includes('חזרה')
 
@@ -211,7 +212,8 @@ export async function POST(req: NextRequest) {
             }
             if (rowId) newRowIds.push(rowId)
             totalReturned++
-            actions.push({ hokNumber, donorName, amount: -amount, status, monthYear, isReturned: true, skipped: false })
+            totalReturnAmount += amount
+            actions.push({ hokNumber, donorName, amount: -amount, status, monthYear, dateRaw, isReturned: true, skipped: false })
             continue
           }
 
@@ -269,7 +271,7 @@ export async function POST(req: NextRequest) {
           if (rowId) newRowIds.push(rowId)
           totalImported++
           totalAmount += amount
-          actions.push({ hokNumber, donorName, amount, status, monthYear, ppLinked: !!linkedPPId, skipped: false })
+          actions.push({ hokNumber, donorName, amount, status, monthYear, dateRaw, ppLinked: !!linkedPPId, skipped: false })
         }
 
         // Step 4 — log
@@ -290,7 +292,7 @@ export async function POST(req: NextRequest) {
           } catch { /* best effort */ }
         }
 
-        e({ type: 'complete', imported: totalImported, returned: totalReturned, skipped: totalSkipped, totalAmount, dryRun, actions })
+        e({ type: 'complete', imported: totalImported, returned: totalReturned, skipped: totalSkipped, totalAmount, totalReturnAmount, dryRun, actions })
       } catch (err) {
         e({ type: 'error', error: (err as { message?: string })?.message ?? String(err) })
       } finally {

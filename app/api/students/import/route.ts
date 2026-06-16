@@ -46,12 +46,21 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: 'חסר קובץ' }, { status: 400 })
 
     // ── Parse file ──────────────────────────────────────────────────────────
-    const buf  = Buffer.from(await file.arrayBuffer())
-    // For xlsx/xls: let the library read the embedded codepage (Hebrew files use 1255).
-    // For CSV: detect UTF-8 BOM; otherwise assume Windows-1255 (Excel Hebrew default).
+    const buf = Buffer.from(await file.arrayBuffer())
+    // For xlsx/xls: the library reads the embedded codepage automatically.
+    // For CSV: XLSX.read with codepage option doesn't reliably decode Hebrew,
+    // so we use TextDecoder (supports 'windows-1255') to decode first, then
+    // pass the decoded string to XLSX.read with type:'string'.
+    let wb: ReturnType<typeof XLSX.read>
     const isCSV = file.name.toLowerCase().endsWith('.csv')
-    const hasBOM = isCSV && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF
-    const wb   = XLSX.read(buf, { type: 'buffer', ...(isCSV ? { codepage: hasBOM ? 65001 : 1255 } : {}) })
+    if (isCSV) {
+      const hasBOM = buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF
+      const encoding = hasBOM ? 'utf-8' : 'windows-1255'
+      const text = new TextDecoder(encoding).decode(buf)
+      wb = XLSX.read(text, { type: 'string' })
+    } else {
+      wb = XLSX.read(buf, { type: 'buffer' })
+    }
     const ws   = wb.Sheets[wb.SheetNames[0]]
     const rawRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
 
