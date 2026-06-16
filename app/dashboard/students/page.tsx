@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import StudentCard from '@/components/StudentCard'
 import EmployeeCard from '@/components/EmployeeCard'
 import PaymentCard from '@/components/PaymentCard'
+import StudentImportModal from '@/components/StudentImportModal'
 
 interface Student {
   id: string; name: string; gender: string; age: string
@@ -21,6 +22,7 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [showImport, setShowImport]               = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -50,6 +52,12 @@ export default function StudentsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-50 transition-colors"
+          >
+            ⬆ ייבוא אקסל
+          </button>
           <span className="text-sm text-gray-400">{filtered.length} תלמידים</span>
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
             <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
@@ -58,6 +66,15 @@ export default function StudentsPage() {
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
+      {showImport && (
+        <StudentImportModal
+          onClose={() => setShowImport(false)}
+          onDone={() => {
+            setShowImport(false)
+            fetch('/api/students').then(r => r.json()).then(d => { if (!d.error) setStudents(d.data ?? []) })
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap gap-3">
         <input type="text" placeholder="חיפוש לפי שם..." value={search} onChange={e => setSearch(e.target.value)}
