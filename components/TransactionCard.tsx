@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { salaryMonthForTuition, tuitionMonthForSalary } from '@/lib/months'
 
 export interface Transaction {
   id: string
@@ -471,6 +472,20 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
               rows={2} className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent resize-none" />
             <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
           </div>
+
+          {/* Cross-month info for tuition/salary offsets */}
+          {tx.type === 'קיזוז שכ"ל' && tx.monthYear && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-medium text-indigo-700">חודש משכורת: {salaryMonthForTuition(tx.monthYear)}</span>
+              <span className="text-xs text-gray-400">קוזז ממשכורת</span>
+            </div>
+          )}
+          {tx.type === 'ניכוי שכ"ל' && tx.monthYear && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-medium text-red-600">חודש שכ&quot;ל: {tuitionMonthForSalary(tx.monthYear)}</span>
+              <span className="text-xs text-gray-400">ניכוי שכ&quot;ל</span>
+            </div>
+          )}
 
           {/* Linked PP */}
           {tx.plannedPaymentId && !unlinking && (
