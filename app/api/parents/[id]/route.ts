@@ -375,3 +375,45 @@ export async function GET(
     return NextResponse.json({ error: 'שגיאה בטעינת פרטי הורה' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await req.json().catch(() => ({}))
+    const { deleteTransactions = false, deletePlannedPayments = false, deleteStandingOrders = false } = body
+
+    if (deleteTransactions) {
+      await supabaseAdmin.from('transactions').delete().contains('parent_ids', [id])
+    }
+    if (deletePlannedPayments) {
+      // First unlink transactions linked to these PPs
+      const { data: pps } = await supabaseAdmin.from('planned_payments').select('id').contains('parent_ids', [id])
+      const ppIds = (pps ?? []).map(p => p.id as string)
+      if (ppIds.length > 0 && !deleteTransactions) {
+        await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).in('planned_payment_id', ppIds)
+      }
+      await supabaseAdmin.from('planned_payments').delete().contains('parent_ids', [id])
+    }
+    if (deleteStandingOrders) {
+      await supabaseAdmin.from('standing_orders').delete().eq('parent_id', id)
+    }
+
+    // Remove parent_id from students (don't delete students)
+    const { data: students } = await supabaseAdmin.from('students').select('id, parent_ids').contains('parent_ids', [id])
+    for (const s of students ?? []) {
+      const newIds = ((s.parent_ids as string[]) ?? []).filter((pid: string) => pid !== id)
+      await supabaseAdmin.from('students').update({ parent_ids: newIds }).eq('id', s.id)
+    }
+
+    // Delete the parent
+    const { error } = await supabaseAdmin.from('parents').delete().eq('id', id)
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}

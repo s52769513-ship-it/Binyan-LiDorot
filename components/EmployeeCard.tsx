@@ -277,6 +277,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [yearGenResult, setYearGenResult]       = useState<{ created: string[]; skipped: string[] } | null>(null)
   const [showReport, setShowReport]             = useState(false)
 
+  // Delete parent
+  const [showDeleteModal, setShowDeleteModal]   = useState(false)
+  const [deleteInfo, setDeleteInfo]             = useState<{ txCount: number; ppCount: number; soCount: number; studentCount: number } | null>(null)
+  const [deleteChecks, setDeleteChecks]         = useState({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
+  const [deleting, setDeleting]                 = useState(false)
+
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
 
@@ -483,6 +489,45 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
   const totalDebt       = tuitionPPs_all.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
+  async function openDeleteModal() {
+    const [txRes, ppRes, soRes, stuRes] = await Promise.all([
+      fetch(`/api/transactions?parentId=${parentId}&limit=1000`),
+      fetch(`/api/planned-payments?parentId=${parentId}&limit=200`),
+      fetch(`/api/standing-orders?parentId=${parentId}`),
+      fetch(`/api/students`),
+    ])
+    const txData  = await txRes.json()
+    const ppData  = await ppRes.json()
+    const soData  = await soRes.json()
+    const stuData = await stuRes.json()
+    const txCount  = (Array.isArray(txData) ? txData : txData.data ?? []).length
+    const ppCount  = (Array.isArray(ppData) ? ppData : ppData.data ?? []).length
+    const soCount  = (Array.isArray(soData) ? soData : []).length
+    const allStu   = Array.isArray(stuData) ? stuData : (stuData.data ?? stuData.students ?? [])
+    const studentCount = (allStu as { parent_ids?: string[]; parentIds?: string[] }[])
+      .filter(s => { const ids = s.parent_ids ?? s.parentIds ?? []; return ids.includes(parentId) }).length
+    setDeleteInfo({ txCount, ppCount, soCount, studentCount })
+    setDeleteChecks({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
+    setShowDeleteModal(true)
+  }
+
+  async function confirmDelete() {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/parents/${parentId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deleteChecks),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'שגיאה')
+      onClose()
+    } catch (err) {
+      alert('שגיאה במחיקה: ' + String(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'details',     label: 'פרטים' },
     { key: 'children',    label: `ילדים${parent ? ` (${parent.students.length})` : ''}` },
@@ -514,6 +559,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   title="הפקת דוח"
                 >
                   📄 דוח
+                </button>
+              )}
+              {parent && (
+                <button
+                  onClick={openDeleteModal}
+                  className="px-2.5 py-1 rounded-lg text-red-300 hover:text-white hover:bg-red-600/60 text-xs font-medium leading-none border border-red-400/30 hover:border-red-400/60 transition-all"
+                  title="מחיקת בן אדם"
+                >
+                  🗑 מחק
                 </button>
               )}
             </div>
@@ -1910,6 +1964,132 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
       {showReport && parent && (
         <ReportModal parent={parent} onClose={() => setShowReport(false)} />
+      )}
+
+      {/* ── Delete confirmation modal ── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/70" onClick={() => !deleting && setShowDeleteModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 bg-red-600 text-white">
+              <h3 className="text-lg font-bold">⚠️ מחיקת בן אדם</h3>
+              <p className="text-red-100 text-sm mt-0.5">
+                {parent?.name} — פעולה זו <strong>בלתי הפיכה</strong>
+              </p>
+            </div>
+
+            {/* Linked records summary */}
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-gray-700 font-medium">רשומות מקושרות:</p>
+
+              {deleteInfo ? (
+                <div className="space-y-2">
+                  {/* Transactions */}
+                  <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: deleteChecks.deleteTransactions ? '#ef4444' : '#e5e7eb', background: deleteChecks.deleteTransactions ? '#fef2f2' : '' }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteChecks.deleteTransactions}
+                      onChange={e => setDeleteChecks(p => ({ ...p, deleteTransactions: e.target.checked }))}
+                      className="w-4 h-4 accent-red-600"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-800">תנועות כספיות</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${deleteInfo.txCount > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {deleteInfo.txCount}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">כל ההכנסות וההוצאות הרשומות</p>
+                    </div>
+                  </label>
+
+                  {/* Planned payments */}
+                  <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: deleteChecks.deletePlannedPayments ? '#ef4444' : '#e5e7eb', background: deleteChecks.deletePlannedPayments ? '#fef2f2' : '' }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteChecks.deletePlannedPayments}
+                      onChange={e => setDeleteChecks(p => ({ ...p, deletePlannedPayments: e.target.checked }))}
+                      className="w-4 h-4 accent-red-600"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-800">תשלומים מתוכננים (PP)</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${deleteInfo.ppCount > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {deleteInfo.ppCount}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">שכ&quot;ל ומשכורות מתוכננות</p>
+                    </div>
+                  </label>
+
+                  {/* Standing orders */}
+                  <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: deleteChecks.deleteStandingOrders ? '#ef4444' : '#e5e7eb', background: deleteChecks.deleteStandingOrders ? '#fef2f2' : '' }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteChecks.deleteStandingOrders}
+                      onChange={e => setDeleteChecks(p => ({ ...p, deleteStandingOrders: e.target.checked }))}
+                      className="w-4 h-4 accent-red-600"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-800">הוראות קבע (הו&quot;ק)</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${deleteInfo.soCount > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {deleteInfo.soCount}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">כרטיסי אשראי והעברות בנקאיות</p>
+                    </div>
+                  </label>
+
+                  {/* Students — always unlink, never delete */}
+                  <div className="flex items-center gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50">
+                    <div className="w-4 h-4 flex items-center justify-center text-blue-600 font-bold text-sm">↗</div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-800">ילדים (תלמידים)</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${deleteInfo.studentCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {deleteInfo.studentCount}
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-0.5">הקישור יוסר — הילדים <strong>לא יימחקו</strong></p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-gray-500 text-sm py-4">
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                  טוען נתונים...
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 bg-gray-50 border-t flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting || !deleteInfo}
+                className="px-5 py-2 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting ? (
+                  <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> מוחק...</>
+                ) : (
+                  '🗑 מחק לצמיתות'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
