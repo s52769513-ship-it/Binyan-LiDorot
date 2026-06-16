@@ -270,6 +270,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [selectedPpTx, setSelectedPpTx]       = useState<Transaction | null>(null)
   const [loadingPpTx, setLoadingPpTx]         = useState(false)
 
+  // Add salary PP
+  const [showAddSalaryPP, setShowAddSalaryPP]   = useState(false)
+
   // Salary detail modal
   const [showSalaryDetail, setShowSalaryDetail] = useState(false)
   // Generate year planned payments
@@ -1198,6 +1201,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         </div>
                       </SectionCard>
                       <button
+                        onClick={() => setShowAddSalaryPP(true)}
+                        className="w-full py-2 rounded-xl border border-indigo-300 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors"
+                      >
+                        + צור PP משכורת לחודש
+                      </button>
+                      <button
                         onClick={() => {
                           setSettingsDraft({
                             baseHourlyRate: parent.baseHourlyRate,
@@ -2036,6 +2045,23 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
       {showReport && parent && (
         <ReportModal parent={parent} onClose={() => setShowReport(false)} />
       )}
+
+      {showAddSalaryPP && parent && (() => {
+        const prev = new Date()
+        prev.setMonth(prev.getMonth() - 1)
+        const prevMY = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
+        return (
+          <AddPlannedPaymentModal
+            parentId={parentId}
+            parentName={parent.name}
+            initialName="משכורת"
+            initialAmount={parent.salaryGross || undefined}
+            initialMonthYear={prevMY}
+            onClose={() => setShowAddSalaryPP(false)}
+            onSuccess={() => { setShowAddSalaryPP(false); load() }}
+          />
+        )
+      })()}
 
       {/* ── Delete confirmation modal ── */}
       {showDeleteModal && (

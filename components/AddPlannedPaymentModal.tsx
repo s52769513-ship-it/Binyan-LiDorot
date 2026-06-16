@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from 'react'
 interface Props {
   parentId?: string
   parentName?: string
+  initialName?: string
+  initialAmount?: number
+  initialMonthYear?: string
   onClose: () => void
   onSuccess?: () => void
 }
@@ -18,15 +21,15 @@ function getMonthYear(dateStr: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-export default function AddPlannedPaymentModal({ parentId, parentName, onClose, onSuccess }: Props) {
+export default function AddPlannedPaymentModal({ parentId, parentName, initialName, initialAmount, initialMonthYear, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
   const currentMonthYear = `${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`
 
-  const [amount, setAmount]   = useState('')
-  const [name, setName]       = useState('שכ"ל')
+  const [amount, setAmount]   = useState(initialAmount ? String(initialAmount) : '')
+  const [name, setName]       = useState(initialName ?? 'שכ"ל')
   const [date, setDate]       = useState(todayStr)
-  const [monthYear, setMonthYear] = useState(currentMonthYear)
+  const [monthYear, setMonthYear] = useState(initialMonthYear ?? currentMonthYear)
   const [parentSearch, setParentSearch] = useState(parentName ?? '')
   const [parentOptions, setParentOptions] = useState<ParentOption[]>([])
   const [selectedParent, setSelectedParent] = useState<ParentOption | null>(
