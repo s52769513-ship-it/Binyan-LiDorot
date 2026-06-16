@@ -353,7 +353,7 @@ function SettingsTab() {
   )
 }
 
-interface ImportRow { parentName: string; payments: { method: string; amount: number }[]; totalPaid: number; ppFound: boolean; ppBalance: number | null }
+interface ImportRow { parentName: string; actualSalary?: number | null; payments: { method: string; amount: number }[]; totalPaid: number; ppFound: boolean; ppBalance: number | null; salaryChanged?: boolean; oldSalary?: number | null; offsetAction?: 'none' | 'updated' | 'created'; oldOffset?: number | null; newOffset?: number | null }
 interface ImportLog  { id: string; run_at: string; summary: string; actions_count: number; details: ImportRow[] }
 
 /* ─── תשלומים מתוכננים Tab ─────────────────────────── */
@@ -593,6 +593,7 @@ function ImportResultsTable({ res, compact }: {
         <thead>
           <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-400 text-right">
             <th className="px-4 py-2">שם</th>
+            <th className="px-4 py-2">פעולות</th>
             <th className="px-4 py-2">אמצעי תשלום</th>
             <th className="px-4 py-2 text-left">סכום</th>
             <th className="px-4 py-2 text-left">יתרת משכורת</th>
@@ -600,22 +601,47 @@ function ImportResultsTable({ res, compact }: {
           </tr>
         </thead>
         <tbody>
-          {res.results.map((r, i) =>
-            r.payments.map((p, j) => (
+          {res.results.map((r, i) => {
+            const hasActions = r.salaryChanged || (r.offsetAction && r.offsetAction !== 'none')
+            const rowCount = Math.max(r.payments.length, 1)
+            return r.payments.length > 0 ? r.payments.map((p, j) => (
               <tr key={`${i}-${j}`} className={`hover:bg-gray-50 ${j === 0 ? 'border-t border-gray-100' : 'border-t border-dashed border-gray-100'}`}>
                 {j === 0 && (
-                  <td className="px-4 py-2.5 font-medium text-gray-800 align-top" rowSpan={r.payments.length}>
+                  <td className="px-4 py-2.5 font-medium text-gray-800 align-top" rowSpan={rowCount}>
                     {r.parentName}
+                  </td>
+                )}
+                {j === 0 && (
+                  <td className="px-4 py-2.5 align-top" rowSpan={rowCount}>
+                    {hasActions ? (
+                      <div className="flex flex-col gap-1">
+                        {r.salaryChanged && r.oldSalary != null && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 whitespace-nowrap">
+                            משכורת: ₪{fmtN(r.oldSalary)} → ₪{fmtN(r.actualSalary ?? 0)}
+                          </span>
+                        )}
+                        {r.offsetAction === 'updated' && r.oldOffset != null && r.newOffset != null && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 whitespace-nowrap">
+                            קיזוז: ₪{fmtN(r.oldOffset)} → ₪{fmtN(r.newOffset)}
+                          </span>
+                        )}
+                        {r.offsetAction === 'created' && r.newOffset != null && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 whitespace-nowrap">
+                            ניכוי שכ&quot;ל חדש: ₪{fmtN(r.newOffset)}
+                          </span>
+                        )}
+                      </div>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                 )}
                 <td className="px-4 py-2.5 text-indigo-700">{p.method}</td>
                 <td className="px-4 py-2.5 text-left tabular-nums font-semibold text-emerald-700">₪{fmtN(p.amount)}</td>
                 {j === 0 && (
                   <>
-                    <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500 align-top" rowSpan={r.payments.length}>
+                    <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500 align-top" rowSpan={rowCount}>
                       {r.ppBalance != null ? (r.ppBalance > 0 ? <span className="text-amber-600">₪{fmtN(r.ppBalance)}</span> : <span className="text-emerald-600">✓ סגור</span>) : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-center align-top" rowSpan={r.payments.length}>
+                    <td className="px-4 py-2.5 text-center align-top" rowSpan={rowCount}>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
                         {r.ppFound ? 'מקושר ✓' : 'לא נמצא'}
                       </span>
@@ -623,13 +649,49 @@ function ImportResultsTable({ res, compact }: {
                   </>
                 )}
               </tr>
-            ))
-          )}
+            )) : (
+              // Row with no payments — still show actions
+              <tr key={`${i}-only`} className="border-t border-gray-100 hover:bg-gray-50">
+                <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName}</td>
+                <td className="px-4 py-2.5">
+                  {hasActions ? (
+                    <div className="flex flex-col gap-1">
+                      {r.salaryChanged && r.oldSalary != null && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 whitespace-nowrap">
+                          משכורת: ₪{fmtN(r.oldSalary)} → ₪{fmtN(r.actualSalary ?? 0)}
+                        </span>
+                      )}
+                      {r.offsetAction === 'updated' && r.oldOffset != null && r.newOffset != null && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 whitespace-nowrap">
+                          קיזוז: ₪{fmtN(r.oldOffset)} → ₪{fmtN(r.newOffset)}
+                        </span>
+                      )}
+                      {r.offsetAction === 'created' && r.newOffset != null && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 whitespace-nowrap">
+                          ניכוי שכ&quot;ל חדש: ₪{fmtN(r.newOffset)}
+                        </span>
+                      )}
+                    </div>
+                  ) : <span className="text-gray-300 text-xs">—</span>}
+                </td>
+                <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
+                <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
+                <td className="px-4 py-2.5 text-left tabular-nums text-xs text-gray-500">
+                  {r.ppBalance != null ? (r.ppBalance > 0 ? <span className="text-amber-600">₪{fmtN(r.ppBalance)}</span> : <span className="text-emerald-600">✓ סגור</span>) : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${r.ppFound ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {r.ppFound ? 'מקושר ✓' : 'לא נמצא'}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-gray-50 border-t-2 border-gray-200 text-sm font-bold">
             <td className="px-4 py-2.5 text-gray-600">סה&quot;כ ({res.results.length})</td>
-            <td />
+            <td /><td />
             <td className="px-4 py-2.5 text-left tabular-nums text-emerald-700">₪{fmtN(totalPaid)}</td>
             <td /><td />
           </tr>
