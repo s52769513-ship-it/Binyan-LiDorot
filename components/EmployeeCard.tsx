@@ -290,6 +290,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [salarySubTab, setSalarySubTab]               = useState<SalarySubTab>('summary')
   const [editingWoman, setEditingWoman]               = useState<string | null>(null)
   const [womanDraft, setWomanDraft]                   = useState<Record<string, string | number | boolean>>({})
+  const [showNewWoman, setShowNewWoman]               = useState(false)
+  const [newWomanDraft, setNewWomanDraft]             = useState<Record<string, string | number>>({ name: '', salaryGross: 0, baseHourlyRate: 0, monthlyHoursDecimal: 0, fixedBonus: 0, exceptionalExpenses: 0 })
+  const [savingNewWoman, setSavingNewWoman]           = useState(false)
   const [savingWoman, setSavingWoman]                 = useState(false)
   const [editingSettings, setEditingSettings]         = useState(false)
   const [settingsDraft, setSettingsDraft]             = useState<Record<string, string | number | boolean>>({})
@@ -1258,8 +1261,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           onClick={async () => {
                             setSavingSettings(true)
                             try {
-                              await patch(settingsDraft)
+                              // Calculate salary_gross from components
+                              const base    = Number(settingsDraft.baseHourlyRate)    || 0
+                              const senior  = Number(settingsDraft.seniorityBonusHourly) || 0
+                              const hours   = Number(settingsDraft.monthlyHoursDecimal)  || 0
+                              const fixed   = Number(settingsDraft.fixedBonus)           || 0
+                              const transp  = Number(settingsDraft.transportReimbursement) || 0
+                              const expense = Number(settingsDraft.exceptionalExpenses)    || 0
+                              const computed = (base + senior) * hours + fixed + transp - expense
+                              const salaryGross = Math.max(0, Math.round(computed * 100) / 100)
+                              await patch({ ...settingsDraft, salaryGross })
                               setEditingSettings(false)
+                              load()
                             } finally { setSavingSettings(false) }
                           }}
                           className="flex-1 py-2 rounded-xl bg-[#1a3a7a] text-white text-sm font-medium disabled:opacity-60 hover:bg-[#0d1f52]"
@@ -1275,10 +1288,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               {/* ── נשים ── */}
               {salarySubTab === 'women' && (
                 <div className="space-y-3">
-                  {(!parent.women || parent.women.length === 0) ? (
-                    <p className="text-center text-gray-400 text-sm py-8">אין נשים מקושרות</p>
-                  ) : (
-                    parent.women.map((w: WomanDetail) => (
+                  {(!parent.women || parent.women.length === 0) && !showNewWoman && (
+                    <p className="text-center text-gray-400 text-sm py-4">אין נשים מקושרות</p>
+                  )}
+                  {(parent.women && parent.women.length > 0) && parent.women.map((w: WomanDetail) => (
                       <div key={w.id} className="border border-gray-200 rounded-xl overflow-hidden">
                         {/* Woman header */}
                         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
@@ -1373,7 +1386,65 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           </div>
                         )}
                       </div>
-                    ))
+                    ))}
+
+                  {/* Add new woman */}
+                  {showNewWoman ? (
+                    <div className="border border-purple-200 rounded-xl overflow-hidden bg-purple-50">
+                      <div className="px-4 py-3 bg-purple-100 border-b border-purple-200 flex items-center justify-between">
+                        <button onClick={() => setShowNewWoman(false)} className="text-xs text-purple-600 hover:text-purple-800">ביטול</button>
+                        <span className="text-sm font-semibold text-purple-800">הוספת אישה חדשה</span>
+                      </div>
+                      <div className="px-4 py-3 space-y-3">
+                        {([
+                          { key: 'name',                 label: 'שם',                  type: 'text'   },
+                          { key: 'salaryGross',          label: 'סה"כ לתשלום ₪',       type: 'number' },
+                          { key: 'baseHourlyRate',       label: 'שכר בסיס לשעה ₪',     type: 'number' },
+                          { key: 'monthlyHoursDecimal',  label: 'שעות חודשיות',         type: 'number' },
+                          { key: 'fixedBonus',           label: 'תוספת קבועה ₪',        type: 'number' },
+                          { key: 'exceptionalExpenses',  label: 'הוצאות חריגות ₪',      type: 'number' },
+                        ] as const).map(({ key, label, type }) => (
+                          <div key={key}>
+                            <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                            <input
+                              type={type}
+                              value={String(newWomanDraft[key] ?? '')}
+                              onChange={e => setNewWomanDraft(d => ({ ...d, [key]: type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value }))}
+                              className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                              dir={type === 'text' ? 'rtl' : 'ltr'}
+                            />
+                          </div>
+                        ))}
+                        <button
+                          disabled={savingNewWoman || !String(newWomanDraft.name).trim()}
+                          onClick={async () => {
+                            setSavingNewWoman(true)
+                            try {
+                              const res = await fetch('/api/women', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ ...newWomanDraft, parentId }),
+                              })
+                              if (!res.ok) throw new Error((await res.json()).error)
+                              setShowNewWoman(false)
+                              setNewWomanDraft({ name: '', salaryGross: 0, baseHourlyRate: 0, monthlyHoursDecimal: 0, fixedBonus: 0, exceptionalExpenses: 0 })
+                              load()
+                            } catch (err) { alert('שגיאה: ' + String(err)) }
+                            finally { setSavingNewWoman(false) }
+                          }}
+                          className="w-full py-2 rounded-xl bg-purple-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-purple-700"
+                        >
+                          {savingNewWoman ? 'שומר...' : '+ הוסף אישה'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowNewWoman(true)}
+                      className="w-full py-2 rounded-xl border border-dashed border-purple-300 text-purple-600 text-sm hover:bg-purple-50 transition-colors"
+                    >
+                      + הוסף אישה
+                    </button>
                   )}
                 </div>
               )}

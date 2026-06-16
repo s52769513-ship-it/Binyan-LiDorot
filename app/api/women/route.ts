@@ -39,3 +39,29 @@ export async function GET(req: NextRequest) {
     }))
   )
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { name, parentId, salaryGross = 0, baseHourlyRate = 0, monthlyHoursDecimal = 0, fixedBonus = 0, exceptionalExpenses = 0 } = body
+    if (!name?.trim()) return NextResponse.json({ error: 'חסר שם' }, { status: 400 })
+    if (!parentId)     return NextResponse.json({ error: 'חסר הורה' }, { status: 400 })
+
+    const id = crypto.randomUUID()
+    const { error } = await supabaseAdmin.from('women').insert({
+      id,
+      name: name.trim(),
+      parent_ids: [parentId],
+      salary_gross: Number(salaryGross) || 0,
+      base_hourly_rate: Number(baseHourlyRate) || 0,
+      monthly_hours_decimal: Number(monthlyHoursDecimal) || 0,
+      fixed_bonus: Number(fixedBonus) || 0,
+      exceptional_expenses: Number(exceptionalExpenses) || 0,
+      synced_at: '2099-12-31T23:59:59.999Z',
+    })
+    if (error) throw error
+    return NextResponse.json({ success: true, id })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
