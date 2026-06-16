@@ -205,6 +205,88 @@ function ClassesSection() {
   )
 }
 
+/* ─── Danger Zone section ────────────────────────────── */
+function DangerZoneSection() {
+  const [counts, setCounts]           = useState<{ transactions: number; plannedPayments: number } | null>(null)
+  const [delTx, setDelTx]             = useState(false)
+  const [delPP, setDelPP]             = useState(false)
+  const [deleting, setDeleting]       = useState(false)
+  const [successMsg, setSuccessMsg]   = useState('')
+  const [errorMsg, setErrorMsg]       = useState('')
+
+  const loadCounts = () => {
+    fetch('/api/admin/delete-data')
+      .then(r => r.json())
+      .then(d => { if (!d.error) setCounts(d) })
+      .catch(() => {})
+  }
+
+  useEffect(() => { loadCounts() }, [])
+
+  const handleDelete = async () => {
+    const lines = []
+    if (delTx) lines.push(`${counts?.transactions ?? '?'} תנועות`)
+    if (delPP) lines.push(`${counts?.plannedPayments ?? '?'} תשלומים מתוכננים`)
+    if (!confirm(`פעולה זו לא ניתנת לביטול!\n\nהאם למחוק: ${lines.join(' ו-')}?`)) return
+    if (!confirm('אישור אחרון — האם אתה בטוח?')) return
+
+    setDeleting(true); setErrorMsg(''); setSuccessMsg('')
+    try {
+      const res = await fetch('/api/admin/delete-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteTransactions: delTx, deletePlannedPayments: delPP }),
+      })
+      const data = await res.json()
+      if (data.error) { setErrorMsg(data.error); return }
+      const parts = []
+      if (data.results?.transactions != null) parts.push(`נמחקו ${data.results.transactions} תנועות`)
+      if (data.results?.plannedPayments != null) parts.push(`נמחקו ${data.results.plannedPayments} PP`)
+      setSuccessMsg(parts.join(' • '))
+      setDelTx(false); setDelPP(false)
+      loadCounts()
+    } catch { setErrorMsg('שגיאת רשת') }
+    finally { setDeleting(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-6 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-red-600 uppercase tracking-wide">מחיקת נתונים</h3>
+        <p className="text-xs text-gray-400 mt-0.5">בחר מה למחוק — הפעולה אינה הפיכה.</p>
+      </div>
+
+      {errorMsg && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{errorMsg}</div>}
+      {successMsg && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm">✓ {successMsg}</div>}
+
+      <div className="space-y-3">
+        <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:bg-red-50 hover:border-red-200 transition-colors">
+          <span className="text-xs text-gray-400">{counts == null ? '...' : `${counts.transactions} רשומות`}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-800">תנועות (transactions)</span>
+            <input type="checkbox" checked={delTx} onChange={e => setDelTx(e.target.checked)} className="w-4 h-4 accent-red-600" />
+          </div>
+        </label>
+        <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer hover:bg-red-50 hover:border-red-200 transition-colors">
+          <span className="text-xs text-gray-400">{counts == null ? '...' : `${counts.plannedPayments} רשומות`}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-800">תשלומים מתוכננים (PP)</span>
+            <input type="checkbox" checked={delPP} onChange={e => setDelPP(e.target.checked)} className="w-4 h-4 accent-red-600" />
+          </div>
+        </label>
+      </div>
+
+      <button
+        onClick={handleDelete}
+        disabled={(!delTx && !delPP) || deleting}
+        className="w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
+      >
+        {deleting ? 'מוחק...' : 'מחק נתונים מסומנים'}
+      </button>
+    </div>
+  )
+}
+
 /* ─── Sync section ────────────────────────────────────── */
 function SyncSection() {
   const [syncing, setSyncing] = useState(false)
@@ -419,6 +501,9 @@ export default function SettingsPage() {
 
       {/* Classes management */}
       <ClassesSection />
+
+      {/* Danger zone */}
+      <DangerZoneSection />
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
         <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
