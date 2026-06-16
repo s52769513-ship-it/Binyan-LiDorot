@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const allParentIds = new Set<string>()
     for (const p of donorParents ?? []) allParentIds.add(p.id)
     for (const so of soRows ?? []) {
-      const pid = (so.parent as { id: string } | null)?.id
+      const pid = ((so.parent as unknown) as { id: string } | null)?.id
       if (pid) allParentIds.add(pid)
     }
 
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     // Build SO map per parent
     const soMap: Record<string, { type: string; amount: number; status: string }[]> = {}
     for (const so of soRows ?? []) {
-      const pid = (so.parent as { id: string } | null)?.id
+      const pid = ((so.parent as unknown) as { id: string } | null)?.id
       if (!pid) continue
       if (!soMap[pid]) soMap[pid] = []
       soMap[pid].push({
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 
     // SO donors
     for (const so of soRows ?? []) {
-      const p = so.parent as { id: string; name: string; first_name: string; last_name: string } | null
+      const p = (so.parent as unknown) as { id: string; name: string; first_name: string; last_name: string } | null
       if (!p || seen.has(p.id)) continue
       seen.add(p.id)
       const monthlyAmount = soMap[p.id]?.reduce((s, x) => s + x.amount, 0) ?? 0

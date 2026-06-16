@@ -29,7 +29,7 @@ export async function GET() {
     const result: { id: string; name: string; salary_gross: number }[] = []
 
     for (const row of soParents ?? []) {
-      const p = row.parent as { id: string; name: string } | null
+      const p = (row.parent as unknown) as { id: string; name: string } | null
       if (p && !seen.has(p.id)) { seen.add(p.id); result.push({ id: p.id, name: p.name, salary_gross: 0 }) }
     }
     for (const p of salaryParents ?? []) {
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         // Merge unique donors
         const donorMap = new Map<string, { id: string; name: string; amount: number }>()
         for (const so of soRows ?? []) {
-          const p = so.parent as { id: string; name: string } | null
+          const p = (so.parent as unknown) as { id: string; name: string } | null
           if (!p) continue
           const existing = donorMap.get(p.id)
           const amt = Number(so.charge_amount) || 0
