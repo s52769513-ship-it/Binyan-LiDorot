@@ -40,6 +40,10 @@ interface DashboardData {
   ppCreditList: { id: string; name: string; ppCredit: number }[]
   overdueAlerts: { id: string; parentId: string; parentName: string; balance: number; date: string; monthYear: string }[]
   salaryAlerts: { parentId: string; parentName: string; balance: number; monthYear: string }[]
+  donationMonthlyTotal?: number
+  donationDonorsCount?: number
+  donationPPsThisMonth?: number
+  donationCollectedThisMonth?: number
 }
 
 interface CashflowMonth {
@@ -817,6 +821,27 @@ export default function Dashboard() {
               </>
             )}
           </div>
+
+          {/* Donation summary */}
+          {!loading && (d?.donationDonorsCount ?? 0) > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5">💚 מגבית — החודש</div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-right">
+                  <div className="text-[10px] text-emerald-600 mb-0.5">תורמים</div>
+                  <div className="text-lg font-bold text-emerald-700">{d?.donationDonorsCount ?? 0}</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-right">
+                  <div className="text-[10px] text-emerald-600 mb-0.5">מתוכנן</div>
+                  <div className="text-lg font-bold text-emerald-700 tabular-nums">₪{fmt(d?.donationPPsThisMonth ?? 0)}</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-right">
+                  <div className="text-[10px] text-emerald-600 mb-0.5">נגבה</div>
+                  <div className="text-lg font-bold text-emerald-700 tabular-nums">₪{fmt(d?.donationCollectedThisMonth ?? 0)}</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Department breakdown */}
           {(loading || (d?.departmentStats && d.departmentStats.length > 0)) && (

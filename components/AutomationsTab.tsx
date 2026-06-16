@@ -183,6 +183,19 @@ CREATE POLICY "service_role_all" ON salary_offsets
     ],
     sql: `-- Run DONATION_MIGRATION.sql in Supabase first.`,
   },
+  {
+    id: 'donation-offset', name: 'קיזוז מגבית ממשכורת', icon: '💚',
+    desc: 'מקזז דמי מגבית מהשארית של המשכורת אחרי שכ"ל — רק להורים עם V "ניכוי מגבית ממשכורת"',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/donation-offset',
+    steps: [
+      { icon:'⏰', label:'הפעלה',          desc:'אחרי קיזוז שכ"ל',        bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'💚', label:'עובדים תורמים', desc:'deduct_donation = ✓',     bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+      { icon:'🧮', label:'שארית משכורת', desc:'משכורת − ניכוי שכ"ל',     bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'✅', label:'קיזוז מגבית',   desc:'עד גובה PP מגבית פתוח',  bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+    ],
+    sql: `-- Requires deduct_donation column (DONATION_MIGRATION.sql).`,
+  },
 ]
 
 /* ─── FlowDiagram ─────────────────────────────────────────────────────── */

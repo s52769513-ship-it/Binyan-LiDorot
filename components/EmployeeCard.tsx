@@ -376,6 +376,27 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
             ))}
           </div>
         )}
+
+        {/* Salary deduction opt-in */}
+        <div className="mt-3 pt-3 border-t border-emerald-200 flex items-center justify-between">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={parent.deductDonation ?? false}
+              onChange={async e => {
+                await fetch(`/api/parents/${parent.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ deductDonation: e.target.checked }),
+                })
+                onUpdate()
+              }}
+              className="w-4 h-4 accent-emerald-600"
+            />
+            <span className="text-xs text-gray-700">ניכוי מגבית ממשכורת</span>
+          </label>
+          <span className="text-[10px] text-gray-400">V = כולל בקיזוז אוטומטי</span>
+        </div>
       </div>
 
       {/* ── PP History ── */}
@@ -702,24 +723,28 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const totalDebt       = tuitionPPs_all.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
   async function openDeleteModal() {
-    const [txRes, ppRes, soRes, stuRes] = await Promise.all([
-      fetch(`/api/transactions?parentId=${parentId}&limit=1000`),
-      fetch(`/api/planned-payments?parentId=${parentId}&limit=200`),
-      fetch(`/api/standing-orders?parentId=${parentId}`),
-      fetch(`/api/students`),
-    ])
-    const txData  = await txRes.json()
-    const ppData  = await ppRes.json()
-    const soData  = await soRes.json()
-    const stuData = await stuRes.json()
-    const txCount  = (Array.isArray(txData) ? txData : txData.data ?? []).length
-    const ppCount  = (Array.isArray(ppData) ? ppData : ppData.data ?? []).length
-    const soCount  = (Array.isArray(soData) ? soData : []).length
-    const allStu   = Array.isArray(stuData) ? stuData : (stuData.data ?? stuData.students ?? [])
-    const studentCount = (allStu as { parent_ids?: string[]; parentIds?: string[] }[])
-      .filter(s => { const ids = s.parent_ids ?? s.parentIds ?? []; return ids.includes(parentId) }).length
-    setDeleteInfo({ txCount, ppCount, soCount, studentCount })
-    setDeleteChecks({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
+    try {
+      const [txRes, ppRes, soRes, stuRes] = await Promise.all([
+        fetch(`/api/transactions?parentId=${parentId}&limit=1000`),
+        fetch(`/api/planned-payments?parentId=${parentId}&limit=200`),
+        fetch(`/api/standing-orders?parentId=${parentId}`),
+        fetch(`/api/students`),
+      ])
+      const txData  = await txRes.json()
+      const ppData  = await ppRes.json()
+      const soData  = await soRes.json()
+      const stuData = await stuRes.json()
+      const txCount  = (Array.isArray(txData) ? txData : txData.data ?? []).length
+      const ppCount  = (Array.isArray(ppData) ? ppData : ppData.data ?? []).length
+      const soCount  = (Array.isArray(soData) ? soData : []).length
+      const allStu   = Array.isArray(stuData) ? stuData : (stuData.data ?? stuData.students ?? [])
+      const studentCount = (allStu as { parent_ids?: string[]; parentIds?: string[] }[])
+        .filter(s => { const ids = s.parent_ids ?? s.parentIds ?? []; return ids.includes(parentId) }).length
+      setDeleteInfo({ txCount, ppCount, soCount, studentCount })
+      setDeleteChecks({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
+    } catch {
+      setDeleteInfo({ txCount: 0, ppCount: 0, soCount: 0, studentCount: 0 })
+    }
     setShowDeleteModal(true)
   }
 
@@ -1666,8 +1691,6 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               )}
             </div>
           )}
-        </div>
-      </div>
 
       {/* ── Planned payment detail modal ── */}
       {selectedPP && (
@@ -2223,6 +2246,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {parent && tab === 'donation' && (
             <DonationTab parent={parent} onUpdate={load} />
           )}
+
+        </div>
+      </div>
 
       {/* ── Modals ── */}
       {showAddTx && parent && (

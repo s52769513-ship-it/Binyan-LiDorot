@@ -6,6 +6,11 @@
 -- 1. Add monthly_donation to parents
 ALTER TABLE parents ADD COLUMN IF NOT EXISTS monthly_donation NUMERIC DEFAULT 0;
 
+-- Opt-in flag: deduct donation from salary (mirrors deduct_tuition).
+-- When TRUE, the donation-offset automation will deduct the donation
+-- from the REMAINDER of the salary, AFTER tuition has been offset.
+ALTER TABLE parents ADD COLUMN IF NOT EXISTS deduct_donation BOOLEAN DEFAULT false;
+
 -- Index for quick donor lookups
 CREATE INDEX IF NOT EXISTS idx_parents_monthly_donation
   ON parents (monthly_donation) WHERE monthly_donation > 0;

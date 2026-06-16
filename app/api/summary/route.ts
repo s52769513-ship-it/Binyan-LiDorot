@@ -33,6 +33,8 @@ export async function GET() {
       ppCreditRes,
       employeesCountRes,
       salaryPaidThisMonthRes,
+      donorSalaryRes,
+      donationPPsRes,
     ] = await Promise.all([
       // Tuition only — salary PPs are expenses, not expected income
       supabase.from('planned_payments').select('amount').eq('month_year', currentMonthYear)
@@ -121,6 +123,12 @@ export async function GET() {
         .select('amount, balance')
         .eq('pp_type', 'salary')
         .eq('month_year', currentMonthYear),
+
+      // Donation: total monthly commitment from salary-deduction donors
+      supabase.from('parents').select('monthly_donation').gt('monthly_donation', 0),
+
+      // Donation PPs this month
+      supabase.from('planned_payments').select('amount, balance').eq('pp_type', 'donation').eq('month_year', currentMonthYear),
     ])
 
     // Salary-side / expense transactions must not count as tuition income:
@@ -328,6 +336,11 @@ export async function GET() {
       ppCreditList,
       overdueAlerts,
       salaryAlerts,
+      // Donation stats
+      donationMonthlyTotal:   Math.round((donorSalaryRes.data ?? []).reduce((s, p) => s + (Number(p.monthly_donation) || 0), 0)),
+      donationDonorsCount:    (donorSalaryRes.data ?? []).length,
+      donationPPsThisMonth:   Math.round((donationPPsRes.data ?? []).reduce((s, p) => s + (Number(p.amount) || 0), 0)),
+      donationCollectedThisMonth: Math.round((donationPPsRes.data ?? []).reduce((s, p) => s + Math.max(0, (Number(p.amount) || 0) - (Number(p.balance) || 0)), 0)),
       // Quick stats
       activeStudents,
       activeFamilies,
