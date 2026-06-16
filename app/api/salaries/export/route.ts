@@ -22,11 +22,12 @@ export async function GET(req: NextRequest) {
       .from('women')
       .select('id, name, parent_ids, salary_gross')
       .gt('salary_gross', 0),
+    // הקיזוז מצד המשכורת (ניכוי שכ"ל) מתויג בחודש המשכורת monthYear
     supabaseAdmin
       .from('transactions')
       .select('parent_ids, amount')
       .eq('month_year', monthYear)
-      .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']),
+      .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל']),
   ])
 
   // Wife lookup

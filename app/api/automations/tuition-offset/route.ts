@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { salaryMonthForTuition } from '@/lib/months'
 
 function emit(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: object) {
   controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
@@ -133,25 +134,26 @@ export async function POST(req: NextRequest) {
               .update({ tuition_balance: Math.max(0, (Number(parent.tuition_balance) || 0) - offset) })
               .eq('id', parent.id)
 
-            // Mirror on salary side: if a salary PP exists for this month,
-            // record the ניכוי שכ"ל tx and reduce its balance (same single payment, two sides)
+            // Mirror on salary side: שכ"ל של חודש T מקוזז ממשכורת של חודש S = T−1.
+            // record the ניכוי שכ"ל tx (מתויג בחודש המשכורת S) ומורידים את יתרת ה-PP משכורת.
+            const salaryMY = salaryMonthForTuition(targetMY)
             const { data: salaryPPs } = await supabaseAdmin
               .from('planned_payments')
               .select('id, balance')
               .contains('parent_ids', [parent.id])
-              .eq('month_year', targetMY)
+              .eq('month_year', salaryMY)
               .eq('pp_type', 'salary')
               .limit(1)
             const salaryPP = salaryPPs?.[0]
             if (!salaryPP) {
-              e({ type: 'log', message: `${parent.name}: אין PP משכורת לחודש ${targetMY} — ניכוי שכ"ל יווצר כאשר salary-pp ירוץ` })
+              e({ type: 'log', message: `${parent.name}: אין PP משכורת לחודש ${salaryMY} — ניכוי שכ"ל יווצר כאשר salary-pp ירוץ` })
             }
             if (salaryPP) {
               const { data: existingDeduct } = await supabaseAdmin
                 .from('transactions')
                 .select('id')
                 .contains('parent_ids', [parent.id])
-                .eq('month_year', targetMY)
+                .eq('month_year', salaryMY)
                 .in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל'])
                 .limit(1)
               if ((existingDeduct ?? []).length === 0) {
@@ -161,8 +163,8 @@ export async function POST(req: NextRequest) {
                   planned_payment_id: salaryPP.id,
                   parent_ids:         [parent.id],
                   date:               today.toISOString().split('T')[0],
-                  month_year:         targetMY,
-                  notes:              `ניכוי שכ"ל ₪${offset}`,
+                  month_year:         salaryMY,
+                  notes:              `ניכוי שכ"ל ₪${offset} (שכ"ל ${targetMY})`,
                   type:               'ניכוי שכ"ל',
                   project_ids:        [],
                   project_names:      [],

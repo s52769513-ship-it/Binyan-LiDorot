@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
+import { tuitionMonthForSalary } from '@/lib/months'
 
 export async function GET(req: NextRequest) {
   try {
@@ -110,6 +111,8 @@ export async function PATCH(req: NextRequest) {
       try {
         const parentId = (existing.parent_ids as string[])?.[0]
         const monthYear = existing.month_year as string
+        // משכורת חודש S מקוזזת מול שכ"ל חודש T = S+1
+        const tuitionMY = tuitionMonthForSalary(monthYear)
 
         // Find existing salary-side offset transactions linked to this PP
         const { data: salaryOffsetTxs } = await supabaseAdmin
@@ -121,12 +124,12 @@ export async function PATCH(req: NextRequest) {
         if ((salaryOffsetTxs ?? []).length > 0 && parentId) {
           const oldOffset = (salaryOffsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
-          // Find tuition PP for this parent/month to know tuition amount
+          // Find tuition PP for this parent/month to know tuition amount (בחודש השכ"ל T)
           const { data: tuitionPPs } = await supabaseAdmin
             .from('planned_payments')
             .select('id, amount, balance')
             .contains('parent_ids', [parentId])
-            .eq('month_year', monthYear)
+            .eq('month_year', tuitionMY)
             .eq('pp_type', 'tuition')
             .limit(1)
 
@@ -143,12 +146,12 @@ export async function PATCH(req: NextRequest) {
               .update({ amount: Math.max(0, Number(mainTx.amount) + offsetDelta) })
               .eq('id', mainTx.id)
 
-            // Update tuition-side offset transactions
+            // Update tuition-side offset transactions (בחודש השכ"ל T)
             const { data: tuitionOffsetTxs } = await supabaseAdmin
               .from('transactions')
               .select('id, amount')
               .contains('parent_ids', [parentId])
-              .eq('month_year', monthYear)
+              .eq('month_year', tuitionMY)
               .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
             if ((tuitionOffsetTxs ?? []).length > 0) {
               const mainTuitionTx = (tuitionOffsetTxs ?? [])[0]

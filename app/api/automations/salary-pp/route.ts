@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { tuitionMonthForSalary } from '@/lib/months'
 
 function emit(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: object) {
   controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
@@ -131,18 +132,19 @@ export async function POST(req: NextRequest) {
               e({ type: 'log', message: `${parent.name} / ${targetMY}: נוצר PP ₪${salary}${dryRun ? ' [dry]' : ''}` })
             }
 
-            // Offset search
+            // Offset search — שכ"ל מקוזז הוא של חודש T = S+1 (החודש הנוכחי מול משכורת חודש שעבר)
+            const tuitionMY = tuitionMonthForSalary(targetMY)
             const { data: offsetTxs } = await supabaseAdmin
               .from('transactions')
               .select('id, amount')
               .contains('parent_ids', [parent.id])
-              .eq('month_year', targetMY)
+              .eq('month_year', tuitionMY)
               .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל'])
 
             const offsetTotal = (offsetTxs ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
 
             if (offsetTotal > 0 && ppId && !dryRun) {
-              // Idempotency: skip if a ניכוי שכ"ל tx already exists for this parent+month
+              // Idempotency: skip if a ניכוי שכ"ל tx already exists for this parent+month (חודש המשכורת S)
               const { data: existingDeduct } = await supabaseAdmin
                 .from('transactions')
                 .select('id')
@@ -158,7 +160,7 @@ export async function POST(req: NextRequest) {
                   parent_ids:         [parent.id],
                   date:               today.toISOString().split('T')[0],
                   month_year:         targetMY,
-                  notes:              `ניכוי שכ"ל ₪${offsetTotal}`,
+                  notes:              `ניכוי שכ"ל ₪${offsetTotal} (שכ"ל ${tuitionMY})`,
                   type:               'ניכוי שכ"ל',
                   project_ids:        [],
                   project_names:      [],

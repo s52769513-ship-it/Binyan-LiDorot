@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { tuitionMonthForSalary } from '@/lib/months'
 import * as XLSX from 'xlsx'
 
 // Must match export column order
@@ -79,15 +80,17 @@ export async function POST(req: NextRequest) {
       }
 
       // Step 2: Always sync offset transactions when salary PP exists (idempotent)
+      // מודל: משכורת של חודש S (monthYear) מקוזזת מול שכ"ל של חודש T = S+1.
       if (!dryRun && pp && actualSalary > 0) {
+        const tuitionMY = tuitionMonthForSalary(monthYear)
         const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: tuitionPPs }] = await Promise.all([
-          // Tuition-side offset (קיזוז שכ"ל / קיזוז ממשכורת) — authoritative source of old offset
+          // Tuition-side offset (קיזוז שכ"ל / קיזוז ממשכורת) בחודש השכ"ל T — authoritative source of old offset
           supabaseAdmin.from('transactions')
             .select('id, amount')
             .contains('parent_ids', [parentId])
-            .eq('month_year', monthYear)
+            .eq('month_year', tuitionMY)
             .in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']),
-          // Salary-side offset (ניכוי שכ"ל)
+          // Salary-side offset (ניכוי שכ"ל) בחודש המשכורת S
           supabaseAdmin.from('transactions')
             .select('id, amount')
             .contains('parent_ids', [parentId])
@@ -96,7 +99,7 @@ export async function POST(req: NextRequest) {
           supabaseAdmin.from('planned_payments')
             .select('id, amount, balance')
             .contains('parent_ids', [parentId])
-            .eq('month_year', monthYear)
+            .eq('month_year', tuitionMY)
             .eq('pp_type', 'tuition')
             .limit(1),
         ])

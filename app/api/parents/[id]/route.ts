@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { tuitionMonthForSalary } from '@/lib/months'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -64,10 +65,14 @@ export async function PATCH(
         return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
       })
 
+      // מודל: משכורת של חודש S מקוזזת מול שכ"ל של חודש T = S+1.
+      // ניכוי שכ"ל (צד משכורת) מתויג ב-S; קיזוז שכ"ל (צד שכ"ל) ב-T.
+      const tuitionMonths = months.map(m => tuitionMonthForSalary(m))
+
       // Fetch all offset transactions + salary PPs for recent months
       const [{ data: tuitionOffsetTxs }, { data: salaryOffsetTxs }, { data: salaryPPs }] = await Promise.all([
         supabaseAdmin.from('transactions').select('id, amount, month_year')
-          .contains('parent_ids', [id]).in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']).in('month_year', months),
+          .contains('parent_ids', [id]).in('type', ['קיזוז ממשכורת', 'קיזוז שכ"ל']).in('month_year', tuitionMonths),
         supabaseAdmin.from('transactions').select('id, amount, month_year, planned_payment_id')
           .contains('parent_ids', [id]).in('type', ['קיזוז משכר לימוד', 'ניכוי שכ"ל']).in('month_year', months),
         supabaseAdmin.from('planned_payments').select('id, amount, balance, month_year')
@@ -75,7 +80,8 @@ export async function PATCH(
       ])
 
       for (const my of months) {
-        const tuitionOffsetTx  = (tuitionOffsetTxs ?? []).find(t => t.month_year === my)
+        const tuitionMY        = tuitionMonthForSalary(my)
+        const tuitionOffsetTx  = (tuitionOffsetTxs ?? []).find(t => t.month_year === tuitionMY)
         const salaryOffsetTx   = (salaryOffsetTxs  ?? []).find(t => t.month_year === my)
         const salaryPP         = (salaryPPs        ?? []).find(p => p.month_year === my)
 
@@ -95,10 +101,10 @@ export async function PATCH(
         if (tuitionOffsetTx) {
           const oldOffset = Math.abs(Number(tuitionOffsetTx.amount))
 
-          // Find tuition PP
+          // Find tuition PP (בחודש השכ"ל T)
           const { data: tuitionPPs } = await supabaseAdmin
             .from('planned_payments').select('id, amount, balance')
-            .contains('parent_ids', [id]).eq('month_year', my).eq('pp_type', 'tuition').limit(1)
+            .contains('parent_ids', [id]).eq('month_year', tuitionMY).eq('pp_type', 'tuition').limit(1)
           const tuitionPP = tuitionPPs?.[0]
 
           // Undo old offset to get real outstanding, then recalculate: min(salary, outstanding)
