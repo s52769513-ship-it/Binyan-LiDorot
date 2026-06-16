@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AddTransactionModal from '@/components/AddTransactionModal'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
@@ -37,6 +37,169 @@ interface TxRow {
   projectNames: string[]
 }
 
+/* ─── Bank HOK Pull Modal ─────────────────────────────────────────────── */
+function BankHokPullModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [from, setFrom]       = useState('')
+  const [to, setTo]           = useState(today)
+  const [dryRun, setDryRun]   = useState(false)
+  const [lastTo, setLastTo]   = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const [lines, setLines]     = useState<{ text: string; kind: string }[]>([])
+  const [done, setDone]       = useState(false)
+  const [summary, setSummary] = useState<{ imported: number; returned: number; skipped: number; totalAmount: number } | null>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/automations/nedarim-pull')
+      .then(r => r.json())
+      .then(d => {
+        const lt = (d.lastTo as string) ?? null
+        setLastTo(lt)
+        if (lt) {
+          const after = new Date(lt)
+          after.setDate(after.getDate() + 1)
+          setFrom(after.toISOString().split('T')[0])
+        } else {
+          setFrom(today.slice(0, 8) + '01')
+        }
+      })
+      .catch(() => { setFrom(today.slice(0, 8) + '01') })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [lines])
+
+  const fmtD = (d: string) => { const [y,m,day] = d.split('-'); return `${day}/${m}/${y.slice(2)}` }
+
+  const addLine = (text: string, kind = 'info') =>
+    setLines(prev => [...prev, { text, kind }])
+
+  const run = async () => {
+    if (!from || !to) return
+    setRunning(true); setLines([]); setDone(false); setSummary(null)
+    try {
+      const res = await fetch('/api/automations/nedarim-pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, dryRun }),
+      })
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done: d, value } = await reader.read()
+        if (d) break
+        buf += decoder.decode(value, { stream: true })
+        const parts = buf.split('\n')
+        buf = parts.pop() ?? ''
+        for (const part of parts) {
+          const line = part.trim(); if (!line) continue
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'step')     addLine(ev.msg, 'step')
+            else if (ev.type === 'progress') {
+              if (ev.skipped) addLine(`⏭ ${ev.donorName} (${ev.hokNumber}) — ${ev.reason}`, 'skip')
+              else            addLine(`✓ ${ev.donorName} (${ev.hokNumber}) ₪${ev.amount}`, 'ok')
+            } else if (ev.type === 'complete') {
+              setSummary({ imported: ev.imported, returned: ev.returned, skipped: ev.skipped, totalAmount: ev.totalAmount })
+              addLine(`הושלם: יובאו ${ev.imported} · החזרות ${ev.returned} · דולגו ${ev.skipped}${ev.dryRun ? ' [בדיקה בלבד]' : ''}`, 'done')
+              setDone(true)
+              if (!ev.dryRun) onDone()
+            } else if (ev.type === 'error') {
+              addLine(`שגיאה: ${ev.error}`, 'err'); setDone(true)
+            }
+          } catch { /* bad json line */ }
+        }
+      }
+    } catch (err) {
+      addLine(`שגיאת רשת: ${String(err)}`, 'err'); setDone(true)
+    } finally { setRunning(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4" onClick={e => e.stopPropagation()} dir="rtl">
+        <div className="flex items-center justify-between">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <h3 className="text-lg font-bold text-gray-800">🏦 משיכת הו&quot;ק בנקאי</h3>
+        </div>
+
+        {lastTo && (
+          <p className="text-xs text-gray-400">משכת תנועות עד תאריך <strong className="text-gray-600">{fmtD(lastTo)}</strong></p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">מתאריך</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} dir="ltr"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">עד תאריך</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} dir="ltr"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+          <span className="text-sm text-gray-700">בדיקה בלבד — לא ישמור בסיס נתונים</span>
+        </label>
+
+        {lines.length > 0 && (
+          <div ref={logRef} className="font-mono text-xs bg-gray-950 rounded-xl p-3 h-44 overflow-y-auto scroll-smooth" dir="ltr">
+            {lines.map((l, i) => (
+              <div key={i} className={`py-0.5 leading-relaxed ${
+                l.kind==='step' ? 'text-yellow-400' :
+                l.kind==='done' ? 'text-emerald-300 font-semibold' :
+                l.kind==='err'  ? 'text-red-400' :
+                l.kind==='skip' ? 'text-gray-500' :
+                'text-green-400'
+              }`}>{l.text}</div>
+            ))}
+            {running && <span className="text-green-400 animate-pulse">▮</span>}
+          </div>
+        )}
+
+        {summary && !running && (
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-emerald-50 rounded-xl p-3">
+              <p className="text-lg font-bold text-emerald-700">{summary.imported}</p>
+              <p className="text-xs text-gray-500">יובאו</p>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-3">
+              <p className="text-lg font-bold text-amber-700">{summary.returned}</p>
+              <p className="text-xs text-gray-500">החזרות</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-lg font-bold text-gray-600">{summary.skipped}</p>
+              <p className="text-xs text-gray-500">דולגו</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          {done ? (
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+              סגור
+            </button>
+          ) : (
+            <button onClick={run} disabled={running || !from || !to}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
+              {running ? <><span className="animate-spin inline-block mr-1">⟳</span>מושך...</> : '⬇ משוך תנועות'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TransactionsPage() {
   const [rows, setRows]         = useState<TxRow[]>([])
   const [total, setTotal]       = useState(0)
@@ -51,6 +214,7 @@ export default function TransactionsPage() {
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
   const [showAdd, setShowAdd]   = useState(false)
+  const [showHokPull, setShowHokPull] = useState(false)
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [selectedTx, setSelectedTx] = useState<TxRow | null>(null)
 
@@ -92,10 +256,16 @@ export default function TransactionsPage() {
     <div className="space-y-4" dir="rtl">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800">תנועות</h2>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors">
-          <span className="text-lg leading-none">+</span> הוספת תנועה
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowHokPull(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors">
+            🏦 משיכת הו&quot;ק
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors">
+            <span className="text-lg leading-none">+</span> הוספת תנועה
+          </button>
+        </div>
       </div>
 
       {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 text-sm">{error}</div>}
@@ -233,6 +403,7 @@ export default function TransactionsPage() {
       )}
 
       {showAdd && <AddTransactionModal onClose={() => setShowAdd(false)} onSuccess={() => { setShowAdd(false); load() }} />}
+      {showHokPull && <BankHokPullModal onClose={() => setShowHokPull(false)} onDone={load} />}
       {selectedParent && <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />}
       {selectedTx && (
         <TxDetailModal
