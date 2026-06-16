@@ -170,6 +170,19 @@ CREATE POLICY "service_role_all" ON salary_offsets
     ],
     sql: '',
   },
+  {
+    id: 'donation-pp', name: 'יצירת PP מגבית', icon: '💚',
+    desc: 'יוצר תשלום מתוכנן "דמי מגבית MM/YYYY" לכל תורם פעיל — לפי הו"ק מגבית וניכוי משכרות',
+    defaultMonth: currentMY,
+    endpoint: '/api/automations/donation-pp',
+    steps: [
+      { icon:'⏰', label:'הפעלה',          desc:'ידני / חודשי',          bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
+      { icon:'💚', label:'תורמים פעילים', desc:'הו"ק + ניכוי משכרות',   bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+      { icon:'📋', label:'בדיקת PP',      desc:'קיים להחודש?',           bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'✅', label:'יצירת PP',      desc:'דמי מגבית MM/YYYY',      bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+    ],
+    sql: `-- Run DONATION_MIGRATION.sql in Supabase first.`,
+  },
 ]
 
 /* ─── FlowDiagram ─────────────────────────────────────────────────────── */

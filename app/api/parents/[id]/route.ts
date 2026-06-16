@@ -26,6 +26,8 @@ const FIELD_MAP: Record<string, string> = {
   chargeDay:         'charge_day',
   standingOrderType: 'standing_order_type',
   standingOrderId:   'standing_order_id',
+  // Donation
+  monthlyDonation:       'monthly_donation',
   // Salary fields
   baseHourlyRate:        'base_hourly_rate',
   seniorityBonusHourly:  'seniority_bonus_hourly',
@@ -298,6 +300,7 @@ export async function GET(
       salaryNet: p.salary_after_tuition ?? 0,
       ppCredit: (Number(p.pp_credit ?? 0)) + (Number(p.credit_balance ?? 0)),
       birthDate: p.birth_date ?? '',
+      monthlyDonation: Number(p.monthly_donation) || 0,
 
       women: (womenRes.data ?? []).map(w => ({
         id: w.id,

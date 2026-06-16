@@ -223,6 +223,212 @@ function WomanLinkField({ women, parentId, onUpdate }: {
   )
 }
 
+/* ─── DonationTab ────────────────────────────────────── */
+function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () => void }) {
+  const fmt2 = (n: number) =>
+    new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+
+  const [editingAmount, setEditingAmount]     = useState(false)
+  const [amountDraft, setAmountDraft]         = useState(String(parent.monthlyDonation || ''))
+  const [saving, setSaving]                   = useState(false)
+  const [donationPPs, setDonationPPs]         = useState<{ id: string; name: string; amount: number; balance: number; monthYear: string }[]>([])
+  const [loadingPPs, setLoadingPPs]           = useState(true)
+  const [donationSOs, setDonationSOs]         = useState<{ id: string; type: string; amount: number; status: string }[]>([])
+
+  const hasDonation = (parent.monthlyDonation ?? 0) > 0
+  const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
+
+  useEffect(() => {
+    setAmountDraft(String(parent.monthlyDonation || ''))
+  }, [parent.monthlyDonation])
+
+  useEffect(() => {
+    // Load donation PPs for this parent
+    const loadPPs = async () => {
+      setLoadingPPs(true)
+      try {
+        // Load last 12 months of donation PPs
+        const r = await fetch(`/api/planned-payments?parentId=${parent.id}&ppType=donation`)
+        if (r.ok) {
+          const data = await r.json()
+          setDonationPPs(Array.isArray(data) ? data : [])
+        }
+      } catch {} finally { setLoadingPPs(false) }
+    }
+    loadPPs()
+
+    // Load donation standing orders
+    if (parent.standingOrders) {
+      setDonationSOs(
+        parent.standingOrders
+          .filter(so => so.projectName === 'דמי מגבית')
+          .map(so => ({
+            id:     so.id,
+            type:   so.standingOrderType,
+            amount: so.chargeAmount ?? 0,
+            status: so.soStatus,
+          }))
+      )
+    }
+  }, [parent.id, parent.standingOrders])
+
+  const saveAmount = async () => {
+    const val = Number(amountDraft) || 0
+    setSaving(true)
+    try {
+      await fetch(`/api/parents/${parent.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ monthlyDonation: val }),
+      })
+      onUpdate()
+    } finally {
+      setSaving(false)
+      setEditingAmount(false)
+    }
+  }
+
+  const paymentMethods = [
+    ...donationSOs.map(so => so.type?.includes('אשראי') ? 'הו"ק אשראי' : 'הו"ק בנקאי'),
+    ...(hasDonation && donationSOs.length === 0 ? ['ניכוי משכרות'] : []),
+  ].filter(Boolean)
+
+  const monthlyAmount = donationSOs.length > 0
+    ? donationSOs.reduce((s, so) => s + (so.amount ?? 0), 0)
+    : (parent.monthlyDonation ?? 0)
+
+  return (
+    <div className="p-4 space-y-4" dir="rtl">
+
+      {/* ── Summary card ── */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">דמי מגבית</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+            hasDonation || hasDonationSO ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {hasDonation || hasDonationSO ? 'תורם פעיל' : 'לא מוגדר'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Monthly amount */}
+          <div>
+            <p className="text-[10px] text-gray-500 mb-1">סכום חודשי</p>
+            {editingAmount ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={amountDraft}
+                  onChange={e => setAmountDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveAmount(); if (e.key === 'Escape') setEditingAmount(false) }}
+                  autoFocus
+                  className="w-24 px-2 py-1 text-sm border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  dir="ltr"
+                  placeholder="0"
+                />
+                <button onClick={saveAmount} disabled={saving}
+                  className="px-2 py-1 text-xs bg-emerald-600 text-white rounded-lg disabled:opacity-40">
+                  {saving ? '...' : '✓'}
+                </button>
+                <button onClick={() => setEditingAmount(false)} className="text-gray-400 text-xs px-1">✕</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingAmount(true)}
+                className="text-xl font-bold text-emerald-700 hover:text-emerald-900 transition-colors group"
+              >
+                {monthlyAmount > 0 ? fmt2(monthlyAmount) : <span className="text-gray-300 text-sm italic">לא הוגדר</span>}
+                <span className="opacity-0 group-hover:opacity-40 text-gray-400 text-xs mr-1"> ✏</span>
+              </button>
+            )}
+          </div>
+
+          {/* Payment method */}
+          <div>
+            <p className="text-[10px] text-gray-500 mb-1">אופן תשלום</p>
+            <p className="text-sm font-medium text-gray-700">
+              {paymentMethods.length > 0 ? paymentMethods.join(', ') : '—'}
+            </p>
+          </div>
+
+          {/* Annual projection */}
+          {monthlyAmount > 0 && (
+            <div className="col-span-2 pt-2 border-t border-emerald-200">
+              <p className="text-[10px] text-gray-500 mb-0.5">תחזית שנתית</p>
+              <p className="text-sm font-semibold text-gray-700">{fmt2(monthlyAmount * 12)}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Donation SOs */}
+        {donationSOs.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-emerald-200 space-y-1">
+            <p className="text-[10px] font-semibold text-gray-500 mb-1">הוראות קבע מגבית</p>
+            {donationSOs.map(so => (
+              <div key={so.id} className="flex items-center justify-between text-xs">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  so.status === 'פעיל' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                }`}>{so.status}</span>
+                <span className="text-gray-600">{so.type}</span>
+                <span className="font-semibold text-gray-800">{fmt2(so.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── PP History ── */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 mb-2">תשלומים מתוכננים — מגבית</p>
+        {loadingPPs ? (
+          <div className="space-y-1">{[1,2,3].map(i=><div key={i} className="h-8 bg-gray-100 rounded animate-pulse"/>)}</div>
+        ) : donationPPs.length === 0 ? (
+          <div className="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded-xl border border-dashed border-gray-200">
+            <p>אין תשלומים מתוכננים עדיין</p>
+            <p className="text-xs mt-1">הרץ אוטומציית &quot;יצירת PP מגבית&quot; ליצירה אוטומטית</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b">
+                <tr className="text-right text-gray-400">
+                  <th className="px-3 py-2">חודש</th>
+                  <th className="px-3 py-2 text-left">סכום</th>
+                  <th className="px-3 py-2 text-left">יתרה</th>
+                  <th className="px-3 py-2 text-center">סטטוס</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {donationPPs.map(pp => {
+                  const paid    = pp.balance <= 0
+                  const partial = !paid && pp.balance < pp.amount
+                  return (
+                    <tr key={pp.id}>
+                      <td className="px-3 py-2 font-medium text-gray-700">{pp.monthYear}</td>
+                      <td className="px-3 py-2 text-left tabular-nums">{fmt2(pp.amount)}</td>
+                      <td className="px-3 py-2 text-left tabular-nums text-gray-500">{fmt2(pp.balance)}</td>
+                      <td className="px-3 py-2 text-center">
+                        {paid ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700">שולם ✓</span>
+                        ) : partial ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">חלקי</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-600">פתוח</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ─── props ─────────────────────────────────────────── */
 interface Props {
   parentId: string
@@ -244,7 +450,7 @@ function Badge({ text }: { text: string }) {
   )
 }
 
-type TabKey = 'details' | 'children' | 'payments' | 'salary' | 'horaatkeva'
+type TabKey = 'details' | 'children' | 'payments' | 'salary' | 'horaatkeva' | 'donation'
 type SalarySubTab = 'summary' | 'settings' | 'women'
 
 /* ═══════════════════════════════════════════════════════
@@ -540,6 +746,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     { key: 'payments',    label: '📋 תשלומים' },
     { key: 'salary',      label: '💼 משכורת' },
     { key: 'horaatkeva',  label: `הו"ק${parent?.standingOrders?.length ? ` (${parent.standingOrders.length})` : ''}` },
+    { key: 'donation',    label: `💚 מגבית${(parent?.monthlyDonation ?? 0) > 0 ? ` (₪${parent!.monthlyDonation})` : ''}` },
   ]
 
   return (
@@ -2010,6 +2217,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               ))}
             </div>
+          )}
+
+          {/* ── DONATION TAB ── */}
+          {parent && tab === 'donation' && (
+            <DonationTab parent={parent} onUpdate={load} />
           )}
 
       {/* ── Modals ── */}
