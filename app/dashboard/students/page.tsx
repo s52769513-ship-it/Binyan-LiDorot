@@ -27,7 +27,16 @@ export default function StudentsPage() {
     setLoading(true)
     fetch('/api/students')
       .then(r => r.json())
-      .then(d => { if (!d.error) setStudents(d.data ?? []); else setError(d.error) })
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        const sorted = (d.data ?? []).slice().sort((a: Student, b: Student) => {
+          const aLast = a.name.trim().split(/\s+/).at(-1) ?? ''
+          const bLast = b.name.trim().split(/\s+/).at(-1) ?? ''
+          const cmp = aLast.localeCompare(bLast, 'he')
+          return cmp !== 0 ? cmp : a.name.localeCompare(b.name, 'he')
+        })
+        setStudents(sorted)
+      })
       .catch(() => setError('שגיאה'))
       .finally(() => setLoading(false))
   }, [])
@@ -187,9 +196,15 @@ export default function StudentsPage() {
         <StudentCard
           studentId={selectedStudentId}
           onClose={() => setSelectedStudentId(null)}
-          onUpdate={(id, fields) => setStudents(prev => prev.map(s =>
-            s.id === id ? { ...s, ...fields } as Student : s
-          ))}
+          onUpdate={(id, fields) => setStudents(prev => {
+            const updated = prev.map(s => s.id === id ? { ...s, ...fields } as Student : s)
+            return updated.slice().sort((a, b) => {
+              const aLast = a.name.trim().split(/\s+/).at(-1) ?? ''
+              const bLast = b.name.trim().split(/\s+/).at(-1) ?? ''
+              const cmp = aLast.localeCompare(bLast, 'he')
+              return cmp !== 0 ? cmp : a.name.localeCompare(b.name, 'he')
+            })
+          })}
           onOpenParent={id => { setSelectedStudentId(null); setSelectedParentId(id) }} />
       )}
       {selectedParentId && (
