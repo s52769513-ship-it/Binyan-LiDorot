@@ -87,12 +87,21 @@ function fixUnescapedQuotes(text: string): string {
 export async function POST(req: NextRequest) {
   try {
     let raw: unknown
-    try {
-      raw = await req.json()
-    } catch {
-      // Nedarim may send JSON with unescaped quotes in string values (e.g. ברי"ט)
-      const text = await req.text()
-      raw = JSON.parse(fixUnescapedQuotes(text))
+    const ct = req.headers.get('content-type') ?? ''
+    if (ct.includes('application/x-www-form-urlencoded') || ct.includes('multipart/form-data')) {
+      // Make.com sends form data when JSON body would have unescaped quotes
+      const form = await req.formData()
+      const obj: Record<string, string> = {}
+      form.forEach((v: FormDataEntryValue, k: string) => { obj[k] = String(v) })
+      raw = obj
+    } else {
+      try {
+        raw = await req.json()
+      } catch {
+        // Nedarim may send JSON with unescaped quotes in string values (e.g. ברי"ט)
+        const text = await req.text()
+        raw = JSON.parse(fixUnescapedQuotes(text))
+      }
     }
     // Make sends array, Nadraim direct sends object
     const payload = Array.isArray(raw) ? raw[0] : raw

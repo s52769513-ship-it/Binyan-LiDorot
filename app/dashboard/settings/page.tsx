@@ -261,6 +261,94 @@ function SyncSection() {
   )
 }
 
+/* ─── Import students section ────────────────────────── */
+interface ImportResult {
+  updated?: number
+  classes?: number
+  notFound?: string[]
+  errors?: string[]
+  error?: string
+}
+
+function ImportStudentsSection() {
+  const [file, setFile]         = useState<File | null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [result, setResult]     = useState<ImportResult | null>(null)
+  const fileRef                 = useRef<HTMLInputElement>(null)
+
+  const run = async () => {
+    if (!file) return
+    setLoading(true); setResult(null)
+    try {
+      const text = await file.text()
+      const res = await fetch('/api/admin/import-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/csv' },
+        body: text,
+      })
+      const data = await res.json()
+      setResult(data)
+    } catch (e) {
+      setResult({ error: String(e) })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ייבוא תלמידים מ-CSV</h3>
+        <p className="text-xs text-gray-400 mt-0.5">מעדכן פרטי תלמידים (מגדר, ת"ז, תאריך לידה, כיתה, הסעות...) לפי קובץ Excel/CSV מהמוסד.</p>
+      </div>
+
+      <div className="flex gap-3 items-center">
+        <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+          onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }} />
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-gray-300 hover:text-gray-800 transition-colors bg-white"
+        >
+          {file ? file.name : 'בחר קובץ CSV…'}
+        </button>
+        <button
+          onClick={run}
+          disabled={!file || loading}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+        >
+          {loading ? 'מייבא...' : 'ייבא'}
+        </button>
+      </div>
+
+      {result && (
+        result.error ? (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-right">{result.error}</div>
+        ) : (
+          <div className="space-y-2">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-right">
+              <span className="font-semibold text-emerald-800">✓ עודכנו {result.updated} תלמידים</span>
+              {result.classes ? <span className="text-emerald-600 mr-2">· {result.classes} כיתות</span> : null}
+            </div>
+            {result.notFound && result.notFound.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-right text-amber-700">
+                <p className="font-semibold mb-1">לא נמצאו ({result.notFound.length}):</p>
+                <p className="break-words">{result.notFound.join(' · ')}</p>
+              </div>
+            )}
+            {result.errors && result.errors.length > 0 && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-right text-red-700">
+                <p className="font-semibold mb-1">שגיאות ({result.errors.length}):</p>
+                {result.errors.map((e, i) => <p key={i}>{e}</p>)}
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const router = useRouter()
@@ -419,6 +507,9 @@ export default function SettingsPage() {
 
       {/* Classes management */}
       <ClassesSection />
+
+      {/* Import students */}
+      <ImportStudentsSection />
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
         <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
