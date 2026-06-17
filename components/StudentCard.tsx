@@ -12,6 +12,7 @@ interface StudentData {
   status: string
   transportation: string[]
   transportationCost: number
+  discountPct: number
   notes: string
   parentIds: string[]
   parents: { id: string; name: string }[]
@@ -239,8 +240,43 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
     if (!student) return
     if (!confirm('להסיר שיוך להורה זה?')) return
     const newIds = student.parentIds.filter(id => id !== parentId)
-    await patch({ parentIds: newIds })
+    // Update local state immediately
+    setStudent(prev => prev ? {
+      ...prev,
+      parentIds: newIds,
+      parents: prev.parents.filter(p => p.id !== parentId),
+    } : prev)
+    await fetch(`/api/students/${studentId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentIds: newIds }),
+    })
     load()
+  }
+
+  const [deleting, setDeleting] = useState(false)
+  const deleteStudent = async () => {
+    if (!student) return
+    if (!confirm(`למחוק את ${student.name}? פעולה זו בלתי הפיכה.`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (d.error) { alert(d.error); return }
+      onClose()
+    } finally { setDeleting(false) }
+  }
+
+  const [savingDiscount, setSavingDiscount] = useState(false)
+  const setDiscount = async (pct: number) => {
+    if (!student) return
+    setSavingDiscount(true)
+    setStudent(prev => prev ? { ...prev, discountPct: pct } : prev)
+    try {
+      await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discountPct: pct }),
+      })
+    } finally { setSavingDiscount(false) }
   }
 
   const toggleTransport = async (t: string) => {
@@ -266,7 +302,19 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
         {/* Header */}
         <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
           <div className="flex items-start justify-between mb-2">
-            <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            <div className="flex items-center gap-2">
+              <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+              {student && (
+                <button
+                  onClick={deleteStudent}
+                  disabled={deleting}
+                  className="p-1.5 rounded-lg text-red-300 hover:text-red-100 hover:bg-red-500/30 text-sm transition-colors disabled:opacity-50"
+                  title="מחק תלמיד"
+                >
+                  🗑
+                </button>
+              )}
+            </div>
             <div className="text-right flex-1 mr-2">
               {loading
                 ? <div className="h-6 w-40 bg-white/20 rounded animate-pulse ml-auto" />
@@ -360,6 +408,34 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
                   </div>
                   {student.transportationCost > 0 && (
                     <p className="text-sm text-gray-500">עלות: <span className="font-semibold">{fmt(student.transportationCost)}</span></p>
+                  )}
+                </div>
+              </div>
+
+              {/* הנחה */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הנחה בשכ"ל</div>
+                <div className="p-4">
+                  <div className="flex gap-2 flex-wrap">
+                    {[0, 10, 25, 50, 100].map(pct => (
+                      <button
+                        key={pct}
+                        onClick={() => setDiscount(pct)}
+                        disabled={savingDiscount}
+                        className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors disabled:opacity-50 ${
+                          student.discountPct === pct
+                            ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]/50'
+                        }`}
+                      >
+                        {pct === 0 ? 'ללא הנחה' : `${pct}%`}
+                      </button>
+                    ))}
+                  </div>
+                  {student.discountPct > 0 && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      הנחה של {student.discountPct}% על שכ"ל — ישפיע על תחשיב החיוב של ההורה
+                    </p>
                   )}
                 </div>
               </div>

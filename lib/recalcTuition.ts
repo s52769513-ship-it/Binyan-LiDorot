@@ -3,14 +3,19 @@ import { supabaseAdmin } from '@/lib/supabase'
 export async function recalcTuitionForParent(parentId: string): Promise<void> {
   const { data: students } = await supabaseAdmin
     .from('students')
-    .select('status, transportation_cost')
+    .select('status, transportation_cost, discount_pct')
     .contains('parent_ids', [parentId])
 
   const active = (students ?? []).filter(s => s.status === 'פעיל')
   const activeCount = active.length
+  const baseRate = activeCount > 3 ? 450 : 500
+  // Sum per-student tuition after individual discount
+  const baseTuition = active.reduce((sum, s) => {
+    const disc = Math.min(100, Math.max(0, Number(s.discount_pct) || 0))
+    return sum + baseRate * (1 - disc / 100)
+  }, 0)
   const transportTotal = active.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
-  const baseTuition = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
-  const newTuition = baseTuition + transportTotal
+  const newTuition = Math.round(baseTuition + transportTotal)
 
   // Update open future PPs first (date >= today, pp_type = tuition)
   const today = new Date()

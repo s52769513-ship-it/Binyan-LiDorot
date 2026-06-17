@@ -66,23 +66,38 @@ function parseNadraimDate(dateStr: string): { date: string; monthYear: string } 
   return { date: `${yyyy}-${mm}-${dd}`, monthYear: `${mm}/${yyyy}` }
 }
 
+/** Also accept GET so Nadraim can send data as URL query params (avoids JSON quoting issues) */
+export async function GET(req: NextRequest) {
+  return POST(req)
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const text = await req.text()
-    let raw: unknown
-    try {
-      raw = JSON.parse(text)
-    } catch {
-      // Names with unescaped quotes (gershayim typed as ASCII ") break JSON.
-      // Try to sanitize and re-parse.
+    const sp = req.nextUrl.searchParams
+
+    // Prefer query-param payload (Nadraim can be configured to send params in URL,
+    // which avoids JSON quoting problems with names containing " characters).
+    let payload: Record<string, string>
+    if (sp.get('Amount') || sp.get('Zeout') || sp.get('ClientName')) {
+      payload = Object.fromEntries(sp.entries())
+    } else {
+      const text = await req.text()
+      let raw: unknown
       try {
-        raw = JSON.parse(fixMalformedJson(text))
-      } catch (e2) {
-        return NextResponse.json({ error: `JSON לא תקין: ${String(e2)}` }, { status: 400 })
+        raw = JSON.parse(text)
+      } catch {
+        // Names with unescaped quotes (gershayim typed as ASCII ") break JSON.
+        // Try to sanitize and re-parse.
+        try {
+          raw = JSON.parse(fixMalformedJson(text))
+        } catch (e2) {
+          return NextResponse.json({ error: `JSON לא תקין: ${String(e2)}` }, { status: 400 })
+        }
       }
+      // Make sends array, Nadraim direct sends object
+      const arr = Array.isArray(raw) ? (raw as unknown[])[0] : raw
+      payload = arr as Record<string, string>
     }
-    // Make sends array, Nadraim direct sends object
-    const payload = Array.isArray(raw) ? (raw as unknown[])[0] : raw
 
     const {
       Zeout, ClientName, Phone, Mail,
@@ -90,7 +105,7 @@ export async function POST(req: NextRequest) {
       Groupe, TransactionTime, Makor,
       TransactionId, Comments,
       KevaId,  // standing order external ID from Nadraim
-    } = payload as Record<string, string>
+    } = payload
 
     const dryRun = req.nextUrl.searchParams.get('dryRun') === 'true'
 
