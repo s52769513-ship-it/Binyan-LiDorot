@@ -26,12 +26,6 @@ function parseCSV(text: string): string[][] {
   return rows
 }
 
-function calcTransportCost(parts: string[]): number {
-  if (!parts.some(p => p.includes('הלוך'))) return 0
-  const hasReturn = parts.some(p => p.includes('חזור'))
-  return hasReturn ? 130 : 65
-}
-
 export async function POST(req: NextRequest) {
   try {
     const text = await req.text()
@@ -40,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     // ── Detect columns from header row ──────────────────────────────────────
     const header = rows[0].map(h => h.trim())
-    const col = (names: string[]) => {
+    const col = (...names: string[]) => {
       for (const n of names) {
         const i = header.findIndex(h => h.includes(n))
         if (i >= 0) return i
@@ -48,120 +42,157 @@ export async function POST(req: NextRequest) {
       return -1
     }
 
-    const COL_LAST     = col(['שם משפחה'])
-    const COL_FIRST    = col(['שם פרטי'])
-    const COL_ID       = col(['ת.ז', "ת\"ז", 'תעודת זהות', 'מספר זהות'])
-    const COL_PARENT   = col(['הורה'])
-    const COL_TRANSPORT= col(['הסעות'])
-    const COL_CLASS    = col(['כיתה1 + קישור', 'כיתה + ', 'כיתה1', 'כיתה'])   // prefer full "כיתה1 + קישור לאגף"
-    const COL_FRAMEWORK= col(['קישור לאגף', 'אגף'])
-    const COL_STATUS   = col(['סטטוס', 'status'])
-    const COL_BIRTH    = col(['תאריך לידה'])
+    const C_FULLNAME   = col('שם')            // col 0: שם (full name as-is)
+    const C_LAST       = col('שם משפחה')
+    const C_FIRST      = col('שם פרטי')
+    const C_ID         = col('ת"ז', 'ת.ז', 'תעודת זהות', 'מספר זהות')
+    const C_PARENT     = col('הורה')
+    const C_TRANSPORT  = col('הסעות')
+    const C_COST       = col('סה"כ הסעות', 'סהכ הסעות', 'עלות הסעה')
+    // prefer "כיתה1 + קישור לאגף" (full name) over plain "כיתה"
+    const C_CLASS      = (() => {
+      const full = header.findIndex(h => h.includes('כיתה') && h.includes('קישור'))
+      return full >= 0 ? full : col('כיתה')
+    })()
+    const C_FRAMEWORK  = col('קישור לאגף', 'אגף')
+    const C_STATUS     = col('סטטוס')
+    const C_BIRTH      = col('תאריך לידה')
+    const C_HEALTH     = col('קופת חולים')
+    const C_PREV_SCH   = col('מקום לימודים קודם')
+    const C_GENDER     = col('מגדר')
 
     // ── Load all students from DB ────────────────────────────────────────────
     const { data: allStudents, error: fetchErr } = await supabaseAdmin
       .from('students')
-      .select('id, name, id_number, parent_ids')
+      .select('id, name, id_number')
     if (fetchErr) throw fetchErr
 
-    // Build lookup maps
-    const idMap   = new Map<string, string>()   // ת"ז → student DB id
-    const nameMap = new Map<string, string>()   // "שם פרטי שם משפחה" → student DB id
+    const idMap    = new Map<string, string>()   // ת"ז  → DB id
+    const nameMap  = new Map<string, string>()   // name → DB id
     for (const s of allStudents ?? []) {
-      if (s.id_number?.trim()) idMap.set(s.id_number.trim(), s.id)
-      if (s.name?.trim())      nameMap.set(s.name.trim(), s.id)
+      const idNum = s.id_number?.trim()
+      if (idNum) idMap.set(idNum, s.id)
+      const nm = s.name?.trim()
+      if (nm)  nameMap.set(nm, s.id)
     }
 
-    // ── Load all parents for parent-name lookup ──────────────────────────────
-    const { data: allParents } = await supabaseAdmin
-      .from('parents')
-      .select('id, name')
-    const parentNameMap = new Map<string, string>()  // parent name → parent id
+    // ── Load parents for linking ─────────────────────────────────────────────
+    const { data: allParents } = await supabaseAdmin.from('parents').select('id, name')
+    const parentNameMap = new Map<string, string>()
     for (const p of allParents ?? []) {
       if (p.name?.trim()) parentNameMap.set(p.name.trim(), p.id)
     }
 
-    // ── Process classes (upsert) ─────────────────────────────────────────────
-    const classMap = new Map<string, string>()  // class_name → framework
+    // ── Upsert classes ───────────────────────────────────────────────────────
+    const classMap = new Map<string, string>()
     for (const row of rows.slice(1)) {
-      const className = COL_CLASS >= 0 ? row[COL_CLASS]?.trim() : undefined
-      const framework = COL_FRAMEWORK >= 0 ? row[COL_FRAMEWORK]?.trim() : undefined
-      if (className) classMap.set(className, framework || '')
+      const cn = C_CLASS     >= 0 ? row[C_CLASS]?.trim()     : undefined
+      const fw = C_FRAMEWORK >= 0 ? row[C_FRAMEWORK]?.trim() : undefined
+      if (cn) classMap.set(cn, fw || '')
     }
     if (classMap.size > 0) {
-      await supabaseAdmin
-        .from('classes')
-        .upsert(
-          Array.from(classMap.entries()).map(([class_name, framework]) => ({ class_name, framework })),
-          { onConflict: 'class_name', ignoreDuplicates: false }
-        )
+      await supabaseAdmin.from('classes').upsert(
+        Array.from(classMap.entries()).map(([class_name, framework]) => ({ class_name, framework })),
+        { onConflict: 'class_name', ignoreDuplicates: false }
+      )
     }
 
-    // ── Update students ──────────────────────────────────────────────────────
+    // ── Process each row ─────────────────────────────────────────────────────
     let updated = 0
     const notFound: string[] = []
     const errors: string[]   = []
-    const updatedNames: string[] = []
 
     for (const row of rows.slice(1)) {
-      const lastName  = COL_LAST  >= 0 ? row[COL_LAST]?.trim()  : ''
-      const firstName = COL_FIRST >= 0 ? row[COL_FIRST]?.trim() : ''
-      const idNumber  = COL_ID    >= 0 ? row[COL_ID]?.trim()    : ''
-      const fullName  = [firstName, lastName].filter(Boolean).join(' ')
+      const lastName  = C_LAST  >= 0 ? row[C_LAST]?.trim()  : ''
+      const firstName = C_FIRST >= 0 ? row[C_FIRST]?.trim() : ''
+      const idNumber  = C_ID    >= 0 ? row[C_ID]?.trim()    : ''
+      const fullName  = C_FULLNAME >= 0 ? row[C_FULLNAME]?.trim() : ''
 
-      // Match: ת"ז first, then full name
-      const dbId = (idNumber && idMap.get(idNumber))
-                ?? (fullName && nameMap.get(fullName))
-                ?? null
+      // Possible name formats to try
+      const nameA = [firstName, lastName].filter(Boolean).join(' ')   // שם פרטי + משפחה
+      const nameB = [lastName,  firstName].filter(Boolean).join(' ')  // משפחה + שם פרטי
+
+      const dbId =
+        (idNumber && idMap.get(idNumber))    ??
+        (nameA    && nameMap.get(nameA))     ??
+        (nameB    && nameMap.get(nameB))     ??
+        (fullName && nameMap.get(fullName))  ??
+        null
 
       if (!dbId) {
-        if (fullName) notFound.push(fullName)
+        const label = fullName || nameA || nameB
+        if (label) notFound.push(label)
         continue
       }
 
       const update: Record<string, unknown> = {}
 
-      // Transportation
-      if (COL_TRANSPORT >= 0) {
-        const raw = row[COL_TRANSPORT]?.trim()
-        if (raw !== undefined) {
-          const parts = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : []
-          update.transportation      = parts
-          update.transportation_cost = calcTransportCost(parts)
+      // Transportation list
+      if (C_TRANSPORT >= 0) {
+        const raw   = row[C_TRANSPORT]?.trim() ?? ''
+        const parts = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : []
+        update.transportation = parts
+
+        // Cost: take directly from file if available, else derive
+        if (C_COST >= 0) {
+          const costRaw = row[C_COST]?.replace(/[₪,\s]/g, '').trim()
+          const costNum = costRaw ? parseFloat(costRaw) : 0
+          update.transportation_cost = isNaN(costNum) ? 0 : costNum
+        } else {
+          const hasGo     = parts.some(p => p.includes('הלוך'))
+          const hasReturn = parts.some(p => p.includes('חזור'))
+          update.transportation_cost = hasGo ? (hasReturn ? 130 : 65) : 0
         }
       }
 
       // Class
-      if (COL_CLASS >= 0) {
-        const cn = row[COL_CLASS]?.trim()
+      if (C_CLASS >= 0) {
+        const cn = row[C_CLASS]?.trim()
         if (cn) update.class_name = cn
       }
 
-      // Status (V / ריק / טקסט)
-      if (COL_STATUS >= 0) {
-        const s = row[COL_STATUS]?.trim()
+      // Status: V / v = פעיל; other text stored as-is; empty = skip
+      if (C_STATUS >= 0) {
+        const s = row[C_STATUS]?.trim()
         if (s === 'V' || s === 'v') update.status = 'פעיל'
         else if (s)                 update.status = s
       }
 
-      // Birth date
-      if (COL_BIRTH >= 0) {
-        const b = row[COL_BIRTH]?.trim()
+      // Gender
+      if (C_GENDER >= 0) {
+        const g = row[C_GENDER]?.trim()
+        if (g === 'בן') update.gender = 'זכר'
+        else if (g === 'בת') update.gender = 'נקבה'
+        else if (g) update.gender = g
+      }
+
+      // Birth date (Gregorian)
+      if (C_BIRTH >= 0) {
+        const b = row[C_BIRTH]?.trim()
         if (b) update.birth_date_gregorian = b
       }
 
-      // ת"ז — store if found in file but not yet in DB
-      if (idNumber && !idMap.has(idNumber)) {
-        update.id_number = idNumber
+      // Health fund
+      if (C_HEALTH >= 0) {
+        const h = row[C_HEALTH]?.trim()
+        if (h) update.health_fund = h
       }
 
-      // Link parent by parent name column
-      if (COL_PARENT >= 0) {
-        const parentNameRaw = row[COL_PARENT]?.trim()
+      // Previous school
+      if (C_PREV_SCH >= 0) {
+        const ps = row[C_PREV_SCH]?.trim()
+        if (ps) update.previous_school = ps
+      }
+
+      // Store ת"ז if missing in DB
+      if (idNumber && !idMap.has(idNumber)) update.id_number = idNumber
+
+      // Link parent
+      if (C_PARENT >= 0) {
+        const parentNameRaw = row[C_PARENT]?.trim()
         if (parentNameRaw) {
           const parentDbId = parentNameMap.get(parentNameRaw)
           if (parentDbId) {
-            // Fetch current parent_ids to avoid overwriting
             const { data: cur } = await supabaseAdmin
               .from('students').select('parent_ids').eq('id', dbId).single()
             const existing = (cur?.parent_ids ?? []) as string[]
@@ -175,13 +206,10 @@ export async function POST(req: NextRequest) {
       if (Object.keys(update).length === 0) continue
 
       const { error: upErr } = await supabaseAdmin
-        .from('students')
-        .update(update)
-        .eq('id', dbId)
+        .from('students').update(update).eq('id', dbId)
 
-      if (upErr) { errors.push(`${fullName}: ${upErr.message}`); continue }
+      if (upErr) { errors.push(`${fullName || nameA}: ${upErr.message}`); continue }
       updated++
-      updatedNames.push(fullName)
     }
 
     return NextResponse.json({
@@ -189,7 +217,14 @@ export async function POST(req: NextRequest) {
       classes: classMap.size,
       notFound,
       errors,
-      matchedByIDCol: COL_ID >= 0,
+      matchedByIDCol: C_ID >= 0,
+      detectedCols: {
+        id: C_ID >= 0 ? header[C_ID] : null,
+        name: C_FULLNAME >= 0 ? header[C_FULLNAME] : null,
+        class: C_CLASS >= 0 ? header[C_CLASS] : null,
+        transport: C_TRANSPORT >= 0 ? header[C_TRANSPORT] : null,
+        status: C_STATUS >= 0 ? header[C_STATUS] : null,
+      },
     })
   } catch (err) {
     console.error('import error:', err)

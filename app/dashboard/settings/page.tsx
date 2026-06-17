@@ -266,7 +266,9 @@ function StudentImportTab() {
   const [file, setFile]       = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult]   = useState<{
-    updated: number; classes: number; notFound: string[]; errors: string[]; matchedByIDCol: boolean
+    updated: number; classes: number; notFound: string[]; errors: string[]
+    matchedByIDCol: boolean
+    detectedCols?: { id: string|null; name: string|null; class: string|null; transport: string|null; status: string|null }
   } | null>(null)
   const [error, setError]     = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -333,8 +335,16 @@ function StudentImportTab() {
           <div className="font-bold text-emerald-800">✓ ייבוא הסתיים</div>
           <div className="text-sm text-emerald-700">
             עודכנו: <b>{result.updated}</b> תלמידים · כיתות: <b>{result.classes}</b>
-            {' · '}התאמה לפי: <b>{result.matchedByIDCol ? 'ת"ז' : 'שם מלא'}</b>
+            {' · '}התאמה: <b>{result.matchedByIDCol ? 'ת"ז + שם' : 'שם מלא'}</b>
           </div>
+          {result.detectedCols && (
+            <div className="text-[11px] text-emerald-600 flex flex-wrap gap-x-3 gap-y-0.5">
+              {Object.entries(result.detectedCols).map(([k,v]) => v
+                ? <span key={k}>✓ {v}</span>
+                : null
+              )}
+            </div>
+          )}
           {result.notFound.length > 0 && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
               <b>לא נמצאו במערכת ({result.notFound.length}):</b>{' '}
