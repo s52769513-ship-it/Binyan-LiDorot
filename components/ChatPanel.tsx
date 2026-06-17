@@ -123,6 +123,11 @@ export default function ChatPanel() {
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Re-fetch once we know who the user is (poll might have run before auth loaded)
+  useEffect(() => {
+    if (currentUser) fetchMessages(open)
+  }, [currentUser]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Poll every 5 seconds
   useEffect(() => {
     fetchMessages(false)
