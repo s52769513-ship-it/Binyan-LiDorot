@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 
-type SettingsTab = 'general' | 'automations' | 'merge'
+type SettingsTab = 'general' | 'automations' | 'merge' | 'import'
 
 interface Settings {
   institution_name?: string
@@ -261,6 +261,98 @@ function SyncSection() {
   )
 }
 
+/* ─── Student Import Tab ──────────────────────────────── */
+function StudentImportTab() {
+  const [file, setFile]       = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult]   = useState<{ updated: number; classes: number; notFound: string[]; errors: string[] } | null>(null)
+  const [error, setError]     = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleImport = async () => {
+    if (!file) return
+    setLoading(true); setResult(null); setError('')
+    try {
+      const text = await file.text()
+      const res  = await fetch('/api/admin/import-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: text,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `שגיאה ${res.status}`)
+      setResult(data)
+      setFile(null)
+      if (inputRef.current) inputRef.current.value = ''
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5" dir="rtl">
+      <div>
+        <h3 className="font-bold text-gray-800 text-lg mb-1">ייבוא תלמידים מאקסל</h3>
+        <p className="text-sm text-gray-500">
+          העלה קובץ CSV שיוצא מהמערכת. המערכת תעדכן כיתה, סטטוס, הסעות, ת&quot;ז ועוד לפי התאמה לשמות/ת&quot;ז קיימים.
+        </p>
+      </div>
+
+      <div
+        className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#1a3a7a]/40 transition-colors"
+        onClick={() => inputRef.current?.click()}
+      >
+        <div className="text-4xl mb-2">📂</div>
+        <div className="text-sm font-medium text-gray-700">
+          {file ? file.name : 'לחץ לבחירת קובץ CSV'}
+        </div>
+        {file && (
+          <div className="text-xs text-gray-400 mt-1">{(file.size / 1024).toFixed(1)} KB</div>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setError('') }}
+        />
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>
+      )}
+
+      {result && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+          <div className="font-bold text-emerald-800">✓ ייבוא הסתיים</div>
+          <div className="text-sm text-emerald-700">עודכנו: <b>{result.updated}</b> תלמידים · כיתות: <b>{result.classes}</b></div>
+          {result.notFound.length > 0 && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+              <b>לא נמצאו במערכת ({result.notFound.length}):</b> {result.notFound.join(', ')}
+            </div>
+          )}
+          {result.errors.length > 0 && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+              <b>שגיאות:</b> {result.errors.join(' | ')}
+            </div>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={handleImport}
+        disabled={!file || loading}
+        className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:scale-[1.01] active:scale-[0.99]"
+        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+      >
+        {loading ? '⏳ מייבא...' : '📥 ייבא תלמידים'}
+      </button>
+    </div>
+  )
+}
+
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const router = useRouter()
@@ -329,6 +421,7 @@ export default function SettingsPage() {
           { key: 'general',     label: 'הגדרות מוסד' },
           { key: 'automations', label: '🤖 אוטומציות' },
           { key: 'merge',       label: '🔗 איחוד כרטיסים' },
+          { key: 'import',      label: '📥 ייבוא תלמידים' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -343,6 +436,7 @@ export default function SettingsPage() {
 
       {settingsTab === 'automations' && <AutomationsTab />}
       {settingsTab === 'merge'       && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
+      {settingsTab === 'import'      && <StudentImportTab />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
