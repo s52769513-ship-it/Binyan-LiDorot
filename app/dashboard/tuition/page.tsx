@@ -73,11 +73,17 @@ export default function TuitionPage() {
   const [genExecuting, setGenExecuting] = useState(false)
   const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
   const [genError, setGenError]       = useState('')
+  const [genDialogOpen, setGenDialogOpen] = useState(false)
 
-  const loadPreview = async () => {
+  // Default "from" = current month
+  const nowD = new Date()
+  const [genFromMonth, setGenFromMonth] = useState(String(nowD.getMonth() + 1).padStart(2, '0'))
+  const [genFromYear,  setGenFromYear]  = useState(String(nowD.getFullYear()))
+
+  const loadPreview = async (fromMonth: string) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
     try {
-      const res  = await fetch('/api/planned-payments/generate-year-all')
+      const res  = await fetch(`/api/planned-payments/generate-year-all?from=${encodeURIComponent(fromMonth)}`)
       const data = await res.json()
       if (data.error) { setGenError(data.error); return }
       setGenPreview(data)
@@ -87,8 +93,13 @@ export default function TuitionPage() {
 
   const executeGen = async () => {
     setGenExecuting(true); setGenError('')
+    const fromMonth = `${genFromMonth}/${genFromYear}`
     try {
-      const res  = await fetch('/api/planned-payments/generate-year-all', { method: 'POST' })
+      const res  = await fetch('/api/planned-payments/generate-year-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromMonth }),
+      })
       const data = await res.json()
       if (data.error) { setGenError(data.error); return }
       setGenResult(data)
@@ -147,7 +158,7 @@ export default function TuitionPage() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={loadPreview}
+            onClick={() => setGenDialogOpen(true)}
             disabled={genLoading}
             className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
@@ -342,6 +353,65 @@ export default function TuitionPage() {
         <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
       )}
       </>}
+
+      {/* Month picker dialog */}
+      {genDialogOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setGenDialogOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <button onClick={() => setGenDialogOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <h3 className="font-bold text-gray-800">צור תשלומים מתוכניים</h3>
+            </div>
+            <div className="px-5 py-5 space-y-4">
+              <p className="text-sm text-gray-500">בחר מאיזה חודש ליצור תשלומים עבור כל ההורים:</p>
+              <div className="flex gap-2">
+                <select
+                  value={genFromYear}
+                  onChange={e => setGenFromYear(e.target.value)}
+                  className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                >
+                  {[nowD.getFullYear() - 1, nowD.getFullYear(), nowD.getFullYear() + 1].map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  value={genFromMonth}
+                  onChange={e => setGenFromMonth(e.target.value)}
+                  className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                >
+                  {[
+                    ['01','ינואר'],['02','פברואר'],['03','מרץ'],['04','אפריל'],
+                    ['05','מאי'],['06','יוני'],['07','יולי'],['08','אוגוסט'],
+                    ['09','ספטמבר'],['10','אוקטובר'],['11','נובמבר'],['12','דצמבר'],
+                  ].map(([v, label]) => (
+                    <option key={v} value={v}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-gray-400">ייצור תשלומים החל מ-{genFromMonth}/{genFromYear} עד סוף שנת הלימודים הנוכחית</p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button
+                onClick={() => setGenDialogOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => {
+                  setGenDialogOpen(false)
+                  loadPreview(`${genFromMonth}/${genFromYear}`)
+                }}
+                className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+                style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+              >
+                טען תצוגה מקדימה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Generate-year preview modal */}
       {genPreview && (

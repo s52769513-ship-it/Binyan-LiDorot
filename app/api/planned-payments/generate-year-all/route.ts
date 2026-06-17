@@ -20,17 +20,23 @@ function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   return months
 }
 
-/** Returns only current-month and future months from the Hebrew year */
-function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
-  const today = new Date()
-  const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-  return getFullHebrewYearMonths().filter(m => m.date >= currentMonthDate)
+/** Filter months to only those >= fromMonth (MM/YYYY). If invalid, returns all. */
+function filterFromMonth(
+  months: { monthYear: string; date: string }[],
+  fromMonth: string | null
+): { monthYear: string; date: string }[] {
+  if (!fromMonth) return months
+  const [mm, yyyy] = fromMonth.split('/')
+  if (!mm || !yyyy) return months
+  const fromDate = `${yyyy}-${mm.padStart(2, '0')}-01`
+  return months.filter(m => m.date >= fromDate)
 }
 
 /** GET — preview: returns what would be created without committing */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const months    = getFullHebrewYearMonths()
+    const fromMonth = req.nextUrl.searchParams.get('from')
+    const months    = filterFromMonth(getFullHebrewYearMonths(), fromMonth)
     const monthYears = months.map(m => m.monthYear)
 
     // Get all parents that have tuition (i.e. active children)
@@ -86,9 +92,11 @@ export async function GET(_req: NextRequest) {
 }
 
 /** POST — execute: create all missing planned payments */
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const months     = getFullHebrewYearMonths()
+    let fromMonth: string | null = null
+    try { const body = await req.json(); fromMonth = body.fromMonth ?? null } catch { /* no body */ }
+    const months     = filterFromMonth(getFullHebrewYearMonths(), fromMonth)
     const monthYears = months.map(m => m.monthYear)
 
     const { data: parents } = await supabaseAdmin
