@@ -28,19 +28,26 @@ export async function POST(req: NextRequest) {
 
         // Auto-link to tuition PP for בנין לדורות income
         let plannedPaymentId: string | null = null
-        if (amount > 0 && parentId && project === 'בנין לדורות') {
-          const { data: pps } = await supabaseAdmin
-            .from('planned_payments')
-            .select('id, balance, month_year')
-            .contains('parent_ids', [parentId])
-            .eq('pp_type', 'tuition')
-            .gt('balance', 0)
-            .order('month_year', { ascending: true })
+        let ppType: 'tuition' | 'donation' | null = null
 
-          if (pps && pps.length > 0) {
-            // Prefer same month, else oldest open
-            const same = pps.find(p => p.month_year === monthYear)
-            plannedPaymentId = (same ?? pps[0]).id
+        if (amount > 0 && parentId) {
+          const isTuition  = project === 'בנין לדורות'
+          const isDonation = project === 'דמי מגבית'
+
+          if (isTuition || isDonation) {
+            ppType = isTuition ? 'tuition' : 'donation'
+            const { data: pps } = await supabaseAdmin
+              .from('planned_payments')
+              .select('id, balance, month_year')
+              .contains('parent_ids', [parentId])
+              .eq('pp_type', ppType)
+              .gt('balance', 0)
+              .order('month_year', { ascending: true })
+
+            if (pps && pps.length > 0) {
+              const same = pps.find(p => p.month_year === monthYear)
+              plannedPaymentId = (same ?? pps[0]).id
+            }
           }
         }
 
@@ -99,8 +106,8 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Update tuition_balance on parent for any tuition income not linked to PP
-        if (parentId && amount > 0 && project === 'בנין לדורות' && !plannedPaymentId) {
+        // Update tuition_balance on parent for tuition income not linked to PP
+        if (parentId && amount > 0 && ppType === 'tuition' && !plannedPaymentId) {
           const { data: parent } = await supabaseAdmin
             .from('parents').select('tuition_balance').eq('id', parentId).single()
           if (parent) {

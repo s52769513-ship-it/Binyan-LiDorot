@@ -200,11 +200,96 @@ export async function recalcPPs(parentId: string) {
     }
   }
 
+  // ── שלב 7: קישור תנועות דמי מגבית ─────────────────────────────────────
+  const { data: donationPPIds } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id')
+    .contains('parent_ids', [parentId])
+    .eq('pp_type', 'donation')
+
+  const donPPIdList = (donationPPIds ?? []).map(p => p.id as string)
+
+  // ניתוק תנועות שקושרו בטעות ל-PP מגבית
+  if (donPPIdList.length > 0) {
+    const { data: wrongDonTxs } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, planned_payment_id')
+      .in('planned_payment_id', donPPIdList)
+      .not('project_names', 'cs', '{"דמי מגבית"}')
+      .gt('amount', 0)
+    for (const tx of wrongDonTxs ?? []) {
+      const { data: pp } = await supabaseAdmin
+        .from('planned_payments').select('balance, amount').eq('id', tx.planned_payment_id).single()
+      if (pp) {
+        const restored = Math.min(Number(pp.amount), Number(pp.balance) + Number(tx.amount))
+        await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', tx.planned_payment_id)
+      }
+      await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
+    }
+  }
+
+  // טעינת PP מגבית פתוחים
+  const { data: rawDonPPs } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id, amount, balance, month_year')
+    .contains('parent_ids', [parentId])
+    .eq('pp_type', 'donation')
+    .gt('balance', 0)
+    .order('month_year', { ascending: true })
+
+  const openDonPPs = (rawDonPPs ?? []).map(p => ({ ...p, balance: Number(p.balance), amount: Number(p.amount) }))
+
+  // קישור תנועות חופשיות של דמי מגבית
+  const { data: rawDonTxs } = await supabaseAdmin
+    .from('transactions')
+    .select('id, amount, month_year, date')
+    .contains('parent_ids', [parentId])
+    .contains('project_names', ['דמי מגבית'])
+    .is('planned_payment_id', null)
+    .gt('amount', 0)
+    .order('date', { ascending: true })
+
+  let donLeftover = 0
+  for (const tx of rawDonTxs ?? []) {
+    let remaining = Number(tx.amount)
+    const monthMatch = openDonPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
+    const firstOpen  = openDonPPs.findIndex(p => p.balance > 0)
+    const ppIdx = monthMatch >= 0 ? monthMatch : firstOpen
+    if (ppIdx < 0) { donLeftover += remaining; continue }
+
+    const pp    = openDonPPs[ppIdx]
+    const apply = Math.min(remaining, pp.balance)
+    pp.balance  = Math.round((pp.balance - apply) * 100) / 100
+    remaining   = Math.round((remaining - apply) * 100) / 100
+    await supabaseAdmin.from('transactions').update({ planned_payment_id: pp.id }).eq('id', tx.id)
+    donLeftover += remaining
+  }
+
+  // חישוב מחדש של יתרת PP מגבית
+  const { data: allDonPPs } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id, amount')
+    .contains('parent_ids', [parentId])
+    .eq('pp_type', 'donation')
+
+  for (const pp of allDonPPs ?? []) {
+    const { data: txs } = await supabaseAdmin
+      .from('transactions')
+      .select('amount')
+      .eq('planned_payment_id', pp.id)
+      .gt('amount', 0)
+    const paid    = (txs ?? []).reduce((s, t) => s + Number(t.amount), 0)
+    const balance = Math.max(0, Number(pp.amount) - paid)
+    await supabaseAdmin.from('planned_payments').update({ balance }).eq('id', pp.id)
+  }
+
   return {
     unlinkedMatched: (rawTxs ?? []).length,
     unlinkedWrong,
     leftoverCredit: Math.max(0, credit),
     tuitionBalance,
-    salaryOffsetMonths, // חודשים שיש בהם משכורת פתוחה ללא קיזוז שכ"ל
+    salaryOffsetMonths,
+    donationLinked: (rawDonTxs ?? []).length,
+    donationLeftover: donLeftover,
   }
 }

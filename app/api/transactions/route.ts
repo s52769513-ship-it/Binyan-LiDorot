@@ -175,6 +175,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
     }
 
+    // Auto-find donation PP when no PP explicitly given
+    let resolvedPPId = plannedPaymentId || null
+    const isTuitionTx  = !resolvedPPId && Number(amount) > 0 && Array.isArray(parentIds) && parentIds.length > 0
+                       && (Array.isArray(projectNames) ? projectNames : []).includes('בנין לדורות')
+    const isDonationTx = !resolvedPPId && Number(amount) > 0 && Array.isArray(parentIds) && parentIds.length > 0
+                       && (Array.isArray(projectNames) ? projectNames : []).includes('דמי מגבית')
+
+    if (isDonationTx || isTuitionTx) {
+      const ppType = isDonationTx ? 'donation' : 'tuition'
+      const pid    = parentIds[0]
+      const { data: pps } = await supabaseAdmin
+        .from('planned_payments')
+        .select('id, balance, month_year')
+        .contains('parent_ids', [pid])
+        .eq('pp_type', ppType)
+        .gt('balance', 0)
+        .order('month_year', { ascending: true })
+      if (pps && pps.length > 0) {
+        const same = pps.find(p => p.month_year === (monthYear || ''))
+        resolvedPPId = (same ?? pps[0]).id
+      }
+    }
+
     const id = crypto.randomUUID()
     // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
     const syncedAt = '2099-12-31T23:59:59.999Z'
@@ -189,19 +212,19 @@ export async function POST(req: NextRequest) {
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       project_ids: [],
       project_names: (Array.isArray(projectNames) ? projectNames : []).map((n: string) => n === 'משכורות' ? 'משכורת' : n),
-      planned_payment_id: plannedPaymentId || null,
+      planned_payment_id: resolvedPPId || null,
       synced_at: syncedAt,
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
 
     // Update planned payment balance if linked; store surplus as credit on parent
-    if (plannedPaymentId) {
+    if (resolvedPPId) {
       try {
         const { data: pp } = await supabaseAdmin
           .from('planned_payments')
           .select('balance')
-          .eq('id', plannedPaymentId)
+          .eq('id', resolvedPPId)
           .single()
         if (pp) {
           const paid    = Math.abs(Number(amount))
@@ -210,7 +233,7 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin
             .from('planned_payments')
             .update({ balance: Math.max(0, oldBal - paid) })
-            .eq('id', plannedPaymentId)
+            .eq('id', resolvedPPId)
 
           if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
             const pid   = parentIds[0]
@@ -222,7 +245,7 @@ export async function POST(req: NextRequest) {
               .select('id, balance, date')
               .contains('parent_ids', [pid])
               .gt('balance', 0)
-              .neq('id', plannedPaymentId)
+              .neq('id', resolvedPPId)
               .order('date', { ascending: true })
 
             const overdue  = (openPPs ?? []).filter(pp => pp.date && pp.date < today)
