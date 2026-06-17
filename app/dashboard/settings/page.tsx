@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
+import StudentImportWizard from '@/components/StudentImportWizard'
 
-type SettingsTab = 'general' | 'automations' | 'merge'
+type SettingsTab = 'general' | 'automations' | 'merge' | 'import'
 
 interface Settings {
   institution_name?: string
@@ -329,6 +330,7 @@ export default function SettingsPage() {
           { key: 'general',     label: 'הגדרות מוסד' },
           { key: 'automations', label: '🤖 אוטומציות' },
           { key: 'merge',       label: '🔗 איחוד כרטיסים' },
+          { key: 'import',      label: '📥 יבוא תלמידים' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -343,6 +345,7 @@ export default function SettingsPage() {
 
       {settingsTab === 'automations' && <AutomationsTab />}
       {settingsTab === 'merge'       && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
+      {settingsTab === 'import'      && <StudentImportWizard />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
