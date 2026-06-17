@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       // Col 7: כיתה + אגף ביחד (לדוגמא "ג בית חינוך")
       const className = row[7]?.trim() || undefined
 
-      const birthHebrew: string | null = null // לא בCSV הזה
+      const birthHebrew = row[5]?.trim() || null // Col F
 
       // Col 18: סטטוס — "V"→פעיל, "סיים לימודים"→סיים לימודים, ""→skip
       const statusRaw = row[18]?.trim()
