@@ -378,24 +378,31 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
         )}
 
         {/* Salary deduction opt-in */}
-        <div className="mt-3 pt-3 border-t border-emerald-200 flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={parent.deductDonation ?? false}
-              onChange={async e => {
-                await fetch(`/api/parents/${parent.id}`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ deductDonation: e.target.checked }),
-                })
-                onUpdate()
-              }}
-              className="w-4 h-4 accent-emerald-600"
-            />
-            <span className="text-xs text-gray-700">ניכוי מגבית ממשכורת</span>
-          </label>
-          <span className="text-[10px] text-gray-400">V = כולל בקיזוז אוטומטי</span>
+        <div className="mt-3 pt-3 border-t border-emerald-200 space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={parent.deductDonation ?? false}
+                onChange={async e => {
+                  const res = await fetch(`/api/parents/${parent.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deductDonation: e.target.checked }),
+                  })
+                  if (!res.ok) {
+                    const j = await res.json().catch(() => ({}))
+                    alert(`שגיאה בשמירה: ${j?.error ?? res.status}`)
+                    return
+                  }
+                  onUpdate()
+                }}
+                className="w-4 h-4 accent-emerald-600"
+              />
+              <span className="text-xs text-gray-700">ניכוי מגבית ממשכורת</span>
+            </label>
+            <span className="text-[10px] text-gray-400">V = כולל בקיזוז אוטומטי</span>
+          </div>
         </div>
       </div>
 
