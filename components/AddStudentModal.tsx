@@ -16,7 +16,9 @@ function calcTransportCost(t: string[]): number {
   return (t.includes('חזור שעה 1') || t.includes('חזור שעה 4')) ? 130 : 65
 }
 
-interface ClassOption { class_name: string }
+interface ClassOption { class_name: string; framework: string }
+
+const VALID_FRAMEWORKS = ['תלמוד תורה', 'בית חינוך לבנות']
 
 export default function AddStudentModal({ parentId, parentName, onClose, onSuccess }: Props) {
   const [form, setForm] = useState({ firstName: '', lastName: '', gender: 'זכר', className: '', status: 'ממתין', age: '' })
@@ -28,7 +30,15 @@ export default function AddStudentModal({ parentId, parentName, onClose, onSucce
   const classRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/classes?linked=true').then(r => r.json()).then(d => { if (Array.isArray(d)) setClasses(d) }).catch(() => {})
+    fetch('/api/classes')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d)) {
+          // Only show classes linked to a known framework (TT or BH)
+          setClasses(d.filter((c: ClassOption) => VALID_FRAMEWORKS.includes(c.framework)))
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
