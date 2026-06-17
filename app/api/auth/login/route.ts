@@ -21,11 +21,21 @@ export async function POST(request: NextRequest) {
 
     const userData = JSON.stringify({ email: email.toLowerCase().trim(), role })
 
+    const maxAge = 60 * 60 * 24 * 7 // 7 days
+
     const response = NextResponse.json({ ok: true, role })
+    // httpOnly cookie for middleware (server-side auth)
     response.cookies.set('bl_user', userData, {
       httpOnly: true,
       path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge,
+      sameSite: 'lax',
+    })
+    // readable cookie for client-side UI (ChatPanel, UserBadge)
+    response.cookies.set('bl_user_ui', userData, {
+      httpOnly: false,
+      path: '/',
+      maxAge,
       sameSite: 'lax',
     })
 

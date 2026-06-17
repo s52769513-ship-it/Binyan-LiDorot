@@ -11,9 +11,9 @@ function parseCookieUser(): { email: string; role: string } | null {
     const match = document.cookie
       .split(';')
       .map(c => c.trim())
-      .find(c => c.startsWith('bl_user='))
+      .find(c => c.startsWith('bl_user_ui='))
     if (!match) return null
-    const raw = decodeURIComponent(match.slice('bl_user='.length))
+    const raw = decodeURIComponent(match.slice('bl_user_ui='.length))
     return JSON.parse(raw)
   } catch {
     return null
