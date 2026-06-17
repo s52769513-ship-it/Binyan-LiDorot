@@ -28,6 +28,7 @@ interface Props {
   studentId: string
   onClose: () => void
   onOpenParent?: (parentId: string) => void
+  onUpdate?: (id: string, fields: Record<string, unknown>) => void
 }
 
 const fmt = (n: number) =>
@@ -170,7 +171,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /* ═══════════════════════════════════════════════════════ */
-export default function StudentCard({ studentId, onClose, onOpenParent }: Props) {
+export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate }: Props) {
   const [student, setStudent] = useState<StudentData | null>(null)
   const [classes, setClasses] = useState<ClassOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -202,7 +203,8 @@ export default function StudentCard({ studentId, onClose, onOpenParent }: Props)
       body: JSON.stringify(fields),
     })
     setStudent(prev => prev ? { ...prev, ...fields } as StudentData : prev)
-  }, [studentId])
+    onUpdate?.(studentId, fields)
+  }, [studentId, onUpdate])
 
   const toggleTransport = async (t: string) => {
     if (!student) return

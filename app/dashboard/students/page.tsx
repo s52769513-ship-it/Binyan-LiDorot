@@ -129,7 +129,12 @@ export default function StudentsPage() {
       )}
 
       {selectedStudentId && (
-        <StudentCard studentId={selectedStudentId} onClose={() => setSelectedStudentId(null)}
+        <StudentCard
+          studentId={selectedStudentId}
+          onClose={() => setSelectedStudentId(null)}
+          onUpdate={(id, fields) => setStudents(prev => prev.map(s =>
+            s.id === id ? { ...s, ...fields } as Student : s
+          ))}
           onOpenParent={id => { setSelectedStudentId(null); setSelectedParentId(id) }} />
       )}
       {selectedParentId && (
