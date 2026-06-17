@@ -17,6 +17,7 @@ export default function StudentsPage() {
   const [error, setError]         = useState('')
   const [search, setSearch]       = useState('')
   const [framework, setFramework] = useState<'all' | 'tt' | 'bs'>('all')
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
   const [view, setView]           = useState<'class' | 'list'>('class')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
@@ -31,10 +32,19 @@ export default function StudentsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const allStatuses = [...new Set(students.map(s => s.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he'))
+
+  const toggleStatus = (s: string) => setStatusFilter(prev => {
+    const next = new Set(prev)
+    next.has(s) ? next.delete(s) : next.add(s)
+    return next
+  })
+
   const filtered = students.filter(s => {
     if (search && !s.name.includes(search)) return false
     if (framework === 'tt' && s.framework !== 'תלמוד תורה') return false
     if (framework === 'bs' && s.framework !== 'בית חינוך לבנות') return false
+    if (statusFilter.size > 0 && !statusFilter.has(s.status)) return false
     return true
   })
 
@@ -71,6 +81,28 @@ export default function StudentsPage() {
           ))}
         </div>
       </div>
+
+      {allStatuses.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center" dir="rtl">
+          <span className="text-xs text-gray-400">סטטוס:</span>
+          {allStatuses.map(s => (
+            <button key={s} onClick={() => toggleStatus(s)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                statusFilter.has(s)
+                  ? s === 'פעיל' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
+              }`}>
+              {s}
+            </button>
+          ))}
+          {statusFilter.size > 0 && (
+            <button onClick={() => setStatusFilter(new Set())}
+              className="px-2 py-1 text-xs text-gray-400 hover:text-red-500 underline">
+              נקה
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
