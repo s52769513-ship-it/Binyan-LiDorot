@@ -1,6 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+/**
+ * Nadraim sometimes sends JSON with unescaped double-quotes inside string values
+ * (e.g. names with gershayim typed as ASCII "). Walk char-by-char and escape
+ * any quote that doesn't look like a valid string terminator.
+ */
+function fixMalformedJson(text: string): string {
+  let result = ''
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (escaped) { result += ch; escaped = false; continue }
+    if (ch === '\\') { result += ch; escaped = true; continue }
+    if (ch === '"') {
+      if (!inString) { inString = true; result += ch; continue }
+      // Peek ahead (skip whitespace) to determine if this quote closes the string
+      let j = i + 1
+      while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\r' || text[j] === '\n')) j++
+      const next = text[j] ?? ''
+      if (next === ':' || next === ',' || next === '}' || next === ']' || next === '') {
+        inString = false; result += ch
+      } else {
+        // Quote is inside a value — escape it
+        result += '\\"'
+      }
+      continue
+    }
+    result += ch
+  }
+  return result
+}
+
 // Nadraim currency codes: 1 = ILS, 2 = USD
 async function convertToILS(amount: number, currency: string): Promise<{ amount: number; currencyNote: string }> {
   if (currency !== '2') return { amount, currencyNote: '' }
@@ -35,9 +68,21 @@ function parseNadraimDate(dateStr: string): { date: string; monthYear: string } 
 
 export async function POST(req: NextRequest) {
   try {
-    const raw = await req.json()
+    const text = await req.text()
+    let raw: unknown
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      // Names with unescaped quotes (gershayim typed as ASCII ") break JSON.
+      // Try to sanitize and re-parse.
+      try {
+        raw = JSON.parse(fixMalformedJson(text))
+      } catch (e2) {
+        return NextResponse.json({ error: `JSON לא תקין: ${String(e2)}` }, { status: 400 })
+      }
+    }
     // Make sends array, Nadraim direct sends object
-    const payload = Array.isArray(raw) ? raw[0] : raw
+    const payload = Array.isArray(raw) ? (raw as unknown[])[0] : raw
 
     const {
       Zeout, ClientName, Phone, Mail,
