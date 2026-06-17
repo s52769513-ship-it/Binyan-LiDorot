@@ -33,10 +33,27 @@ export async function GET(req: NextRequest) {
       query = query.contains('status', [status])
     }
 
-    if (debt === 'debt') {
-      query = query.gt('tuition_balance', 0)
-    } else if (debt === 'credit') {
+    if (debt === 'credit') {
       query = query.lt('tuition_balance', 0)
+    }
+
+    // "חייבים" filter: use past-due PP balances (not stale tuition_balance field)
+    let debtorIdSet: Set<string> | null = null
+    if (debt === 'debt') {
+      const todayForFilter = new Date().toISOString().slice(0, 10)
+      const { data: overduePPsForFilter } = await supabaseAdmin
+        .from('planned_payments')
+        .select('parent_ids')
+        .eq('pp_type', 'tuition')
+        .gt('balance', 0)
+        .lt('date', todayForFilter)
+      debtorIdSet = new Set(
+        (overduePPsForFilter ?? []).flatMap(pp => (pp.parent_ids as string[]) ?? [])
+      )
+      if (debtorIdSet.size === 0) {
+        return NextResponse.json({ data: [], total: 0, statusOptions: [] })
+      }
+      query = query.in('id', [...debtorIdSet])
     }
 
     if (city) {

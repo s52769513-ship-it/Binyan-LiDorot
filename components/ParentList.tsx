@@ -125,8 +125,8 @@ export default function ParentList({
               <th className="px-4 py-3 cursor-pointer hover:text-gray-700 select-none text-left" onClick={() => onSort('tuition_total')}>
                 שכ"ל <SortIcon field="tuition_total" />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-gray-700 select-none text-left" onClick={() => onSort('tuition_balance')}>
-                יתרה <SortIcon field="tuition_balance" />
+              <th className="px-4 py-3 text-left">
+                יתרה (חוב)
               </th>
               <th className="px-4 py-3">סטטוס</th>
             </tr>
@@ -172,11 +172,13 @@ export default function ParentList({
                     {p.tuitionTotal > 0 ? formatCurrency(p.tuitionTotal) : '—'}
                   </td>
                   <td className="px-4 py-3 text-left tabular-nums">
-                    {p.tuitionBalance !== 0 ? (
-                      <span className={`text-sm font-semibold ${p.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {p.tuitionBalance > 0
-                          ? formatCurrency(p.tuitionBalance)
-                          : `זכות ${formatCurrency(Math.abs(p.tuitionBalance))}`}
+                    {p.overdueBalance > 0 ? (
+                      <span className="text-sm font-semibold text-red-600">
+                        {formatCurrency(p.overdueBalance)}
+                      </span>
+                    ) : p.tuitionBalance < 0 ? (
+                      <span className="text-sm font-semibold text-emerald-600">
+                        זכות {formatCurrency(Math.abs(p.tuitionBalance))}
                       </span>
                     ) : (
                       <span className="text-sm text-gray-400">—</span>
