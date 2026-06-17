@@ -265,7 +265,9 @@ function SyncSection() {
 function StudentImportTab() {
   const [file, setFile]       = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
-  const [result, setResult]   = useState<{ updated: number; classes: number; notFound: string[]; errors: string[] } | null>(null)
+  const [result, setResult]   = useState<{
+    updated: number; classes: number; notFound: string[]; errors: string[]; matchedByIDCol: boolean
+  } | null>(null)
   const [error, setError]     = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -294,9 +296,11 @@ function StudentImportTab() {
   return (
     <div className="space-y-5" dir="rtl">
       <div>
-        <h3 className="font-bold text-gray-800 text-lg mb-1">ייבוא תלמידים מאקסל</h3>
-        <p className="text-sm text-gray-500">
-          העלה קובץ CSV שיוצא מהמערכת. המערכת תעדכן כיתה, סטטוס, הסעות, ת&quot;ז ועוד לפי התאמה לשמות/ת&quot;ז קיימים.
+        <h3 className="font-bold text-gray-800 text-lg mb-1">ייבוא תלמידים מ-CSV</h3>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          קובץ CSV עם כותרות בשורה ראשונה. המערכת מזהה עמודות לפי שם הכותרת אוטומטית.<br/>
+          <b>התאמה:</b> לפי ת"ז (אם יש עמודה) → אחרת לפי שם פרטי + שם משפחה.<br/>
+          <b>מעדכן:</b> הסעות, כיתה, סטטוס, תאריך לידה.
         </p>
       </div>
 
@@ -327,15 +331,20 @@ function StudentImportTab() {
       {result && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
           <div className="font-bold text-emerald-800">✓ ייבוא הסתיים</div>
-          <div className="text-sm text-emerald-700">עודכנו: <b>{result.updated}</b> תלמידים · כיתות: <b>{result.classes}</b></div>
+          <div className="text-sm text-emerald-700">
+            עודכנו: <b>{result.updated}</b> תלמידים · כיתות: <b>{result.classes}</b>
+            {' · '}התאמה לפי: <b>{result.matchedByIDCol ? 'ת"ז' : 'שם מלא'}</b>
+          </div>
           {result.notFound.length > 0 && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
-              <b>לא נמצאו במערכת ({result.notFound.length}):</b> {result.notFound.join(', ')}
+              <b>לא נמצאו במערכת ({result.notFound.length}):</b>{' '}
+              {result.notFound.slice(0, 20).join(', ')}
+              {result.notFound.length > 20 ? ` + עוד ${result.notFound.length - 20}` : ''}
             </div>
           )}
           {result.errors.length > 0 && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-              <b>שגיאות:</b> {result.errors.join(' | ')}
+              <b>שגיאות ({result.errors.length}):</b> {result.errors.slice(0, 5).join(' | ')}
             </div>
           )}
         </div>
