@@ -33,9 +33,67 @@ function parseNadraimDate(dateStr: string): { date: string; monthYear: string } 
   return { date: `${yyyy}-${mm}-${dd}`, monthYear: `${mm}/${yyyy}` }
 }
 
+function fixUnescapedQuotes(text: string): string {
+  let result = ''
+  let i = 0
+  let inString = false
+  let escaped = false
+
+  while (i < text.length) {
+    const ch = text[i]
+
+    if (escaped) {
+      result += ch
+      escaped = false
+      i++
+      continue
+    }
+
+    if (ch === '\\') {
+      result += ch
+      escaped = true
+      i++
+      continue
+    }
+
+    if (ch === '"') {
+      if (!inString) {
+        inString = true
+        result += ch
+      } else {
+        // Check if this is a real closing quote by looking at what follows
+        let j = i + 1
+        while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) j++
+        const next = text[j]
+        if (next === ',' || next === '}' || next === ']' || next === ':' || j >= text.length) {
+          inString = false
+          result += ch
+        } else {
+          // Unescaped quote inside a string value — escape it
+          result += '\\"'
+        }
+      }
+      i++
+      continue
+    }
+
+    result += ch
+    i++
+  }
+
+  return result
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const raw = await req.json()
+    let raw: unknown
+    try {
+      raw = await req.json()
+    } catch {
+      // Nedarim may send JSON with unescaped quotes in string values (e.g. ברי"ט)
+      const text = await req.text()
+      raw = JSON.parse(fixUnescapedQuotes(text))
+    }
     // Make sends array, Nadraim direct sends object
     const payload = Array.isArray(raw) ? raw[0] : raw
 
