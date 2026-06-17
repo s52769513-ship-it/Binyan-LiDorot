@@ -20,45 +20,30 @@ function formatTime(isoString: string): string {
   }
 }
 
-// Web Audio API bubble pop sound (no external files needed)
-function playBubbleSound() {
+// Soft notification chime (two ascending tones)
+function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
 
-    // Oscillator 1: main bubble pop
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
+    const play = (freq: number, startAt: number, duration: number, vol: number) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0, ctx.currentTime + startAt)
+      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + duration)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + duration)
+    }
 
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(600, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.15)
+    // First note then second note — pleasant ding-dong
+    play(880, 0,    0.35, 0.35)   // A5
+    play(1047, 0.2, 0.45, 0.28)  // C6
 
-    gain.gain.setValueAtTime(0.4, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18)
-
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.18)
-
-    // Oscillator 2: short high click for "bubble" feel
-    const osc2 = ctx.createOscillator()
-    const gain2 = ctx.createGain()
-    osc2.connect(gain2)
-    gain2.connect(ctx.destination)
-
-    osc2.type = 'sine'
-    osc2.frequency.setValueAtTime(1200, ctx.currentTime)
-    osc2.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.06)
-
-    gain2.gain.setValueAtTime(0.25, ctx.currentTime)
-    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.07)
-
-    osc2.start(ctx.currentTime)
-    osc2.stop(ctx.currentTime + 0.07)
-
-    // Auto-close context
-    setTimeout(() => ctx.close(), 500)
+    setTimeout(() => ctx.close(), 1000)
   } catch {
     // AudioContext not supported — silent fail
   }
@@ -91,8 +76,7 @@ export default function ChatPanel() {
           m => m.from_email !== currentUser.email && !prevMsgIdsRef.current.has(m.id)
         )
         if (newFromOther.length > 0 && prevMsgIdsRef.current.size > 0) {
-          // Panel closed: play sound and show bounce; panel open: just sound
-          playBubbleSound()
+          playNotificationSound()
         }
         // Update known IDs
         data.forEach(m => prevMsgIdsRef.current.add(m.id))
@@ -195,39 +179,53 @@ export default function ChatPanel() {
           60%       { transform: translateY(-7px) scale(1.06); }
           80%       { transform: translateY(-2px) scale(1.01); }
         }
+        @keyframes chat-ring {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          100% { transform: scale(2.2); opacity: 0;   }
+        }
       `}</style>
 
       {/* Floating trigger button */}
-      <button
-        onClick={() => {
-          setOpen(o => {
-            if (!o) {
-              // Opening: mark read after small delay
-              setTimeout(() => markAllRead(), 200)
-            }
-            return !o
-          })
-        }}
-        className="fixed bottom-5 left-5 z-[80] w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-transform hover:scale-105 active:scale-95"
-        style={{
-          background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)',
-          border: '2px solid #d4a921',
-          boxShadow: '0 4px 20px rgba(13,31,82,0.5)',
-          animation: hasBounce ? 'chat-bounce 1.4s ease-in-out infinite' : 'none',
-        }}
-        title="צ'אט פנימי"
-        dir="rtl"
-      >
-        <span className="text-2xl leading-none">💬</span>
-        {unreadCount > 0 && (
+      <div className="fixed bottom-5 left-5 z-[80]">
+        {/* Pulsing ring when unread */}
+        {hasBounce && (
           <span
-            className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full flex items-center justify-center text-[11px] font-bold text-white px-1"
-            style={{ background: '#ef4444' }}
-          >
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: '#ef4444',
+              animation: 'chat-ring 1.2s ease-out infinite',
+            }}
+          />
         )}
-      </button>
+        <button
+          onClick={() => {
+            setOpen(o => {
+              if (!o) setTimeout(() => markAllRead(), 200)
+              return !o
+            })
+          }}
+          className="relative w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-transform hover:scale-105 active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #0d1f52 0%, #1a3a7a 100%)',
+            border: hasBounce ? '2px solid #ef4444' : '2px solid #d4a921',
+            boxShadow: hasBounce
+              ? '0 4px 20px rgba(239,68,68,0.5)'
+              : '0 4px 20px rgba(13,31,82,0.5)',
+            animation: hasBounce ? 'chat-bounce 1.4s ease-in-out infinite' : 'none',
+          }}
+          title="צ'אט פנימי"
+        >
+          <span className="text-2xl leading-none">{hasBounce ? '🔔' : '💬'}</span>
+          {unreadCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full flex items-center justify-center text-[11px] font-bold text-white px-1"
+              style={{ background: '#ef4444' }}
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Chat panel */}
       {open && (
