@@ -32,7 +32,17 @@ export default function StudentsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const allStatuses = [...new Set(students.map(s => s.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he'))
+  // Derive statuses from students already filtered by framework (not by status itself)
+  const frameworkFiltered = students.filter(s => {
+    if (framework === 'tt' && s.framework !== 'תלמוד תורה') return false
+    if (framework === 'bs' && s.framework !== 'בית חינוך לבנות') return false
+    return true
+  })
+  const allStatuses = [...new Set(frameworkFiltered.map(s => s.status || ''))].sort((a, b) => {
+    if (!a) return 1; if (!b) return -1
+    return a.localeCompare(b, 'he')
+  })
+  const hasEmptyStatus = frameworkFiltered.some(s => !s.status)
 
   const toggleStatus = (s: string) => setStatusFilter(prev => {
     const next = new Set(prev)
@@ -44,7 +54,10 @@ export default function StudentsPage() {
     if (search && !s.name.includes(search)) return false
     if (framework === 'tt' && s.framework !== 'תלמוד תורה') return false
     if (framework === 'bs' && s.framework !== 'בית חינוך לבנות') return false
-    if (statusFilter.size > 0 && !statusFilter.has(s.status)) return false
+    if (statusFilter.size > 0) {
+      const st = s.status || ''
+      if (!statusFilter.has(st)) return false
+    }
     return true
   })
 
@@ -85,7 +98,7 @@ export default function StudentsPage() {
       {allStatuses.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center" dir="rtl">
           <span className="text-xs text-gray-400">סטטוס:</span>
-          {allStatuses.map(s => (
+          {allStatuses.filter(Boolean).map(s => (
             <button key={s} onClick={() => toggleStatus(s)}
               className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                 statusFilter.has(s)
@@ -95,6 +108,16 @@ export default function StudentsPage() {
               {s}
             </button>
           ))}
+          {hasEmptyStatus && (
+            <button onClick={() => toggleStatus('')}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                statusFilter.has('')
+                  ? 'bg-gray-500 text-white border-gray-500'
+                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
+              }`}>
+              ללא סטטוס
+            </button>
+          )}
           {statusFilter.size > 0 && (
             <button onClick={() => setStatusFilter(new Set())}
               className="px-2 py-1 text-xs text-gray-400 hover:text-red-500 underline">
