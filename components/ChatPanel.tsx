@@ -170,6 +170,22 @@ export default function ChatPanel() {
     }
   }
 
+  const [videoRoom, setVideoRoom] = useState<string | null>(null)
+
+  const startVideoCall = async () => {
+    const room = `binyan-lidorot-${Date.now()}`
+    setVideoRoom(room)
+    // Notify other user via chat
+    await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `📹 שיחת וידאו — לחץ להצטרף:\n__VIDEO__${room}` }),
+    })
+    await fetchMessages(true)
+  }
+
+  const joinVideoCall = (room: string) => setVideoRoom(room)
+
   if (!currentUser) return null
 
   const hasBounce = unreadCount > 0 && !open
@@ -189,6 +205,31 @@ export default function ChatPanel() {
           100% { transform: scale(2.2); opacity: 0;   }
         }
       `}</style>
+
+      {/* Video call modal */}
+      {videoRoom && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black">
+          <div
+            className="flex items-center justify-between px-4 py-2 flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', borderBottom: '2px solid #d4a921' }}
+          >
+            <span className="text-white font-bold text-sm">📹 שיחת וידאו פנימית</span>
+            <button
+              onClick={() => setVideoRoom(null)}
+              className="text-white hover:text-red-400 text-xl font-bold transition-colors px-2"
+              title="סיים שיחה"
+            >
+              ✕ סיים
+            </button>
+          </div>
+          <iframe
+            src={`https://meet.jit.si/${videoRoom}#userInfo.displayName="${encodeURIComponent(currentUser.role)}"`}
+            allow="camera; microphone; fullscreen; display-capture; autoplay"
+            className="flex-1 w-full border-0"
+            title="שיחת וידאו"
+          />
+        </div>
+      )}
 
       {/* Floating trigger button */}
       <div className="fixed bottom-5 left-5 z-[80]">
@@ -262,12 +303,21 @@ export default function ChatPanel() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-white hover:bg-white/20 transition-colors text-lg font-bold"
-            >
-              ×
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={startVideoCall}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/20 transition-colors text-base"
+                title="התחל שיחת וידאו"
+              >
+                📹
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-full text-white hover:bg-white/20 transition-colors text-lg font-bold"
+              >
+                ×
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -279,6 +329,32 @@ export default function ChatPanel() {
             ) : (
               messages.map(msg => {
                 const isMe = msg.from_email === currentUser.email
+                const videoMatch = msg.message.match(/__VIDEO__(.+)$/)
+
+                if (videoMatch) {
+                  const room = videoMatch[1].trim()
+                  return (
+                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                      <div className="text-[10px] mb-0.5 px-1" style={{ color: '#8899cc' }}>
+                        {isMe ? 'אני' : msg.from_role} · {formatTime(msg.created_at)}
+                      </div>
+                      <div
+                        className="max-w-[85%] rounded-2xl px-3 py-2.5 text-sm"
+                        style={{ background: '#f0fdf4', border: '1.5px solid #86efac', color: '#166534' }}
+                      >
+                        <div className="font-bold mb-2">📹 שיחת וידאו פעילה</div>
+                        <button
+                          onClick={() => joinVideoCall(room)}
+                          className="w-full py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:scale-105"
+                          style={{ background: 'linear-gradient(135deg, #15803d, #16a34a)' }}
+                        >
+                          הצטרף לשיחה
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
                   <div
                     key={msg.id}
@@ -291,16 +367,8 @@ export default function ChatPanel() {
                       className="max-w-[80%] rounded-2xl px-3 py-2 text-sm break-words leading-relaxed"
                       style={
                         isMe
-                          ? {
-                              background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)',
-                              color: '#fff',
-                              borderBottomRightRadius: 4,
-                            }
-                          : {
-                              background: '#f1f3f8',
-                              color: '#1a1a2e',
-                              borderBottomLeftRadius: 4,
-                            }
+                          ? { background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#fff', borderBottomRightRadius: 4 }
+                          : { background: '#f1f3f8', color: '#1a1a2e', borderBottomLeftRadius: 4 }
                       }
                     >
                       {msg.message}
