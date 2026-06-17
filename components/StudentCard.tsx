@@ -177,6 +177,13 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
 
+  // Parent linking state
+  const [parentSearch, setParentSearch]   = useState('')
+  const [parentResults, setParentResults] = useState<{ id: string; name: string }[]>([])
+  const [parentSearching, setParentSearching] = useState(false)
+  const [showParentSearch, setShowParentSearch] = useState(false)
+  const parentInputRef = useRef<HTMLInputElement>(null)
+
   const load = useCallback(() => {
     setLoading(true); setError('')
     Promise.all([
@@ -205,6 +212,36 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
     setStudent(prev => prev ? { ...prev, ...fields } as StudentData : prev)
     onUpdate?.(studentId, fields)
   }, [studentId, onUpdate])
+
+  useEffect(() => {
+    if (!parentSearch.trim()) { setParentResults([]); return }
+    setParentSearching(true)
+    const t = setTimeout(() => {
+      fetch(`/api/parents?search=${encodeURIComponent(parentSearch)}&page=0`)
+        .then(r => r.json())
+        .then(d => setParentResults((d.data ?? []).slice(0, 8).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))))
+        .catch(() => {})
+        .finally(() => setParentSearching(false))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [parentSearch])
+
+  const linkParent = async (parentId: string) => {
+    if (!student) return
+    if (student.parentIds.includes(parentId)) return
+    const newIds = [...student.parentIds, parentId]
+    await patch({ parentIds: newIds })
+    setParentSearch(''); setParentResults([]); setShowParentSearch(false)
+    load()
+  }
+
+  const unlinkParent = async (parentId: string) => {
+    if (!student) return
+    if (!confirm('להסיר שיוך להורה זה?')) return
+    const newIds = student.parentIds.filter(id => id !== parentId)
+    await patch({ parentIds: newIds })
+    load()
+  }
 
   const toggleTransport = async (t: string) => {
     if (!student) return
@@ -336,20 +373,67 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
               </div>
 
               {/* הורים */}
-              {student.parents.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">הורים</div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <button
+                    onClick={() => { setShowParentSearch(v => !v); setParentSearch(''); setParentResults([]) }}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                    style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+                  >
+                    + שייך הורה
+                  </button>
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">הורים</span>
+                </div>
+
+                {/* Parent search */}
+                {showParentSearch && (
+                  <div className="px-4 py-3 border-b border-gray-100 relative" dir="rtl">
+                    <input
+                      ref={parentInputRef}
+                      autoFocus
+                      value={parentSearch}
+                      onChange={e => setParentSearch(e.target.value)}
+                      placeholder="חפש לפי שם..."
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                    />
+                    {parentSearching && <p className="text-xs text-gray-400 mt-1 text-right">מחפש...</p>}
+                    {parentResults.length > 0 && (
+                      <div className="absolute z-10 right-4 left-4 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                        {parentResults.map(p => (
+                          <button key={p.id} onClick={() => linkParent(p.id)}
+                            className="w-full text-right px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0">
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {parentSearch.trim() && !parentSearching && parentResults.length === 0 && (
+                      <p className="text-xs text-gray-400 mt-1 text-right">לא נמצאו תוצאות</p>
+                    )}
+                  </div>
+                )}
+
+                {student.parents.length === 0 && !showParentSearch ? (
+                  <p className="text-sm text-gray-400 text-center py-4">אין הורים משויכים</p>
+                ) : (
                   <div className="divide-y divide-gray-100">
                     {student.parents.map(p => (
-                      <button key={p.id} onClick={() => onOpenParent?.(p.id)}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors text-right group">
-                        <span className="text-xs text-[#1a3a7a] opacity-0 group-hover:opacity-100">פתח כרטיס ←</span>
-                        <span className="font-medium text-gray-800">{p.name}</span>
-                      </button>
+                      <div key={p.id} className="flex items-center justify-between px-4 py-2.5 group hover:bg-blue-50/40 transition-colors">
+                        <button
+                          onClick={() => unlinkParent(p.id)}
+                          className="text-xs text-gray-300 hover:text-red-500 transition-colors px-1"
+                          title="הסר שיוך"
+                        >
+                          ✕
+                        </button>
+                        <button onClick={() => onOpenParent?.(p.id)} className="flex-1 text-right">
+                          <span className="font-medium text-gray-800 group-hover:text-[#1a3a7a]">{p.name}</span>
+                        </button>
+                      </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </div>
