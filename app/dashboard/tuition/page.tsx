@@ -507,7 +507,6 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   const [search, setSearch]     = useState('')
   const [monthFilter, setMonthFilter] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
-
   // PP detail modal state
   const [selectedPP, setSelectedPP]     = useState<PPRow | null>(null)
   const [ppTxList, setPpTxList]         = useState<PpTxItem[]>([])
@@ -594,6 +593,35 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   const totalBalance = filtered.reduce((s, r) => s + Math.max(0, r.balance), 0)
   const totalAmount  = filtered.reduce((s, r) => s + r.amount, 0)
 
+  const exportExcel = async () => {
+    const XLSX = (await import('xlsx')).default
+    const sheetData = [
+      ['הורה', 'שם תשלום', 'סוג', 'חודש', 'תאריך', 'סכום', 'שולם', 'יתרה', 'סטטוס'],
+      ...filtered.map(r => {
+        const paid    = r.amount - Math.max(0, r.balance)
+        const balance = Math.max(0, r.balance)
+        const status  = balance <= 0 ? 'שולם' : paid > 0 ? 'חלקי' : 'ממתין'
+        return [
+          r.parentName || '',
+          r.name || '',
+          r.ppType === 'donation' ? 'דמי מגבית' : 'שכ"ל',
+          r.monthYear || '',
+          r.date ? r.date.slice(0, 10) : '',
+          r.amount,
+          paid,
+          balance,
+          status,
+        ]
+      }),
+    ]
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+    ws['!cols'] = [20, 14, 10, 10, 12, 10, 10, 10, 8].map(w => ({ wch: w }))
+    XLSX.utils.book_append_sheet(wb, ws, 'תשלומים מתוכננים')
+    const label = monthFilter ? `_${monthFilter.replace('/', '-')}` : ''
+    XLSX.writeFile(wb, `תשלומים_מתוכננים${label}.xlsx`)
+  }
+
   return (
     <div className="space-y-4">
       {/* Summary */}
@@ -636,6 +664,13 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
           <button onClick={() => { setSearch(''); setMonthFilter('') }}
             className="px-3 py-2 text-sm text-gray-400 hover:text-gray-700 underline">נקה</button>
         )}
+        <button
+          onClick={exportExcel}
+          disabled={filtered.length === 0}
+          className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap"
+        >
+          📥 הורד Excel
+        </button>
       </div>
 
       {/* ── PP detail modal ── */}
