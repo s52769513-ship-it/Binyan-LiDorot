@@ -70,6 +70,29 @@ export default function StudentsPage() {
     return true
   })
 
+  const exportExcel = async () => {
+    const XLSX = (await import('xlsx')).default
+    const rows = [
+      ['שם', 'כיתה', 'מסגרת', 'מגדר', 'גיל', 'סטטוס', 'הסעות', 'עלות הסעה'],
+      ...filtered.map(s => [
+        s.name,
+        s.className || '',
+        s.framework || '',
+        s.gender || '',
+        s.age || '',
+        s.status || '',
+        s.transportation.join(' + ') || '',
+        s.transportationCost || 0,
+      ]),
+    ]
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 8 }, { wch: 6 }, { wch: 12 }, { wch: 22 }, { wch: 12 }]
+    XLSX.utils.book_append_sheet(wb, ws, 'תלמידים')
+    const label = framework === 'tt' ? '_תלמוד_תורה' : framework === 'bs' ? '_בית_חינוך' : ''
+    XLSX.writeFile(wb, `תלמידים${label}.xlsx`)
+  }
+
   const byClass: Record<string, Student[]> = {}
   filtered.forEach(s => {
     const key = s.className || 'לא משויך'
@@ -87,6 +110,10 @@ export default function StudentsPage() {
             <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
             <button onClick={() => setView('list')}  className={`px-3 py-1.5 ${view==='list'  ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>רשימה</button>
           </div>
+          <button onClick={exportExcel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors">
+            📥 Excel
+          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
