@@ -97,6 +97,8 @@ export async function POST(req: NextRequest) {
       // Col 7: כיתה + אגף ביחד (לדוגמא "ג בית חינוך")
       const className = row[7]?.trim() || undefined
 
+      const birthHebrew: string | null = null // לא בCSV הזה
+
       // Col 18: סטטוס — "V"→פעיל, "סיים לימודים"→סיים לימודים, ""→skip
       const statusRaw = row[18]?.trim()
       const status = statusRaw === 'V' ? 'פעיל' : statusRaw || undefined
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
       if (gender !== undefined)               update.gender               = gender
       if (idNumber)                           update.id_number            = idNumber
       if (birthGreg !== undefined)            update.birth_date_gregorian = birthGreg
+      if (birthHebrew !== undefined)          update.birth_date_hebrew    = birthHebrew
       if (className !== undefined)            update.class_name           = className
       if (status !== undefined)               update.status               = status
       if (transportation !== undefined)       update.transportation       = transportation
