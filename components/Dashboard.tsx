@@ -5,26 +5,13 @@ import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
 import ChatPanel from './ChatPanel'
 
-function parseCookieUser(): { email: string; role: string } | null {
-  if (typeof document === 'undefined') return null
-  try {
-    const match = document.cookie
-      .split(';')
-      .map(c => c.trim())
-      .find(c => c.startsWith('bl_user_ui='))
-    if (!match) return null
-    const raw = decodeURIComponent(match.slice('bl_user_ui='.length))
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
 function UserBadge() {
   const [user, setUser] = useState<{ email: string; role: string } | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
 
-  useEffect(() => { setUser(parseCookieUser()) }, [])
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(u => setUser(u ?? null)).catch(() => {})
+  }, [])
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true)

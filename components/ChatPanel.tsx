@@ -11,21 +11,6 @@ interface ChatMessage {
   read_by: string[]
 }
 
-function parseCookieUser(): { email: string; role: string } | null {
-  if (typeof document === 'undefined') return null
-  try {
-    const match = document.cookie
-      .split(';')
-      .map(c => c.trim())
-      .find(c => c.startsWith('bl_user_ui='))
-    if (!match) return null
-    const raw = decodeURIComponent(match.slice('bl_user='.length))
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
 function formatTime(isoString: string): string {
   try {
     const d = new Date(isoString)
@@ -85,10 +70,14 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [currentUser, setCurrentUser] = useState<{ email: string; role: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevMsgIdsRef = useRef<Set<string>>(new Set())
-  const currentUser = parseCookieUser()
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(u => setCurrentUser(u ?? null)).catch(() => {})
+  }, [])
 
   const fetchMessages = useCallback(async (isOpen: boolean) => {
     try {
