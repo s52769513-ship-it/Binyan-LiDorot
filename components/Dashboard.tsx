@@ -1,8 +1,63 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
+import ChatPanel from './ChatPanel'
+
+function parseCookieUser(): { email: string; role: string } | null {
+  if (typeof document === 'undefined') return null
+  try {
+    const match = document.cookie
+      .split(';')
+      .map(c => c.trim())
+      .find(c => c.startsWith('bl_user='))
+    if (!match) return null
+    const raw = decodeURIComponent(match.slice('bl_user='.length))
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function UserBadge() {
+  const [user, setUser] = useState<{ email: string; role: string } | null>(null)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  useEffect(() => { setUser(parseCookieUser()) }, [])
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      window.location.href = '/'
+    } catch {
+      setLoggingOut(false)
+    }
+  }, [])
+
+  if (!user) return null
+
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-2 rounded-lg px-3 py-1.5 border"
+        style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', borderColor: '#d4a921', color: '#d4a921' }}
+      >
+        <span className="text-xs font-bold">{user.role}</span>
+        <span className="text-[10px] opacity-60 hidden sm:inline">{user.email}</span>
+      </div>
+      <button
+        onClick={handleLogout}
+        disabled={loggingOut}
+        className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50"
+        title="יציאה מהמערכת"
+      >
+        {loggingOut ? '...' : 'יציאה'}
+      </button>
+    </div>
+  )
+}
 
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
@@ -710,8 +765,12 @@ export default function Dashboard() {
         </div>
 
         {lastSyncLabel && (
-          <span className="mr-auto text-[10px] text-gray-400">סנכרן {lastSyncLabel}</span>
+          <span className="text-[10px] text-gray-400">סנכרן {lastSyncLabel}</span>
         )}
+
+        <div className="mr-auto">
+          <UserBadge />
+        </div>
       </div>
 
       {error && (
@@ -1078,6 +1137,7 @@ export default function Dashboard() {
       {showAddTx && (
         <AddTransactionModal onClose={() => setShowAddTx(false)} onSuccess={() => { setShowAddTx(false); load() }} />
       )}
+      <ChatPanel />
     </div>
   )
 }

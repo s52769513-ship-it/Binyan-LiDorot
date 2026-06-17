@@ -3,10 +3,18 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+const USERS = [
+  { email: 'ta6054493@gmail.com', role: 'מזכירות', label: 'מזכירות' },
+  { email: 't6054493@gmail.com',  role: 'הנהלה',   label: 'הנהלה' },
+]
+
 export default function LoginPage() {
   const router = useRouter()
   const [visible, setVisible] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 100)
@@ -14,9 +22,32 @@ export default function LoginPage() {
     return () => clearTimeout(t)
   }, [])
 
+  const handleLogin = async (email: string) => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        router.push('/dashboard')
+      } else {
+        setError(data.error ?? 'שגיאת כניסה')
+        setLoading(false)
+      }
+    } catch {
+      setError('שגיאת תקשורת')
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center overflow-hidden relative"
-      style={{ background: 'linear-gradient(160deg, #0a1535 0%, #12255e 40%, #0d1c4a 70%, #091330 100%)' }}>
+      style={{ background: 'linear-gradient(160deg, #0a1535 0%, #12255e 40%, #0d1c4a 70%, #091330 100%)' }}
+      dir="rtl">
 
       {/* Animated background shimmer */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -88,18 +119,58 @@ export default function LoginPage() {
           תלמוד תורה ובית חינוך לבנות
         </p>
 
-        {/* Login button */}
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="w-full max-w-[280px] py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95"
-          style={{
-            background: 'linear-gradient(135deg, #c9a227 0%, #e8c84a 50%, #c9a227 100%)',
-            color: '#0a1535',
-            boxShadow: '0 4px 20px rgba(201,162,39,0.5)',
-          }}
-        >
-          כניסה למערכת
-        </button>
+        {/* Login area */}
+        {!showPicker ? (
+          // Initial "enter system" button
+          <button
+            onClick={() => setShowPicker(true)}
+            className="w-full max-w-[280px] py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg, #c9a227 0%, #e8c84a 50%, #c9a227 100%)',
+              color: '#0a1535',
+              boxShadow: '0 4px 20px rgba(201,162,39,0.5)',
+            }}
+          >
+            כניסה למערכת
+          </button>
+        ) : (
+          // Email picker UI
+          <div className="w-full max-w-[280px] space-y-3 transition-all duration-300">
+            <p className="text-center text-sm font-medium" style={{ color: '#c9a9a0' }}>
+              בחר/י את המשתמש שלך:
+            </p>
+            {USERS.map(u => (
+              <button
+                key={u.email}
+                onClick={() => handleLogin(u.email)}
+                disabled={loading}
+                className="w-full py-3 px-4 rounded-xl font-bold text-base transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-between"
+                style={{
+                  background: 'linear-gradient(135deg, #0f2461 0%, #1a3880 100%)',
+                  color: '#d4a921',
+                  border: '1.5px solid #c9a227',
+                  boxShadow: '0 4px 15px rgba(13,31,82,0.5)',
+                }}
+              >
+                <span className="text-sm font-semibold">{u.label}</span>
+                <span className="text-xs opacity-70">{u.email}</span>
+              </button>
+            ))}
+
+            {error && (
+              <p className="text-center text-xs text-red-400">{error}</p>
+            )}
+
+            <button
+              onClick={() => { setShowPicker(false); setError('') }}
+              className="w-full text-center text-xs underline mt-1"
+              style={{ color: '#445577' }}
+              disabled={loading}
+            >
+              חזור
+            </button>
+          </div>
+        )}
 
         <p className="mt-6 text-xs" style={{ color: '#445577' }}>
           מערכת פנימית · גישה מורשית בלבד
