@@ -54,12 +54,16 @@ export async function POST(req: NextRequest) {
       if (s.name?.trim())      nameMap.set(s.name.trim(), s.id)
     }
 
-    // ── Upsert classes from CSV (col 17: class, col 23: framework) ──────────
+    // ── Upsert classes from CSV (col H=7: combined class+framework, e.g. "ג בית חינוך") ──────────
+    const detectFramework = (cn: string): string => {
+      if (cn.includes('בית חינוך')) return 'בית חינוך לבנות'
+      if (cn.includes('תלמוד תורה') || cn.includes('ת"ת')) return 'תלמוד תורה'
+      return ''
+    }
     const classMap = new Map<string, string>() // class_name → framework
     for (const row of dataRows) {
-      const cn  = row[17]?.trim()
-      const fw  = row[23]?.trim()
-      if (cn) classMap.set(cn, fw || '')
+      const cn = row[7]?.trim()
+      if (cn) classMap.set(cn, detectFramework(cn))
     }
     if (classMap.size > 0) {
       const classRows = Array.from(classMap.entries()).map(([class_name, framework]) => ({
@@ -90,11 +94,8 @@ export async function POST(req: NextRequest) {
       // Col 6: תאריך לידה לועזי (DD/MM/YYYY)
       const birthGreg = row[6]?.trim() || null
 
-      // Col 7: תאריך לידה עברי
-      const birthHebrew = row[7]?.trim() || null
-
-      // Col 17: כיתה
-      const className = row[17]?.trim() || undefined
+      // Col 7: כיתה + אגף ביחד (לדוגמא "ג בית חינוך")
+      const className = row[7]?.trim() || undefined
 
       // Col 18: סטטוס — "V"→פעיל, "סיים לימודים"→סיים לימודים, ""→skip
       const statusRaw = row[18]?.trim()
@@ -117,7 +118,6 @@ export async function POST(req: NextRequest) {
       if (gender !== undefined)               update.gender               = gender
       if (idNumber)                           update.id_number            = idNumber
       if (birthGreg !== undefined)            update.birth_date_gregorian = birthGreg
-      if (birthHebrew !== undefined)          update.birth_date_hebrew    = birthHebrew
       if (className !== undefined)            update.class_name           = className
       if (status !== undefined)               update.status               = status
       if (transportation !== undefined)       update.transportation       = transportation
