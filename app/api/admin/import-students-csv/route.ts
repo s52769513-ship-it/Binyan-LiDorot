@@ -67,8 +67,10 @@ export async function POST(req: NextRequest) {
         const idNumber    = r[4]?.trim() ?? ''
         const birthHeb    = r[5]?.trim() ?? ''
         const birthGreg   = r[6]?.trim() ?? ''
-        const institution = r[7]?.trim() ?? ''
-        const classLetter = r[8]?.trim() ?? ''
+        const classAndFw  = r[7]?.trim() ?? ''
+        // col H = "א תלמוד תורה" or "גן בית חינוך לבנות" — class + framework combined
+        const institution = classAndFw.includes('בית חינוך') ? 'בית חינוך' : 'תלמוד תורה'
+        const classLetter = classAndFw.replace(/בית חינוך לבנות|בית חינוך|תלמוד תורה/, '').trim() || classAndFw
         const fatherPhone = r[13]?.trim() ?? ''
         const motherPhone = r[14]?.trim() ?? ''
         // col 15 = זמן (חורף/קיץ) - we store as note but don't map to transport fields
@@ -123,10 +125,12 @@ export async function POST(req: NextRequest) {
       const classSuggestions = classKeys.map(key => {
         const [letter, inst] = key.split('|')
         const fw = inst === 'בית חינוך' ? 'בית חינוך לבנות' : 'תלמוד תורה'
-        const exact   = dbClasses.find(c => c.framework === fw && c.class_name === letter)
-        const partial = exact ? undefined : dbClasses.find(c => c.framework === fw && c.class_name.includes(letter))
-        const match   = exact ?? partial
-        return { key, csvClass: letter, csvInstitution: inst, framework: fw, suggestedDbName: match?.class_name ?? letter, dbExists: !!match }
+        // Col H = "א תלמוד תורה" → builtName matches DB class_name directly
+        const builtName = `${letter} ${fw}`
+        const exact   = dbClasses.find(c => c.class_name === builtName)
+        const fallback = exact ? undefined : dbClasses.find(c => c.framework === fw && c.class_name.includes(letter))
+        const match   = exact ?? fallback
+        return { key, csvClass: letter, csvInstitution: inst, framework: fw, suggestedDbName: match?.class_name ?? builtName, dbExists: !!exact }
       }).sort((a, b) => a.csvInstitution.localeCompare(b.csvInstitution) || a.csvClass.localeCompare(b.csvClass, 'he'))
 
       const confident = rows.filter(r => r!.parentId !== null).length
