@@ -10,6 +10,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
+const AddStudentModal        = dynamic(() => import('./AddStudentModal'),        { ssr: false })
 
 /* ─── helpers ──────────────────────────────────────── */
 const fmt = (n: number) =>
@@ -546,6 +547,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [soParentQuery, setSoParentQuery]           = useState('')
   const [soParentResults, setSoParentResults]       = useState<{id:string;name:string}[]>([])
   const [soParentSearching, setSoParentSearching]   = useState(false)
+  const [showAddStudent, setShowAddStudent]         = useState(false)
 
   const creditApplyingRef = useRef(false)
 
@@ -1055,6 +1057,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {/* ── CHILDREN TAB ── */}
           {parent && tab === 'children' && (
             <div className="p-4 space-y-3">
+              <div className="flex justify-start">
+                <button
+                  onClick={() => setShowAddStudent(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+                >
+                  + הוסף ילד
+                </button>
+              </div>
               {parent.students.length === 0 ? (
                 <p className="text-center text-gray-400 text-sm py-8">אין ילדים רשומים</p>
               ) : (
@@ -2307,6 +2318,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           />
         )
       })()}
+
+      {showAddStudent && parent && (
+        <AddStudentModal
+          parentId={parentId}
+          parentName={parent.name}
+          onClose={() => setShowAddStudent(false)}
+          onSuccess={() => { setShowAddStudent(false); load() }}
+        />
+      )}
 
       {/* ── Delete confirmation modal ── */}
       {showDeleteModal && (
