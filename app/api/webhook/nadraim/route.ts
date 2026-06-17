@@ -160,34 +160,49 @@ export async function POST(req: NextRequest) {
       Comments       ? String(Comments)       : null,
     ].filter(Boolean).join(' · ')
 
-    // 5. Find open tuition PP to link (not משכורת)
-    // Priority: current month first, then oldest open
-    // Uses billingParentId (may differ from parentId if הו"ק is paying for someone else)
+    // 5. Find open PP to link — donation txs → donation PPs, others → tuition PPs
+    // Priority: 1) same month  2) past (overdue, oldest first)  3) future (closest first)
     let linkedPPId: string | null = null
     let linkedPPBalance: number | null = null
-    const ppParentId = billingParentId ?? parentId
+    const ppParentId  = billingParentId ?? parentId
+    const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
+    const isDonation  = projectName === 'דמי מגבית'
+
     if (ppParentId) {
-      const { data: openPPs } = await supabaseAdmin
+      const ppQuery = supabaseAdmin
         .from('planned_payments')
-        .select('id, amount, balance, month_year, name')
+        .select('id, amount, balance, month_year, date')
         .contains('parent_ids', [ppParentId])
-        .neq('name', 'משכורת')
         .gt('balance', 0)
-        .order('month_year', { ascending: false })
+
+      const { data: openPPs } = isDonation
+        ? await ppQuery.eq('pp_type', 'donation')
+        : await ppQuery.or('pp_type.eq.tuition,pp_type.is.null')
 
       if (openPPs && openPPs.length > 0) {
-        // Prefer current month, fallback to most recent open
-        const currentMonthPP = openPPs.find(pp => pp.month_year === monthYear)
-        const chosen = currentMonthPP ?? openPPs[openPPs.length - 1] // oldest = last after desc sort reversed
-        linkedPPId      = chosen.id
-        linkedPPBalance = Number(chosen.balance)
+        const today = new Date().toISOString().split('T')[0]
+        // 1. Exact month match
+        const sameMonth = openPPs.find(pp => pp.month_year === monthYear)
+        // 2. Overdue (past date), oldest first
+        const overdue   = openPPs
+          .filter(pp => pp.date && pp.date < today && pp.month_year !== monthYear)
+          .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+        // 3. Future, closest first
+        const upcoming  = openPPs
+          .filter(pp => !pp.date || pp.date >= today && pp.month_year !== monthYear)
+          .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+
+        const chosen    = sameMonth ?? overdue[0] ?? upcoming[0] ?? null
+        if (chosen) {
+          linkedPPId      = chosen.id
+          linkedPPBalance = Number(chosen.balance)
+        }
       }
     }
 
     // 6. Create transaction
-    const txId        = crypto.randomUUID()
-    const txType      = String(TransactionType ?? '').trim() || 'נדרים'
-    const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
+    const txId   = crypto.randomUUID()
+    const txType = String(TransactionType ?? '').trim() || 'נדרים'
 
     // Include both the payer (parentId) and the billed person (billingParentId) in parent_ids
     const txParentIds = Array.from(new Set([
