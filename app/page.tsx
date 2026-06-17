@@ -1,20 +1,16 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-
-const USERS = [
-  { email: 'ta6054493@gmail.com', role: 'מזכירות', label: 'מזכירות' },
-  { email: 't6054493@gmail.com',  role: 'הנהלה',   label: 'הנהלה' },
-]
+import { useEffect, useRef, useState } from 'react'
 
 export default function LoginPage() {
   const router = useRouter()
   const [visible, setVisible] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
-  const [showPicker, setShowPicker] = useState(false)
+  const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 100)
@@ -22,21 +18,24 @@ export default function LoginPage() {
     return () => clearTimeout(t)
   }, [])
 
-  const handleLogin = async (email: string) => {
+  const handleLogin = async () => {
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) { inputRef.current?.focus(); return }
     setLoading(true)
     setError('')
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: trimmed }),
       })
       const data = await res.json()
       if (data.ok) {
         router.push('/dashboard')
       } else {
-        setError(data.error ?? 'שגיאת כניסה')
+        setError('כתובת המייל אינה מורשית')
         setLoading(false)
+        inputRef.current?.focus()
       }
     } catch {
       setError('שגיאת תקשורת')
@@ -120,57 +119,43 @@ export default function LoginPage() {
         </p>
 
         {/* Login area */}
-        {!showPicker ? (
-          // Initial "enter system" button
+        <div className="w-full max-w-[280px] space-y-3" dir="rtl">
+          <input
+            ref={inputRef}
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setError('') }}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="הכנס כתובת מייל"
+            disabled={loading}
+            className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
+            style={{
+              background: 'rgba(255,255,255,0.07)',
+              border: '1.5px solid rgba(201,162,39,0.4)',
+              color: '#f0e8c8',
+              direction: 'ltr',
+              textAlign: 'left',
+            }}
+            autoComplete="email"
+          />
+
+          {error && (
+            <p className="text-center text-xs text-red-400">{error}</p>
+          )}
+
           <button
-            onClick={() => setShowPicker(true)}
-            className="w-full max-w-[280px] py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95"
+            onClick={handleLogin}
+            disabled={loading || !email.trim()}
+            className="w-full py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
             style={{
               background: 'linear-gradient(135deg, #c9a227 0%, #e8c84a 50%, #c9a227 100%)',
               color: '#0a1535',
               boxShadow: '0 4px 20px rgba(201,162,39,0.5)',
             }}
           >
-            כניסה למערכת
+            {loading ? '...' : 'כניסה'}
           </button>
-        ) : (
-          // Email picker UI
-          <div className="w-full max-w-[280px] space-y-3 transition-all duration-300">
-            <p className="text-center text-sm font-medium" style={{ color: '#c9a9a0' }}>
-              בחר/י את המשתמש שלך:
-            </p>
-            {USERS.map(u => (
-              <button
-                key={u.email}
-                onClick={() => handleLogin(u.email)}
-                disabled={loading}
-                className="w-full py-3 px-4 rounded-xl font-bold text-base transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-between"
-                style={{
-                  background: 'linear-gradient(135deg, #0f2461 0%, #1a3880 100%)',
-                  color: '#d4a921',
-                  border: '1.5px solid #c9a227',
-                  boxShadow: '0 4px 15px rgba(13,31,82,0.5)',
-                }}
-              >
-                <span className="text-sm font-semibold">{u.label}</span>
-                <span className="text-xs opacity-70">{u.email}</span>
-              </button>
-            ))}
-
-            {error && (
-              <p className="text-center text-xs text-red-400">{error}</p>
-            )}
-
-            <button
-              onClick={() => { setShowPicker(false); setError('') }}
-              className="w-full text-center text-xs underline mt-1"
-              style={{ color: '#445577' }}
-              disabled={loading}
-            >
-              חזור
-            </button>
-          </div>
-        )}
+        </div>
 
         <p className="mt-6 text-xs" style={{ color: '#445577' }}>
           מערכת פנימית · גישה מורשית בלבד
