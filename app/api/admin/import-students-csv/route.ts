@@ -123,10 +123,12 @@ export async function POST(req: NextRequest) {
       const classSuggestions = classKeys.map(key => {
         const [letter, inst] = key.split('|')
         const fw = inst === 'בית חינוך' ? 'בית חינוך לבנות' : 'תלמוד תורה'
-        const exact   = dbClasses.find(c => c.framework === fw && c.class_name === letter)
-        const partial = exact ? undefined : dbClasses.find(c => c.framework === fw && c.class_name.includes(letter))
-        const match   = exact ?? partial
-        return { key, csvClass: letter, csvInstitution: inst, framework: fw, suggestedDbName: match?.class_name ?? letter, dbExists: !!match }
+        // DB class name format: "{classLetter} {framework}"  e.g. "גן תלמוד תורה"
+        const builtName = `${letter} ${fw}`
+        const exact   = dbClasses.find(c => c.framework === fw && c.class_name === builtName)
+        const fallback = exact ? undefined : dbClasses.find(c => c.framework === fw && c.class_name.includes(letter))
+        const match   = exact ?? fallback
+        return { key, csvClass: letter, csvInstitution: inst, framework: fw, suggestedDbName: match?.class_name ?? builtName, dbExists: !!match }
       }).sort((a, b) => a.csvInstitution.localeCompare(b.csvInstitution) || a.csvClass.localeCompare(b.csvClass, 'he'))
 
       const confident = rows.filter(r => r!.parentId !== null).length
