@@ -74,6 +74,11 @@ export default function TuitionPage() {
   const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
   const [genError, setGenError]       = useState('')
 
+  // Reset-tuition-all state
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
+  const [resetConfirm, setResetConfirm] = useState(false)
+
   const loadPreview = async () => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
     try {
@@ -95,6 +100,17 @@ export default function TuitionPage() {
       setGenPreview(null)
     } catch { setGenError('שגיאת רשת') }
     finally { setGenExecuting(false) }
+  }
+
+  const executeReset = async () => {
+    setResetLoading(true); setResetConfirm(false); setResetResult(null); setGenError('')
+    try {
+      const res  = await fetch('/api/planned-payments/reset-tuition-all', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setGenError(data.error); return }
+      setResetResult(data)
+    } catch { setGenError('שגיאת רשת') }
+    finally { setResetLoading(false) }
   }
 
   const load = (m?: string) => {
@@ -154,10 +170,32 @@ export default function TuitionPage() {
           >
             {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
           </button>
+          {/* Reset button */}
+          {!resetConfirm ? (
+            <button
+              onClick={() => setResetConfirm(true)}
+              disabled={resetLoading}
+              className="px-3 py-2 text-sm font-semibold rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {resetLoading ? '...' : '🔄 איפוס PP שכ"ל'}
+            </button>
+          ) : (
+            <span className="flex items-center gap-2">
+              <span className="text-xs text-red-700">למחוק ולצור מחדש?</span>
+              <button onClick={executeReset} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-600 text-white hover:bg-red-700">אשר</button>
+              <button onClick={() => setResetConfirm(false)} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">ביטול</button>
+            </span>
+          )}
           {genResult && (
             <span className="text-sm text-emerald-700 font-medium">
               ✅ נוצרו {genResult.created} תשלומים
               <button onClick={() => setGenResult(null)} className="mr-2 text-xs text-gray-400 underline">סגור</button>
+            </span>
+          )}
+          {resetResult && (
+            <span className="text-sm text-emerald-700 font-medium">
+              ✅ נמחקו {resetResult.deleted} · נוצרו {resetResult.created}
+              <button onClick={() => setResetResult(null)} className="mr-2 text-xs text-gray-400 underline">סגור</button>
             </span>
           )}
           {genError && <span className="text-sm text-red-600">{genError}</span>}
