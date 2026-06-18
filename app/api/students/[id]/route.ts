@@ -71,6 +71,7 @@ const ALLOWED_FIELDS: Record<string, string> = {
   gender:             'gender',
   class_name:         'class_name',
   className:          'class_name',
+  parentIds:          'parent_ids',
   status:             'status',
   transportation:     'transportation',
   transportationCost: 'transportation_cost',
@@ -99,7 +100,7 @@ export async function PATCH(
     if (error) throw error
 
     // If status or transportation changed, recalculate parent tuition + open planned payments
-    const TUITION_FIELDS = new Set(['status', 'transportationCost'])
+    const TUITION_FIELDS = new Set(['status', 'transportationCost', 'parentIds'])
     if (Object.keys(body).some(k => TUITION_FIELDS.has(k))) {
       try {
         const { data: st } = await supabaseAdmin
