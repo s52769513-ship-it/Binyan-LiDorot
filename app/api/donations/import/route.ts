@@ -45,6 +45,7 @@ interface CsvRow {
   host:          string  // מארח
   amount:        number  // סכום
   paymentMethod: string  // אופן התשלום
+  notes:         string  // הערות
   rawLine:       string
 }
 
@@ -69,6 +70,7 @@ function parseRow(cells: string[]): CsvRow | null {
     host:          cells[12]?.trim() ?? '',
     amount:        stripShekel(cells[18]),
     paymentMethod: cells[21]?.trim() ?? '',
+    notes:         cells[23]?.trim() ?? '',
     rawLine:       cells.join(','),
   }
 }
@@ -239,7 +241,6 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
             .eq('id', soId)
           updatedSo++
         } else {
-          // Mark parent notes / tag for future SO
           skipped++
         }
       } else if (category === 'salary') {
@@ -249,6 +250,11 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
         updatedSalary++
       } else {
         skipped++
+      }
+      if (row.notes) {
+        await supabaseAdmin.from('parents')
+          .update({ notes: row.notes })
+          .eq('id', matched.id)
       }
     } else {
       if (category === 'hok' && soByParent[matched.id]) updatedSo++
