@@ -73,16 +73,17 @@ export default function TuitionPage() {
   const [genExecuting, setGenExecuting] = useState(false)
   const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
   const [genError, setGenError]       = useState('')
+  const [futureOnly, setFutureOnly]   = useState(false)
 
   // Reset-tuition-all state
   const [resetLoading, setResetLoading] = useState(false)
   const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
 
-  const loadPreview = async () => {
+  const loadPreview = async (future = futureOnly) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
     try {
-      const res  = await fetch('/api/planned-payments/generate-year-all')
+      const res  = await fetch(`/api/planned-payments/generate-year-all${future ? '?futureOnly=1' : ''}`)
       const data = await res.json()
       if (data.error) { setGenError(data.error); return }
       setGenPreview(data)
@@ -93,7 +94,11 @@ export default function TuitionPage() {
   const executeGen = async () => {
     setGenExecuting(true); setGenError('')
     try {
-      const res  = await fetch('/api/planned-payments/generate-year-all', { method: 'POST' })
+      const res  = await fetch('/api/planned-payments/generate-year-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ futureOnly }),
+      })
       const data = await res.json()
       if (data.error) { setGenError(data.error); return }
       setGenResult(data)
@@ -163,7 +168,7 @@ export default function TuitionPage() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={loadPreview}
+            onClick={() => loadPreview()}
             disabled={genLoading}
             className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
@@ -393,7 +398,7 @@ export default function TuitionPage() {
 
             <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex-shrink-0">
               {genPreview.totalToCreate === 0 ? (
-                <p className="text-sm text-gray-500 text-center">כל התשלומים לשנה הנוכחית כבר קיימים — אין מה ליצור.</p>
+                <p className="text-sm text-gray-500 text-center">{futureOnly ? 'כל התשלומים העתידיים כבר קיימים — אין מה ליצור.' : 'כל התשלומים לשנה הנוכחית כבר קיימים — אין מה ליצור.'}</p>
               ) : (
                 <div className="space-y-1">
                   <p className="font-semibold text-amber-800">
@@ -404,6 +409,16 @@ export default function TuitionPage() {
                   </p>
                 </div>
               )}
+              <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={futureOnly}
+                  disabled={genLoading}
+                  onChange={e => { setFutureOnly(e.target.checked); loadPreview(e.target.checked) }}
+                  className="w-4 h-4 rounded accent-[#1a3a7a]"
+                />
+                <span className="text-sm text-gray-700">רק חודשים עתידיים (בלי עבר)</span>
+              </label>
             </div>
 
             <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
