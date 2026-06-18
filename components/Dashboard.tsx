@@ -48,6 +48,7 @@ interface CashflowMonth {
   isCurrent: boolean
   tuition: { planned: number; collected: number; remaining: number; collectionPct: number; byDept: Record<string, { planned: number; collected: number; remaining: number }> }
   salary: { planned: number; paid: number; remaining: number }
+  donation: { planned: number; collected: number; remaining: number; collectionPct: number }
   net: number
   netActual: number
 }
@@ -421,6 +422,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
                 הוצאות משכורת
               </th>
+              {/* Donation group */}
+              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
+                דמי מגבית
+              </th>
               <th className="px-3 py-2 text-center font-semibold text-gray-600 whitespace-nowrap">נטו</th>
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-400">
@@ -431,6 +436,9 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-1 text-center border-r border-gray-100">%</th>
               <th className="px-2 py-1 text-center">צפוי</th>
               <th className="px-2 py-1 text-center">שולם</th>
+              <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
+              <th className="px-2 py-1 text-center">צפוי</th>
+              <th className="px-2 py-1 text-center">נגבה</th>
               <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
               <th className="px-3 py-1 text-center"></th>
             </tr>
@@ -483,6 +491,14 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.salary.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
                       {row.salary.remaining > 0 ? `₪${fmt(row.salary.remaining)}` : '—'}
+                    </td>
+                    {/* Donation */}
+                    <td className="px-2 py-2 text-center tabular-nums">{row.donation.planned > 0 ? `₪${fmt(row.donation.planned)}` : '—'}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
+                      {row.donation.collected > 0 ? `₪${fmt(row.donation.collected)}` : '—'}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                      {row.donation.remaining > 0 ? `₪${fmt(row.donation.remaining)}` : '—'}
                     </td>
                     {/* Net */}
                     <td className={`px-3 py-2 text-center tabular-nums font-bold ${
