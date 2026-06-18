@@ -11,13 +11,13 @@ interface AnalyzeAction {
   amount:         number
   paymentMethod:  string
   category:       'hok' | 'salary' | 'manual'
-  action:         'update_so' | 'pending_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
+  action:         'update_so' | 'create_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
   reason?:        string
   host?:          string
 }
 interface Counts {
   update_so:               number
-  pending_so:              number
+  create_so:               number
   update_monthly_donation: number
   info_only:               number
   no_match:                number
@@ -36,7 +36,7 @@ interface ExecResult {
 
 const ACTION_LABELS: Record<string, string> = {
   update_so:               'עדכון הו"ק',
-  pending_so:              'ממתין לנדרים',
+  create_so:               'יצירת הו"ק חדש',
   update_monthly_donation: 'ניכוי משכרות',
   info_only:               'ידני',
   no_match:                'לא נמצא',
@@ -44,7 +44,7 @@ const ACTION_LABELS: Record<string, string> = {
 }
 const ACTION_COLOR: Record<string, string> = {
   update_so:               'bg-blue-50 text-blue-700',
-  pending_so:              'bg-indigo-50 text-indigo-700',
+  create_so:               'bg-green-50 text-green-700',
   update_monthly_donation: 'bg-emerald-50 text-emerald-700',
   info_only:               'bg-amber-50 text-amber-700',
   no_match:                'bg-red-50 text-red-600',

@@ -176,8 +176,8 @@ async function handleAnalyze(csvText: string, _mapping: unknown) {
         action.action = 'update_so'
         action.reason = 'יעדכן הו"ק קיים'
       } else {
-        action.action = 'pending_so'
-        action.reason = 'יסומן לסנכרון נדרים הבא'
+        action.action = 'create_so'
+        action.reason = 'ייצור הו"ק חדש'
       }
     } else if (category === 'salary') {
       action.action = 'update_monthly_donation'
@@ -192,7 +192,7 @@ async function handleAnalyze(csvText: string, _mapping: unknown) {
 
   const counts = {
     update_so:               actions.filter(a => a.action === 'update_so').length,
-    pending_so:              actions.filter(a => a.action === 'pending_so').length,
+    create_so:               actions.filter(a => a.action === 'create_so').length,
     update_monthly_donation: actions.filter(a => a.action === 'update_monthly_donation').length,
     info_only:               actions.filter(a => a.action === 'info_only').length,
     no_match:                actions.filter(a => a.action === 'no_match').length,
@@ -246,7 +246,21 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
           }
           updatedSo++
         } else {
-          skipped++
+          await supabaseAdmin.from('standing_orders').insert({
+            id: crypto.randomUUID(),
+            parent_id: matched.id,
+            project_name: 'דמי מגבית',
+            charge_amount: row.amount,
+            so_status: 'פעיל',
+            notes: row.notes ?? '',
+            synced_at: '2099-12-31T23:59:59.999Z',
+          })
+          if (row.notes) {
+            await supabaseAdmin.from('parents')
+              .update({ donation_notes: row.notes })
+              .eq('id', matched.id)
+          }
+          updatedSo++
         }
       } else if (category === 'salary') {
         await supabaseAdmin.from('parents')
@@ -320,7 +334,7 @@ interface AnalyzeAction {
   amount:         number
   paymentMethod:  string
   category:       'hok' | 'salary' | 'manual'
-  action:         'update_so' | 'pending_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
+  action:         'update_so' | 'create_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
   reason?:        string
   host?:          string
 }
