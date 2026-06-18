@@ -34,6 +34,8 @@ const FIELD_MAP: Record<string, string> = {
   exceptionalExpenses:   'exceptional_expenses',
   transportReimbursement:'transport_reimbursement',
   deductTuition:         'deduct_tuition',
+  monthlyDonation:       'monthly_donation',
+  deductDonation:        'deduct_donation',
   showSpouseSalary:      'show_spouse_salary',
   calculateWifeTuition:  'calculate_wife_tuition',
   salaryGross:           'salary_gross',
@@ -298,6 +300,8 @@ export async function GET(
       salaryNet: p.salary_after_tuition ?? 0,
       ppCredit: (Number(p.pp_credit ?? 0)) + (Number(p.credit_balance ?? 0)),
       birthDate: p.birth_date ?? '',
+      monthlyDonation: Number(p.monthly_donation) || 0,
+      deductDonation: p.deduct_donation === true,
 
       women: (womenRes.data ?? []).map(w => ({
         id: w.id,

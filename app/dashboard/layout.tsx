@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: '/dashboard/transactions',label: 'תנועות'      },
   { href: '/dashboard/salaries',    label: '💼 משכורות'  },
   { href: '/dashboard/women',       label: 'נשים'        },
+  { href: '/dashboard/donations',    label: '💚 מגבית'    },
   { href: '/dashboard/reports',     label: 'דוחות'       },
   { href: '/dashboard/register',    label: 'רישום תלמיד' },
   { href: '/dashboard/settings',    label: '⚙ הגדרות'   },

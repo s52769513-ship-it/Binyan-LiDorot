@@ -131,6 +131,8 @@ export interface ParentDetail extends ParentSummary {
   salaryNet: number
   ppCredit: number
   birthDate: string
+  monthlyDonation: number
+  deductDonation: boolean
   women: WomanDetail[]
   standingOrders: StandingOrderItem[]
 }
