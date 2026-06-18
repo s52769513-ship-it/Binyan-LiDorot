@@ -239,13 +239,18 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
           await supabaseAdmin.from('standing_orders')
             .update({ charge_amount: row.amount, project_name: 'דמי מגבית', ...(row.notes ? { notes: row.notes } : {}) })
             .eq('id', soId)
+          if (row.notes) {
+            await supabaseAdmin.from('parents')
+              .update({ donation_notes: row.notes })
+              .eq('id', matched.id)
+          }
           updatedSo++
         } else {
           skipped++
         }
       } else if (category === 'salary') {
         await supabaseAdmin.from('parents')
-          .update({ monthly_donation: row.amount })
+          .update({ monthly_donation: row.amount, ...(row.notes ? { donation_notes: row.notes } : {}) })
           .eq('id', matched.id)
         updatedSalary++
       } else {

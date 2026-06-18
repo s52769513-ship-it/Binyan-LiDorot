@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS parents (
   pp_credit       NUMERIC  DEFAULT 0,         -- זיכוי עודף תשלומים מתוכננים
   birth_date      DATE,                       -- תאריך לידה (לחישוב גיל אוטומטי)
   notes           TEXT,
+  monthly_donation NUMERIC DEFAULT 0,         -- סכום תרומה חודשי
+  donation_notes  TEXT,                       -- הערות מהמגבית
   synced_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
