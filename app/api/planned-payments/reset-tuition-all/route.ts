@@ -84,8 +84,9 @@ export async function POST() {
       if (!amount) continue
       for (const { monthYear, date } of months) {
         if (existingSet.has(`${parent.id}|${monthYear}`)) continue
+        const ppId = crypto.randomUUID()
         const { error } = await supabaseAdmin.from('planned_payments').insert({
-          id:         crypto.randomUUID(),
+          id:         ppId,
           name:       'שכ"ל',
           pp_type:    'tuition',
           amount,
@@ -95,7 +96,23 @@ export async function POST() {
           parent_ids: [parent.id],
           synced_at:  '2099-12-31T23:59:59.999Z',
         })
-        if (!error) created++
+        if (!error) {
+          created++
+          const { data: unlinkTx } = await supabaseAdmin
+            .from('transactions')
+            .select('id, amount')
+            .contains('parent_ids', [parent.id])
+            .eq('month_year', monthYear)
+            .is('planned_payment_id', null)
+          let paid = 0
+          for (const tx of unlinkTx ?? []) {
+            await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId }).eq('id', tx.id)
+            paid += Math.abs(Number(tx.amount))
+          }
+          if (paid > 0) {
+            await supabaseAdmin.from('planned_payments').update({ balance: Math.max(0, amount - paid) }).eq('id', ppId)
+          }
+        }
       }
     }
 

@@ -127,8 +127,9 @@ export async function POST(req: NextRequest) {
           skipped++
           continue
         }
+        const ppId = crypto.randomUUID()
         const { error } = await supabaseAdmin.from('planned_payments').insert({
-          id:         crypto.randomUUID(),
+          id:         ppId,
           name:       'שכ"ל',
           pp_type:    'tuition',
           amount,
@@ -142,6 +143,22 @@ export async function POST(req: NextRequest) {
           console.error('generate-year-all insert error:', parent.id, monthYear, error.message)
         } else {
           created++
+          // Link any unlinked transactions for this parent+month to the new PP
+          const { data: unlinkTx } = await supabaseAdmin
+            .from('transactions')
+            .select('id, amount')
+            .contains('parent_ids', [parent.id])
+            .eq('month_year', monthYear)
+            .is('planned_payment_id', null)
+          let paid = 0
+          for (const tx of unlinkTx ?? []) {
+            await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId }).eq('id', tx.id)
+            paid += Math.abs(Number(tx.amount))
+          }
+          if (paid > 0) {
+            const newBalance = Math.max(0, amount - paid)
+            await supabaseAdmin.from('planned_payments').update({ balance: newBalance }).eq('id', ppId)
+          }
         }
       }
     }
