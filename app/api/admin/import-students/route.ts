@@ -41,19 +41,23 @@ export async function POST(req: NextRequest) {
     // Row 0 is header — skip it
     const dataRows = rows.slice(1)
 
-    // Fetch students + parents — matching via col A (last name) + col C (father's first name)
+    // Fetch students + parents.
+    // Primary match: parent by col A (last name) + col C (father name) → linked student.
+    // Fallbacks kept from before: student ת"ז (col 5) and student name.
     const [{ data: allStudents, error: fetchErr }, { data: allParents }] = await Promise.all([
-      supabaseAdmin.from('students').select('id, name, parent_ids'),
+      supabaseAdmin.from('students').select('id, name, id_number, parent_ids'),
       supabaseAdmin.from('parents').select('id, first_name, last_name, name'),
     ])
     if (fetchErr) throw fetchErr
 
-    const studentNameMap   = new Map<string, string>()   // student full name → student id
+    const studentNameMap   = new Map<string, string>()   // student name → student id
+    const studentIdNumMap  = new Map<string, string>()   // student id_number → student id
     const parentNameMap    = new Map<string, string>()   // "lastName|firstName" → parent id
     const parentStudentMap = new Map<string, string[]>() // parent id → [student ids]
 
     for (const s of allStudents ?? []) {
-      if (s.name?.trim()) studentNameMap.set(s.name.trim(), s.id)
+      if (s.name?.trim())      studentNameMap.set(s.name.trim(), s.id)
+      if (s.id_number?.trim()) studentIdNumMap.set(s.id_number.trim(), s.id)
       for (const pid of (s.parent_ids ?? [])) {
         if (!parentStudentMap.has(pid)) parentStudentMap.set(pid, [])
         parentStudentMap.get(pid)!.push(s.id)
@@ -89,12 +93,14 @@ export async function POST(req: NextRequest) {
     const errors: string[]   = []
 
     for (const row of dataRows) {
-      const lastName   = row[0]?.trim()  // col A: שם משפחה
-      const studentFN  = row[1]?.trim()  // col B: שם פרטי של תלמיד
-      const fatherName = row[2]?.trim()  // col C: שם האב
+      const lastName   = row[0]?.trim()        // col A: שם משפחה
+      const studentFN  = row[1]?.trim()        // col B: שם פרטי של תלמיד
+      const fatherName = row[2]?.trim()        // col C: שם האב
+      const idNumber   = row[5]?.trim() || null // col 5: ת"ז תלמיד
 
-      // Match parent by last name + father name, then find linked student
       let id: string | undefined
+
+      // 1) Primary: parent by (last name + father name) → linked student
       if (lastName && fatherName) {
         const parentId = parentNameMap.get(`${lastName}|${fatherName}`)
         if (parentId) {
@@ -102,20 +108,32 @@ export async function POST(req: NextRequest) {
           if (linked.length === 1) {
             id = linked[0]
           } else if (linked.length > 1) {
-            // Try to identify the exact student by first name or full name
-            const fullName = studentFN ? `${studentFN} ${lastName}` : ''
+            // Disambiguate among siblings by student first name (col B)
+            const candidates = [
+              studentFN ? `${studentFN} ${lastName}` : '',
+              studentFN ? `${lastName} ${studentFN}` : '',
+            ].filter(Boolean)
             id = allStudents?.find(s =>
               linked.includes(s.id) && (
-                (fullName && s.name?.trim() === fullName) ||
-                (studentFN && s.name?.trim().startsWith(studentFN))
+                candidates.includes(s.name?.trim() ?? '') ||
+                (!!studentFN && (s.name?.trim()?.startsWith(studentFN) ?? false))
               )
             )?.id ?? linked[0]
           }
         }
       }
-      // Fallback: match by student full name directly
-      if (!id && studentFN && lastName) id = studentNameMap.get(`${studentFN} ${lastName}`)
-      if (!id && studentFN) id = studentNameMap.get(studentFN)
+
+      // 2) Fallback: student ת"ז (col 5)
+      if (!id && idNumber) id = studentIdNumMap.get(idNumber)
+
+      // 3) Fallback: student name (several forms)
+      if (!id && studentFN && lastName) {
+        id = studentNameMap.get(`${studentFN} ${lastName}`)
+            ?? studentNameMap.get(`${lastName} ${studentFN}`)
+      }
+      if (!id && studentFN)  id = studentNameMap.get(studentFN)
+      if (!id && lastName)   id = studentNameMap.get(lastName)
+
       const label = [studentFN, lastName].filter(Boolean).join(' ') || lastName || ''
       if (!id) { if (label) notFound.push(label); continue }
 
@@ -151,6 +169,7 @@ export async function POST(req: NextRequest) {
 
       const update: Record<string, unknown> = {}
       if (gender !== undefined)               update.gender               = gender
+      if (idNumber)                           update.id_number            = idNumber
       if (birthGreg !== undefined)            update.birth_date_gregorian = birthGreg
       if (birthHebrew !== undefined)          update.birth_date_hebrew    = birthHebrew
       if (className !== undefined)            update.class_name           = className
