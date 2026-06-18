@@ -168,15 +168,23 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
     .order('last_name')
 
   const parentArr = parents ?? []
-  let updated = 0, skipped = 0
+  let updated = 0
+  const skippedRows: { name: string; reason: string }[] = []
 
   for (const row of rows) {
-    if (!row.amount) { skipped++; continue }
-
     const fullName = `${row.firstName} ${row.lastName}`.trim()
+
+    if (!row.amount) {
+      skippedRows.push({ name: fullName, reason: 'אין סכום' })
+      continue
+    }
+
     let matched = findByPhone(parentArr, row.fatherPhone, row.motherPhone)
     if (!matched) matched = findByName(parentArr, fullName, row.lastName)
-    if (!matched) { skipped++; continue }
+    if (!matched) {
+      skippedRows.push({ name: fullName, reason: 'לא נמצא הורה תואם' })
+      continue
+    }
 
     if (!dryRun) {
       await supabaseAdmin.from('parents')
@@ -189,7 +197,7 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
     updated++
   }
 
-  return NextResponse.json({ updated, skipped, dryRun, total: rows.length })
+  return NextResponse.json({ updated, skipped: skippedRows.length, skippedRows, dryRun, total: rows.length })
 }
 
 /* ─── helpers ────────────────────────────────────────── */

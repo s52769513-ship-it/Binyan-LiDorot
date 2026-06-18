@@ -23,10 +23,11 @@ interface ParseResult {
   sample:    { name: string; amount: number; paymentMethod: string; host: string }[]
 }
 interface ExecResult {
-  updated:  number
-  skipped:  number
-  total:    number
-  dryRun:   boolean
+  updated:     number
+  skipped:     number
+  skippedRows: { name: string; reason: string }[]
+  total:       number
+  dryRun:      boolean
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -352,6 +353,29 @@ export default function DonationImportModal({ onClose, onSuccess }: {
                   <p className="text-xs text-gray-500">דולגו</p>
                 </div>
               </div>
+              {execResult.skippedRows?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 text-right">פירוט דולגו</p>
+                  <div className="rounded-xl border border-gray-200 overflow-hidden max-h-48 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b sticky top-0">
+                        <tr className="text-right text-gray-400">
+                          <th className="px-3 py-2">שם</th>
+                          <th className="px-3 py-2">סיבה</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {execResult.skippedRows.map((r, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 font-medium">{r.name || '—'}</td>
+                            <td className="px-3 py-2 text-red-600">{r.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
