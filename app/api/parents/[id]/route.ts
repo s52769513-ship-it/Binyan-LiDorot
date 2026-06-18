@@ -40,6 +40,9 @@ const FIELD_MAP: Record<string, string> = {
   salaryAfterTuition:    'salary_after_tuition',
   creditBalance:         'credit_balance',
   ppCredit:              'pp_credit',
+  // Donation fields
+  monthlyDonation:       'monthly_donation',
+  deductDonation:        'deduct_donation',
 }
 
 export async function PATCH(
