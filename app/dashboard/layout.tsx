@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const NAV_LINKS = [
   { href: '/dashboard',             label: 'דשבורד'      },
@@ -37,11 +36,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const startW   = useRef(0)
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    supabase.auth.getSession().then((result: any) => {
-      if (!result.data?.session) router.replace('/')
-    })
+    if (typeof window !== 'undefined' && !localStorage.getItem('auth_email')) {
+      router.replace('/')
+    }
   }, [])
+
+  const logout = () => {
+    localStorage.removeItem('auth_email')
+    localStorage.removeItem('auth_role')
+    router.push('/')
+  }
 
   useEffect(() => {
     fetch('/api/settings')
@@ -130,7 +134,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-colors">
               ◀ צד
             </button>
-            <button onClick={() => router.push('/')}
+            <button onClick={logout}
               className="text-xs px-2 py-1 rounded border transition-colors hover:bg-white/10"
               style={{ borderColor: '#c9a22740', color: '#c9a227' }}>
               יציאה
@@ -203,7 +207,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Exit */}
         <div className="px-3 py-3">
           <button
-            onClick={() => router.push('/')}
+            onClick={logout}
             className="w-full text-xs px-3 py-1.5 rounded-lg border transition-colors hover:bg-white/10 text-right"
             style={{ borderColor: '#c9a22740', color: '#c9a227' }}
           >

@@ -2,14 +2,18 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+
+// Authorized emails (passwords to be added later)
+const ALLOWED_EMAILS: Record<string, string> = {
+  'ta6054493@gmail.com': 'מזכירות',
+  't6054493@gmail.com':  'הנהלה',
+}
 
 export default function LoginPage() {
   const router = useRouter()
   const [visible, setVisible] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
   const [email, setEmail]     = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
@@ -17,22 +21,23 @@ export default function LoginPage() {
     const t = setTimeout(() => setVisible(true), 100)
     fetch('/api/settings').then(r => r.json()).then(d => { if (d.logo_url) setLogoUrl(d.logo_url) }).catch(() => {})
     // If already logged in, skip to dashboard
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    supabase.auth.getSession().then((result: any) => {
-      if (result.data?.session) router.replace('/dashboard')
-    })
+    if (typeof window !== 'undefined' && localStorage.getItem('auth_email')) {
+      router.replace('/dashboard')
+    }
     return () => clearTimeout(t)
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true); setError('')
-    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
-    if (authErr) {
-      setError('מייל או סיסמה שגויים')
-      setLoading(false)
-    } else {
+    const normalized = email.trim().toLowerCase()
+    if (ALLOWED_EMAILS[normalized]) {
+      localStorage.setItem('auth_email', normalized)
+      localStorage.setItem('auth_role', ALLOWED_EMAILS[normalized])
       router.push('/dashboard')
+    } else {
+      setError('מייל לא מורשה')
+      setLoading(false)
     }
   }
 
@@ -117,15 +122,6 @@ export default function LoginPage() {
             value={email}
             onChange={e => setEmail(e.target.value)}
             placeholder="מייל"
-            required
-            className="w-full px-4 py-3 rounded-xl text-sm outline-none text-right"
-            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(201,162,39,0.3)', color: '#f0e8c8' }}
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="סיסמה"
             required
             className="w-full px-4 py-3 rounded-xl text-sm outline-none text-right"
             style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(201,162,39,0.3)', color: '#f0e8c8' }}
