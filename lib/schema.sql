@@ -126,7 +126,13 @@ CREATE INDEX IF NOT EXISTS idx_parents_last_name       ON parents (last_name);
 -- =====================================================
 ALTER TABLE parents               DISABLE ROW LEVEL SECURITY;
 ALTER TABLE students              DISABLE ROW LEVEL SECURITY;
--- Migration: ALTER TABLE students ADD COLUMN IF NOT EXISTS mother_name TEXT;
+-- Migration (import students — run if columns are missing):
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS mother_name          TEXT;
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS id_number            TEXT;
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS birth_date_hebrew    TEXT;
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS birth_date_gregorian TEXT;
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS health_fund          TEXT;
+-- ALTER TABLE students ADD COLUMN IF NOT EXISTS previous_school      TEXT;
 ALTER TABLE transactions          DISABLE ROW LEVEL SECURITY;
 ALTER TABLE debts                 DISABLE ROW LEVEL SECURITY;
 ALTER TABLE planned_payments      DISABLE ROW LEVEL SECURITY;

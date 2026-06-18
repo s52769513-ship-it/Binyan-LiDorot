@@ -262,13 +262,20 @@ function SyncSection() {
 }
 
 /* ─── Import students section ────────────────────────── */
+interface NeedsParent {
+  studentId: string
+  name: string
+  family: string
+  fatherName: string
+}
 interface ImportResult {
-  updated?: number
+  created?: number
   classes?: number
-  notFound?: string[]
+  needsParent?: NeedsParent[]
   errors?: string[]
   error?: string
 }
+interface ParentOption { id: string; name: string }
 
 const COLUMN_MAPPING = [
   { col: 'A (0)',  field: 'שם משפחה',              example: 'אייזנר' },
@@ -324,11 +331,13 @@ function ImportStudentsSection() {
   const [file, setFile]         = useState<File | null>(null)
   const [loading, setLoading]   = useState(false)
   const [result, setResult]     = useState<ImportResult | null>(null)
+  const [pending, setPending]   = useState<NeedsParent[]>([])  // students still needing a father
+  const [parents, setParents]   = useState<ParentOption[]>([])
   const fileRef                 = useRef<HTMLInputElement>(null)
 
   const run = async () => {
     if (!file) return
-    setLoading(true); setResult(null)
+    setLoading(true); setResult(null); setPending([])
     try {
       const text = await file.text()
       const res = await fetch('/api/admin/import-students', {
@@ -336,8 +345,14 @@ function ImportStudentsSection() {
         headers: { 'Content-Type': 'text/csv' },
         body: text,
       })
-      const data = await res.json()
+      const data: ImportResult = await res.json()
       setResult(data)
+      const np = data.needsParent ?? []
+      setPending(np)
+      if (np.length > 0 && parents.length === 0) {
+        const p = await fetch('/api/admin/parents-list').then(r => r.json())
+        setParents(p.parents ?? [])
+      }
     } catch (e) {
       setResult({ error: String(e) })
     } finally {
@@ -345,16 +360,25 @@ function ImportStudentsSection() {
     }
   }
 
+  const linkParent = async (studentId: string, parentId: string) => {
+    const res = await fetch('/api/admin/import-students', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId, parentId }),
+    })
+    if (res.ok) setPending(prev => prev.filter(p => p.studentId !== studentId))
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
       <div>
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">ייבוא תלמידים מ-CSV</h3>
-        <p className="text-xs text-gray-400 mt-0.5">מעדכן פרטי תלמידים (מגדר, ת"ז, תאריך לידה, כיתה, הסעות...) לפי קובץ Excel/CSV מהמוסד.</p>
+        <p className="text-xs text-gray-400 mt-0.5">יוצר תלמידים חדשים מקובץ Excel/CSV ומקשר כל תלמיד לאב לפי שם משפחה + שם האב.</p>
       </div>
 
       <div className="flex gap-3 items-center">
         <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
-          onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }} />
+          onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setPending([]) }} />
         <button
           onClick={() => fileRef.current?.click()}
           className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-gray-300 hover:text-gray-800 transition-colors bg-white"
@@ -377,15 +401,9 @@ function ImportStudentsSection() {
         ) : (
           <div className="space-y-2">
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-right">
-              <span className="font-semibold text-emerald-800">✓ עודכנו {result.updated} תלמידים</span>
+              <span className="font-semibold text-emerald-800">✓ נוצרו {result.created} תלמידים</span>
               {result.classes ? <span className="text-emerald-600 mr-2">· {result.classes} כיתות</span> : null}
             </div>
-            {result.notFound && result.notFound.length > 0 && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-right text-amber-700">
-                <p className="font-semibold mb-1">לא נמצאו ({result.notFound.length}):</p>
-                <p className="break-words">{result.notFound.join(' · ')}</p>
-              </div>
-            )}
             {result.errors && result.errors.length > 0 && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-right text-red-700">
                 <p className="font-semibold mb-1">שגיאות ({result.errors.length}):</p>
@@ -395,6 +413,56 @@ function ImportStudentsSection() {
           </div>
         )
       )}
+
+      {pending.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-gray-100">
+          <p className="text-sm font-semibold text-amber-700 text-right">
+            לא זוהה אב אוטומטית ({pending.length}) — בחר/י את האב ידנית:
+          </p>
+          {pending.map(p => (
+            <ParentPicker key={p.studentId} student={p} parents={parents}
+              onLink={pid => linkParent(p.studentId, pid)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ParentPicker({ student, parents, onLink }: {
+  student: NeedsParent
+  parents: ParentOption[]
+  onLink: (parentId: string) => void
+}) {
+  const [query, setQuery] = useState(student.fatherName || '')
+  const [open, setOpen]   = useState(false)
+  const filtered = query.trim()
+    ? parents.filter(p => p.name.includes(query.trim())).slice(0, 20)
+    : parents.slice(0, 20)
+
+  return (
+    <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg" dir="rtl">
+      <span className="text-sm text-gray-700 min-w-[120px] truncate" title={student.name}>{student.name}</span>
+      <div className="relative flex-1">
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="חפש/י אב לפי שם…"
+          className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+        />
+        {open && filtered.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+            {filtered.map(p => (
+              <button key={p.id}
+                onClick={() => { onLink(p.id); setOpen(false) }}
+                className="block w-full text-right px-3 py-1.5 text-sm text-gray-700 hover:bg-[#1a3a7a]/5">
+                {p.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

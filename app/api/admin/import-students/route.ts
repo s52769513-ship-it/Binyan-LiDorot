@@ -34,6 +34,25 @@ function calcTransportCost(transport: string[]): number {
 
 export async function POST(req: NextRequest) {
   try {
+    const ct = req.headers.get('content-type') ?? ''
+
+    // ── Manual link action: link an imported student to a chosen parent ──────
+    if (ct.includes('application/json')) {
+      const { studentId, parentId } = await req.json() as { studentId?: string; parentId?: string }
+      if (!studentId || !parentId) {
+        return NextResponse.json({ error: 'חסר studentId או parentId' }, { status: 400 })
+      }
+      const { data: student } = await supabaseAdmin
+        .from('students').select('parent_ids').eq('id', studentId).single()
+      const current: string[] = student?.parent_ids ?? []
+      if (!current.includes(parentId)) current.push(parentId)
+      const { error: linkErr } = await supabaseAdmin
+        .from('students').update({ parent_ids: current }).eq('id', studentId)
+      if (linkErr) return NextResponse.json({ error: linkErr.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    // ── Full import: create students from CSV ────────────────────────────────
     const text = await req.text()
     const rows = parseCSV(text)
     if (rows.length < 2) return NextResponse.json({ error: 'קובץ ריק' }, { status: 400 })
@@ -42,30 +61,15 @@ export async function POST(req: NextRequest) {
     const dataRows = rows.slice(1)
 
     // Column mapping (0-based):
-    // A(0)=משפחה  B(1)=שם תלמיד  C(2)=שם האם  E(4)=ת"ז  F(5)=לידה עברי
+    // A(0)=משפחה  B(1)=שם תלמיד  C(2)=שם האב  D(3)=שם האם  E(4)=ת"ז  F(5)=לידה עברי
     // G(6)=לידה לועזי  H(7)=כיתה  L(11)=הלוך  M(12)=חזור1  N(13)=חזור2
-    // T(19)=שם מלא האב (לזיהוי ההורה)
+    // S(18)=סטטוס  T(19)=שם מלא האב (לזיהוי ההורה)  AB(27)=קופ"ח  AC(28)=לימודים קודם
 
-    const [{ data: allStudents, error: fetchErr }, { data: allParents }] = await Promise.all([
-      supabaseAdmin.from('students').select('id, name, id_number, parent_ids'),
-      supabaseAdmin.from('parents').select('id, first_name, last_name, name'),
-    ])
-    if (fetchErr) throw fetchErr
+    const { data: allParents } = await supabaseAdmin
+      .from('parents').select('id, first_name, last_name, name')
 
-    const studentNameMap   = new Map<string, string>()   // student name → student id
-    const studentIdNumMap  = new Map<string, string>()   // student id_number → student id
-    const parentNameMap    = new Map<string, string>()   // "lastName|firstName" → parent id
-    const parentFullMap    = new Map<string, string>()   // full name variants → parent id
-    const parentStudentMap = new Map<string, string[]>() // parent id → [student ids]
-
-    for (const s of allStudents ?? []) {
-      if (s.name?.trim())      studentNameMap.set(s.name.trim(), s.id)
-      if (s.id_number?.trim()) studentIdNumMap.set(s.id_number.trim(), s.id)
-      for (const pid of (s.parent_ids ?? [])) {
-        if (!parentStudentMap.has(pid)) parentStudentMap.set(pid, [])
-        parentStudentMap.get(pid)!.push(s.id)
-      }
-    }
+    const parentNameMap = new Map<string, string>()  // "lastName|firstName" → parent id
+    const parentFullMap = new Map<string, string>()  // full name variants → parent id
     for (const p of allParents ?? []) {
       const ln = p.last_name?.trim() ?? ''
       const fn = p.first_name?.trim() ?? ''
@@ -93,10 +97,11 @@ export async function POST(req: NextRequest) {
         .upsert(classRows, { onConflict: 'class_name', ignoreDuplicates: false })
     }
 
-    // ── Update students ───────────────────────────────────────────────────────
-    let updated = 0
-    const notFound: string[] = []
-    const errors: string[]   = []
+    // ── Create students ──────────────────────────────────────────────────────
+    let created = 0
+    const errors: string[] = []
+    // Students whose father wasn't auto-detected — for manual linking in the UI
+    const needsParent: { studentId: string; name: string; family: string; fatherName: string }[] = []
 
     for (const row of dataRows) {
       const lastName   = row[0]?.trim()         // A: שם משפחה
@@ -105,6 +110,9 @@ export async function POST(req: NextRequest) {
       const motherName = row[3]?.trim() || null // D: שם האם
       const idNumber   = row[4]?.trim() || null // E: ת"ז תלמיד
       const fatherRaw  = row[19]?.trim() ?? ''  // T: שם מלא האב
+
+      const studentName = [lastName, studentFN].filter(Boolean).join(' ').trim()
+      if (!studentName) continue  // skip empty rows
 
       // Clean col T: strip non-Hebrew leading chars (e.g. "V ")
       const fatherClean = fatherRaw.replace(/^[^א-ת]+/, '').trim()
@@ -115,58 +123,21 @@ export async function POST(req: NextRequest) {
           .replace(/\s+\S*["׳]\S*["׳]?\S*$/, '').trim() // strip בר"י, שליט"א etc.
       }
 
-      // 1) Primary: identify parent via C (father name) + A (family), then T as fallback
-      let id: string | undefined
-      let foundParentId: string | undefined
-      if (lastName || fatherFN || fatherFirst) {
-        foundParentId = (lastName && fatherFN    ? parentNameMap.get(`${lastName}|${fatherFN}`)    : undefined)
-                     ?? (lastName && fatherFirst ? parentNameMap.get(`${lastName}|${fatherFirst}`) : undefined)
-                     ?? (fatherClean             ? parentFullMap.get(fatherClean)                   : undefined)
-                     ?? (fatherFirst && lastName ? parentFullMap.get(`${fatherFirst} ${lastName}`)  : undefined)
-      }
-      if (foundParentId) {
-        const linked = parentStudentMap.get(foundParentId) ?? []
-        if (linked.length === 1) {
-          id = linked[0]
-        } else if (linked.length > 1) {
-          const candidates = [
-            studentFN && lastName ? `${studentFN} ${lastName}` : '',
-            studentFN && lastName ? `${lastName} ${studentFN}` : '',
-          ].filter(Boolean)
-          id = allStudents?.find(s =>
-            linked.includes(s.id) && (
-              candidates.includes(s.name?.trim() ?? '') ||
-              (!!studentFN && (s.name?.trim()?.startsWith(studentFN) ?? false))
-            )
-          )?.id ?? linked[0]
-        }
-      }
+      // Identify father (parent) via C (father name) + A (family), then T as fallback
+      const parentId =
+            (lastName && fatherFN    ? parentNameMap.get(`${lastName}|${fatherFN}`)    : undefined)
+        ??  (lastName && fatherFirst ? parentNameMap.get(`${lastName}|${fatherFirst}`) : undefined)
+        ??  (fatherClean             ? parentFullMap.get(fatherClean)                   : undefined)
+        ??  (fatherFirst && lastName ? parentFullMap.get(`${fatherFirst} ${lastName}`)  : undefined)
 
-      // 2) Fallback: student ת"ז
-      if (!id && idNumber) id = studentIdNumMap.get(idNumber)
-
-      // 3) Fallback: student name
-      if (!id && studentFN && lastName) {
-        id = studentNameMap.get(`${studentFN} ${lastName}`)
-            ?? studentNameMap.get(`${lastName} ${studentFN}`)
-      }
-      if (!id && studentFN)  id = studentNameMap.get(studentFN)
-      if (!id && lastName)   id = studentNameMap.get(lastName)
-
-      const label = [studentFN, lastName].filter(Boolean).join(' ') || lastName || ''
-      if (!id) { if (label) notFound.push(label); continue }
-
-      // Col E(4): ת"ז — already read above as idNumber
-      // Col F(5): תאריך לידה עברי
+      // Col F(5): תאריך לידה עברי · G(6): לועזי · H(7): כיתה
       const birthHebrew = row[5]?.trim() || null
-      // Col G(6): תאריך לידה לועזי
       const birthGreg   = row[6]?.trim() || null
-      // Col H(7): כיתה
-      const className   = row[7]?.trim() || undefined
+      const className   = row[7]?.trim() || null
 
       // Col S(18): סטטוס — "V"→פעיל
       const statusRaw = row[18]?.trim()
-      const status = statusRaw === 'V' ? 'פעיל' : statusRaw || undefined
+      const status = statusRaw === 'V' ? 'פעיל' : statusRaw || null
 
       // Cols L(11), M(12), N(13): הסעות — 3 separate columns
       const transport: string[] = []
@@ -174,38 +145,44 @@ export async function POST(req: NextRequest) {
       if (lVal && lVal !== '0') transport.push(lVal)
       if (mVal && mVal !== '0') transport.push(mVal)
       if (nVal && nVal !== '0') transport.push(nVal)
-      const transportation     = transport.length > 0 ? transport : undefined
-      const transportationCost = transportation ? calcTransportCost(transportation) : undefined
+      const transportationCost = transport.length > 0 ? calcTransportCost(transport) : 0
 
-      // Col AB(27): קופת חולים
+      // Col AB(27): קופ"ח · AC(28): לימודים קודם
       const healthFund     = row[27]?.trim() || null
-      // Col AC(28): מקום לימודים קודם
       const previousSchool = row[28]?.trim() || null
 
-      const update: Record<string, unknown> = {}
-      if (idNumber)                           update.id_number            = idNumber
-      if (motherName !== null)                update.mother_name          = motherName
-      if (birthHebrew !== null)               update.birth_date_hebrew    = birthHebrew
-      if (birthGreg !== null)                 update.birth_date_gregorian = birthGreg
-      if (className !== undefined)            update.class_name           = className
-      if (status !== undefined)               update.status               = status
-      if (transportation !== undefined)       update.transportation       = transportation
-      if (transportationCost !== undefined)   update.transportation_cost  = transportationCost
-      if (healthFund !== null)                update.health_fund          = healthFund
-      if (previousSchool !== null)            update.previous_school      = previousSchool
+      const studentId = crypto.randomUUID()
+      const record: Record<string, unknown> = {
+        id:                  studentId,
+        name:                studentName,
+        parent_ids:          parentId ? [parentId] : [],
+        id_number:           idNumber,
+        mother_name:         motherName,
+        birth_date_hebrew:   birthHebrew,
+        birth_date_gregorian:birthGreg,
+        class_name:          className,
+        status,
+        transportation:      transport,
+        transportation_cost: transportationCost,
+        health_fund:         healthFund,
+        previous_school:     previousSchool,
+      }
 
-      if (Object.keys(update).length === 0) continue
+      const { error: insErr } = await supabaseAdmin.from('students').insert(record)
+      if (insErr) { errors.push(`${studentName}: ${insErr.message}`); continue }
+      created++
 
-      const { error: upErr } = await supabaseAdmin
-        .from('students')
-        .update(update)
-        .eq('id', id)
-
-      if (upErr) { errors.push(`${label || id}: ${upErr.message}`); continue }
-      updated++
+      if (!parentId) {
+        needsParent.push({
+          studentId,
+          name:       studentName,
+          family:     lastName ?? '',
+          fatherName: fatherFN || fatherClean || '',
+        })
+      }
     }
 
-    return NextResponse.json({ updated, classes: classMap.size, notFound, errors })
+    return NextResponse.json({ created, classes: classMap.size, needsParent, errors })
   } catch (err) {
     console.error('import error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
