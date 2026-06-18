@@ -101,7 +101,8 @@ export async function POST(req: NextRequest) {
     for (const row of dataRows) {
       const lastName   = row[0]?.trim()         // A: שם משפחה
       const studentFN  = row[1]?.trim()         // B: שם פרטי תלמיד
-      const motherName = row[2]?.trim() || null // C: שם האם
+      const fatherFN   = row[2]?.trim()         // C: שם האב
+      const motherName = row[3]?.trim() || null // D: שם האם
       const idNumber   = row[4]?.trim() || null // E: ת"ז תלמיד
       const fatherRaw  = row[19]?.trim() ?? ''  // T: שם מלא האב
 
@@ -114,13 +115,14 @@ export async function POST(req: NextRequest) {
           .replace(/\s+\S*["׳]\S*["׳]?\S*$/, '').trim() // strip בר"י, שליט"א etc.
       }
 
-      // 1) Primary: identify parent via T (full father name) → linked student
+      // 1) Primary: identify parent via C (father name) + A (family), then T as fallback
       let id: string | undefined
       let foundParentId: string | undefined
-      if (lastName || fatherFirst) {
-        foundParentId = (lastName && fatherFirst ? parentNameMap.get(`${lastName}|${fatherFirst}`) : undefined)
-                     ?? (fatherClean ? parentFullMap.get(fatherClean) : undefined)
-                     ?? (fatherFirst && lastName ? parentFullMap.get(`${fatherFirst} ${lastName}`) : undefined)
+      if (lastName || fatherFN || fatherFirst) {
+        foundParentId = (lastName && fatherFN    ? parentNameMap.get(`${lastName}|${fatherFN}`)    : undefined)
+                     ?? (lastName && fatherFirst ? parentNameMap.get(`${lastName}|${fatherFirst}`) : undefined)
+                     ?? (fatherClean             ? parentFullMap.get(fatherClean)                   : undefined)
+                     ?? (fatherFirst && lastName ? parentFullMap.get(`${fatherFirst} ${lastName}`)  : undefined)
       }
       if (foundParentId) {
         const linked = parentStudentMap.get(foundParentId) ?? []

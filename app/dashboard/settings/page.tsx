@@ -271,9 +271,10 @@ interface ImportResult {
 }
 
 const COLUMN_MAPPING = [
-  { col: 'A (0)',  field: 'שם משפחה',              example: 'כהן' },
-  { col: 'B (1)',  field: 'שם פרטי תלמיד',         example: 'יוסף' },
-  { col: 'C (2)',  field: 'שם האם',                example: 'שרה לוי' },
+  { col: 'A (0)',  field: 'שם משפחה',              example: 'אייזנר' },
+  { col: 'B (1)',  field: 'שם פרטי תלמיד',         example: 'מרדכי צבי' },
+  { col: 'C (2)',  field: 'שם האב',                example: 'אברהם יצחק' },
+  { col: 'D (3)',  field: 'שם האם',                example: 'אסתר' },
   { col: 'E (4)',  field: 'ת"ז תלמיד',             example: '234585933' },
   { col: 'F (5)',  field: 'תאריך לידה עברי',       example: "ט\"ו שבט פ\"ג" },
   { col: 'G (6)',  field: 'תאריך לידה לועזי',      example: '06/02/23' },
@@ -282,7 +283,7 @@ const COLUMN_MAPPING = [
   { col: 'M (12)', field: 'הסעות — חזור 1',        example: 'חזור שעה 1' },
   { col: 'N (13)', field: 'הסעות — חזור 2',        example: 'חזור שעה 4' },
   { col: 'S (18)', field: 'סטטוס',                 example: 'V / סיים לימודים' },
-  { col: 'T (19)', field: 'שם מלא האב (לזיהוי)',   example: 'כהן אברהם יצחק' },
+  { col: 'T (19)', field: 'שם מלא האב (לזיהוי)',   example: 'אייזנר אברהם יצחק' },
   { col: 'AB (27)',field: 'קופת חולים',             example: 'מכבי' },
   { col: 'AC (28)',field: 'מקום לימודים קודם',     example: 'בית ספר X' },
 ]
