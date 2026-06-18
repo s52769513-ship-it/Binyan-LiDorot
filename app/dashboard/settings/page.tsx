@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 
-type SettingsTab = 'general' | 'automations' | 'merge'
+type SettingsTab = 'general' | 'automations' | 'merge' | 'import'
 
 interface Settings {
   institution_name?: string
@@ -270,6 +270,53 @@ interface ImportResult {
   error?: string
 }
 
+const COLUMN_MAPPING = [
+  { col: 'A (0)',  field: 'שם משפחה',             example: 'כהן' },
+  { col: 'B (1)',  field: 'שם פרטי של תלמיד',      example: 'יוסף' },
+  { col: 'C (2)',  field: 'שם האב',                example: 'אברהם' },
+  { col: 'E (4)',  field: 'מגדר',                  example: 'בן / בת' },
+  { col: 'F (5)',  field: 'ת"ז תלמיד (גיבוי)',     example: '123456789' },
+  { col: 'G (6)',  field: 'תאריך לידה לועזי',      example: '15/03/2015' },
+  { col: 'H (7)',  field: 'תאריך לידה עברי',       example: "כ\"ד אדר תשע\"ה" },
+  { col: 'R (17)', field: 'כיתה',                  example: "א'1" },
+  { col: 'S (18)', field: 'סטטוס',                 example: 'V / סיים לימודים' },
+  { col: 'V (21)', field: 'הסעות',                 example: 'הלוך,חזור שעה 1' },
+  { col: 'AB (27)',field: 'קופת חולים',             example: 'מכבי' },
+  { col: 'AC (28)',field: 'מקום לימודים קודם',     example: 'בית ספר X' },
+]
+
+function ImportTab() {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">מיפוי עמודות CSV</h3>
+        <p className="text-xs text-gray-400">הקובץ חייב להיות CSV — עמודות לפי הסדר הבא:</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse" dir="rtl">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-3 py-2 border border-gray-200 font-semibold text-gray-600 text-right">עמודה</th>
+                <th className="px-3 py-2 border border-gray-200 font-semibold text-gray-600 text-right">שדה</th>
+                <th className="px-3 py-2 border border-gray-200 font-semibold text-gray-600 text-right">דוגמה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COLUMN_MAPPING.map(({ col, field, example }) => (
+                <tr key={col} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 border border-gray-200 font-mono font-bold text-[#1a3a7a]">{col}</td>
+                  <td className="px-3 py-2 border border-gray-200 text-gray-700">{field}</td>
+                  <td className="px-3 py-2 border border-gray-200 text-gray-400 text-xs">{example}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <ImportStudentsSection />
+    </div>
+  )
+}
+
 function ImportStudentsSection() {
   const [file, setFile]         = useState<File | null>(null)
   const [loading, setLoading]   = useState(false)
@@ -417,6 +464,7 @@ export default function SettingsPage() {
           { key: 'general',     label: 'הגדרות מוסד' },
           { key: 'automations', label: '🤖 אוטומציות' },
           { key: 'merge',       label: '🔗 איחוד כרטיסים' },
+          { key: 'import',      label: '📤 ייבוא תלמידים' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -431,6 +479,7 @@ export default function SettingsPage() {
 
       {settingsTab === 'automations' && <AutomationsTab />}
       {settingsTab === 'merge'       && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
+      {settingsTab === 'import'      && <ImportTab />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
@@ -508,8 +557,6 @@ export default function SettingsPage() {
       {/* Classes management */}
       <ClassesSection />
 
-      {/* Import students */}
-      <ImportStudentsSection />
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 text-right space-y-1">
         <p className="font-semibold">SQL להרצה ב-Supabase (חד פעמי):</p>
