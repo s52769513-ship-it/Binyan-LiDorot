@@ -41,26 +41,30 @@ export async function POST(req: NextRequest) {
     // Row 0 is header — skip it
     const dataRows = rows.slice(1)
 
-    // Fetch students + parents — matching is via parent's ת"ז (col 5 = father's ID)
+    // Fetch students + parents — matching via col A (last name) + col C (father's first name)
     const [{ data: allStudents, error: fetchErr }, { data: allParents }] = await Promise.all([
       supabaseAdmin.from('students').select('id, name, parent_ids'),
-      supabaseAdmin.from('parents').select('id, id_number'),
+      supabaseAdmin.from('parents').select('id, first_name, last_name, name'),
     ])
     if (fetchErr) throw fetchErr
 
-    const nameMap          = new Map<string, string>()    // student name → student id
-    const parentIdNumMap   = new Map<string, string>()    // parent id_number → parent id
-    const parentStudentMap = new Map<string, string[]>()  // parent id → [student ids]
+    const studentNameMap   = new Map<string, string>()   // student full name → student id
+    const parentNameMap    = new Map<string, string>()   // "lastName|firstName" → parent id
+    const parentStudentMap = new Map<string, string[]>() // parent id → [student ids]
 
     for (const s of allStudents ?? []) {
-      if (s.name?.trim()) nameMap.set(s.name.trim(), s.id)
+      if (s.name?.trim()) studentNameMap.set(s.name.trim(), s.id)
       for (const pid of (s.parent_ids ?? [])) {
         if (!parentStudentMap.has(pid)) parentStudentMap.set(pid, [])
         parentStudentMap.get(pid)!.push(s.id)
       }
     }
     for (const p of allParents ?? []) {
-      if (p.id_number?.trim()) parentIdNumMap.set(p.id_number.trim(), p.id)
+      const ln = p.last_name?.trim() ?? ''
+      const fn = p.first_name?.trim() ?? ''
+      if (ln && fn) parentNameMap.set(`${ln}|${fn}`, p.id)
+      // Fallback: parse name field when first_name/last_name are empty
+      if (ln && !fn && p.name?.trim()) parentNameMap.set(`${ln}|${p.name.trim()}`, p.id)
     }
 
     // ── Upsert classes from CSV (col 17: class, col 23: framework) ──────────
@@ -85,25 +89,35 @@ export async function POST(req: NextRequest) {
     const errors: string[]   = []
 
     for (const row of dataRows) {
-      const name     = row[0]?.trim()
-      const idNumber = row[5]?.trim() || null
+      const lastName   = row[0]?.trim()  // col A: שם משפחה
+      const studentFN  = row[1]?.trim()  // col B: שם פרטי של תלמיד
+      const fatherName = row[2]?.trim()  // col C: שם האב
 
-      // Match via parent's ת"ז → find student linked to that parent
+      // Match parent by last name + father name, then find linked student
       let id: string | undefined
-      if (idNumber) {
-        const parentId = parentIdNumMap.get(idNumber)
+      if (lastName && fatherName) {
+        const parentId = parentNameMap.get(`${lastName}|${fatherName}`)
         if (parentId) {
           const linked = parentStudentMap.get(parentId) ?? []
-          if (name && linked.length > 1) {
-            id = allStudents?.find(s => linked.includes(s.id) && s.name?.trim() === name)?.id ?? linked[0]
-          } else {
+          if (linked.length === 1) {
             id = linked[0]
+          } else if (linked.length > 1) {
+            // Try to identify the exact student by first name or full name
+            const fullName = studentFN ? `${studentFN} ${lastName}` : ''
+            id = allStudents?.find(s =>
+              linked.includes(s.id) && (
+                (fullName && s.name?.trim() === fullName) ||
+                (studentFN && s.name?.trim().startsWith(studentFN))
+              )
+            )?.id ?? linked[0]
           }
         }
       }
-      // Fallback: match by student name directly
-      if (!id && name) id = nameMap.get(name)
-      if (!id) { if (name) notFound.push(name); continue }
+      // Fallback: match by student full name directly
+      if (!id && studentFN && lastName) id = studentNameMap.get(`${studentFN} ${lastName}`)
+      if (!id && studentFN) id = studentNameMap.get(studentFN)
+      const label = [studentFN, lastName].filter(Boolean).join(' ') || lastName || ''
+      if (!id) { if (label) notFound.push(label); continue }
 
       // Col 4: gender — "בן"→זכר, "בת"→נקבה
       const genderRaw = row[4]?.trim()
@@ -153,7 +167,7 @@ export async function POST(req: NextRequest) {
         .update(update)
         .eq('id', id)
 
-      if (upErr) { errors.push(`${name ?? id}: ${upErr.message}`); continue }
+      if (upErr) { errors.push(`${label || id}: ${upErr.message}`); continue }
       updated++
     }
 
