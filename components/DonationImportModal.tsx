@@ -149,7 +149,8 @@ export default function DonationImportModal({ onClose, onSuccess }: {
     }
   }
 
-  const filteredActions = actionFilter ? actions.filter(a => a.action === actionFilter) : actions
+  const filteredActions = actionFilter ? actions.filter(a => a.paymentMethod === actionFilter) : actions
+  const paymentMethods = [...new Set(actions.map(a => a.paymentMethod).filter(Boolean))]
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" dir="rtl">
@@ -288,11 +289,9 @@ export default function DonationImportModal({ onClose, onSuccess }: {
                     className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white"
                   >
                     <option value="">הכל ({actions.length})</option>
-                    <option value="update_so">עדכון הו"ק ({counts.update_so})</option>
-                    <option value="update_monthly_donation">ניכוי משכרות ({counts.update_monthly_donation})</option>
-                    <option value="info_only">ידני ({counts.info_only})</option>
-                    <option value="no_match">לא נמצא ({counts.no_match})</option>
-                    <option value="pending_so">ממתין לנדרים ({counts.pending_so})</option>
+                    {paymentMethods.map(m => (
+                      <option key={m} value={m}>{m} ({actions.filter(a => a.paymentMethod === m).length})</option>
+                    ))}
                   </select>
                 </div>
                 <div className="rounded-xl border border-gray-200 overflow-hidden max-h-60 overflow-y-auto">
@@ -302,7 +301,8 @@ export default function DonationImportModal({ onClose, onSuccess }: {
                         <th className="px-3 py-2">שם (CSV)</th>
                         <th className="px-3 py-2">שם (מערכת)</th>
                         <th className="px-3 py-2 text-left">סכום</th>
-                        <th className="px-3 py-2 text-center">פעולה</th>
+                        <th className="px-3 py-2">אמצעי תשלום</th>
+                        <th className="px-3 py-2 text-center">סטטוס</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -311,6 +311,7 @@ export default function DonationImportModal({ onClose, onSuccess }: {
                           <td className="px-3 py-2">{a.rowName}</td>
                           <td className="px-3 py-2 text-gray-500">{a.matchedName || '—'}</td>
                           <td className="px-3 py-2 text-left tabular-nums">{a.amount ? fmt(a.amount) : '—'}</td>
+                          <td className="px-3 py-2 text-gray-700">{a.paymentMethod || '—'}</td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ACTION_COLOR[a.action] ?? 'bg-gray-100'}`}>
                               {ACTION_LABELS[a.action] ?? a.action}
