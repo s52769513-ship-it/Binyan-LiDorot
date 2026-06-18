@@ -237,7 +237,7 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
         const soId = soByParent[matched.id]
         if (soId) {
           await supabaseAdmin.from('standing_orders')
-            .update({ charge_amount: row.amount, project_name: 'דמי מגבית' })
+            .update({ charge_amount: row.amount, project_name: 'דמי מגבית', ...(row.notes ? { notes: row.notes } : {}) })
             .eq('id', soId)
           updatedSo++
         } else {
@@ -250,11 +250,6 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
         updatedSalary++
       } else {
         skipped++
-      }
-      if (row.notes) {
-        await supabaseAdmin.from('parents')
-          .update({ notes: row.notes })
-          .eq('id', matched.id)
       }
     } else {
       if (category === 'hok' && soByParent[matched.id]) updatedSo++
