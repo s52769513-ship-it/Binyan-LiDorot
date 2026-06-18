@@ -271,16 +271,18 @@ interface ImportResult {
 }
 
 const COLUMN_MAPPING = [
-  { col: 'A (0)',  field: 'שם משפחה',             example: 'כהן' },
-  { col: 'B (1)',  field: 'שם פרטי של תלמיד',      example: 'יוסף' },
-  { col: 'C (2)',  field: 'שם האב',                example: 'אברהם' },
-  { col: 'E (4)',  field: 'מגדר',                  example: 'בן / בת' },
-  { col: 'F (5)',  field: 'ת"ז תלמיד (גיבוי)',     example: '123456789' },
-  { col: 'G (6)',  field: 'תאריך לידה לועזי',      example: '15/03/2015' },
-  { col: 'H (7)',  field: 'תאריך לידה עברי',       example: "כ\"ד אדר תשע\"ה" },
-  { col: 'R (17)', field: 'כיתה',                  example: "א'1" },
+  { col: 'A (0)',  field: 'שם משפחה',              example: 'כהן' },
+  { col: 'B (1)',  field: 'שם פרטי תלמיד',         example: 'יוסף' },
+  { col: 'C (2)',  field: 'שם האם',                example: 'שרה לוי' },
+  { col: 'E (4)',  field: 'ת"ז תלמיד',             example: '234585933' },
+  { col: 'F (5)',  field: 'תאריך לידה עברי',       example: "ט\"ו שבט פ\"ג" },
+  { col: 'G (6)',  field: 'תאריך לידה לועזי',      example: '06/02/23' },
+  { col: 'H (7)',  field: 'כיתה',                  example: "א'1" },
+  { col: 'L (11)', field: 'הסעות — הלוך',          example: 'הלוך' },
+  { col: 'M (12)', field: 'הסעות — חזור 1',        example: 'חזור שעה 1' },
+  { col: 'N (13)', field: 'הסעות — חזור 2',        example: 'חזור שעה 4' },
   { col: 'S (18)', field: 'סטטוס',                 example: 'V / סיים לימודים' },
-  { col: 'V (21)', field: 'הסעות',                 example: 'הלוך,חזור שעה 1' },
+  { col: 'T (19)', field: 'שם מלא האב (לזיהוי)',   example: 'כהן אברהם יצחק' },
   { col: 'AB (27)',field: 'קופת חולים',             example: 'מכבי' },
   { col: 'AC (28)',field: 'מקום לימודים קודם',     example: 'בית ספר X' },
 ]
