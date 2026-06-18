@@ -220,7 +220,15 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
   const linkParent = async (parentId: string) => {
     if (!student) return
     if (student.parentIds.includes(parentId)) return
+    const picked = parentResults.find(p => p.id === parentId)
     const newIds = [...student.parentIds, parentId]
+    setStudent(prev => prev ? {
+      ...prev,
+      parentIds: newIds,
+      parents: picked && !prev.parents.some(p => p.id === parentId)
+        ? [...prev.parents, picked]
+        : prev.parents,
+    } : prev)
     await patch({ parentIds: newIds })
     setParentSearch(''); setParentResults([]); setShowParentSearch(false)
   }

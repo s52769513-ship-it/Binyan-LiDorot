@@ -1683,6 +1683,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               )}
             </div>
           )}
+
+          {/* ── DONATION TAB ── */}
+          {parent && tab === 'donation' && (
+            <DonationTab parent={parent} onUpdate={load} />
+          )}
         </div>
       </div>
 
@@ -2234,11 +2239,6 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               ))}
             </div>
-          )}
-
-          {/* ── DONATION TAB ── */}
-          {parent && tab === 'donation' && (
-            <DonationTab parent={parent} onUpdate={load} />
           )}
 
       {/* ── Modals ── */}
