@@ -298,6 +298,8 @@ export async function GET(
       salaryNet: p.salary_after_tuition ?? 0,
       ppCredit: (Number(p.pp_credit ?? 0)) + (Number(p.credit_balance ?? 0)),
       birthDate: p.birth_date ?? '',
+      monthlyDonation: p.monthly_donation ?? 0,
+      deductDonation: p.deduct_donation ?? false,
 
       women: (womenRes.data ?? []).map(w => ({
         id: w.id,

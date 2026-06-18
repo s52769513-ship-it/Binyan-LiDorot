@@ -133,6 +133,8 @@ export interface ParentDetail extends ParentSummary {
   birthDate: string
   women: WomanDetail[]
   standingOrders: StandingOrderItem[]
+  monthlyDonation: number
+  deductDonation: boolean
 }
 
 export interface MonthlyStat {
