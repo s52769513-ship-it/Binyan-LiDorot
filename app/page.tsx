@@ -2,17 +2,39 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
   const [visible, setVisible] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
+  const [email, setEmail]     = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 100)
     fetch('/api/settings').then(r => r.json()).then(d => { if (d.logo_url) setLogoUrl(d.logo_url) }).catch(() => {})
+    // If already logged in, skip to dashboard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase.auth.getSession().then((result: any) => {
+      if (result.data?.session) router.replace('/dashboard')
+    })
     return () => clearTimeout(t)
   }, [])
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true); setError('')
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
+    if (authErr) {
+      setError('מייל או סיסמה שגויים')
+      setLoading(false)
+    } else {
+      router.push('/dashboard')
+    }
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center overflow-hidden relative"
@@ -88,18 +110,40 @@ export default function LoginPage() {
           תלמוד תורה ובית חינוך לבנות
         </p>
 
-        {/* Login button */}
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="w-full max-w-[280px] py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95"
-          style={{
-            background: 'linear-gradient(135deg, #c9a227 0%, #e8c84a 50%, #c9a227 100%)',
-            color: '#0a1535',
-            boxShadow: '0 4px 20px rgba(201,162,39,0.5)',
-          }}
-        >
-          כניסה למערכת
-        </button>
+        {/* Login form */}
+        <form onSubmit={handleLogin} className="w-full max-w-[280px] space-y-3" dir="rtl">
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="מייל"
+            required
+            className="w-full px-4 py-3 rounded-xl text-sm outline-none text-right"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(201,162,39,0.3)', color: '#f0e8c8' }}
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="סיסמה"
+            required
+            className="w-full px-4 py-3 rounded-xl text-sm outline-none text-right"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(201,162,39,0.3)', color: '#f0e8c8' }}
+          />
+          {error && <p className="text-xs text-center" style={{ color: '#ff7070' }}>{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 rounded-xl font-bold text-lg transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60"
+            style={{
+              background: 'linear-gradient(135deg, #c9a227 0%, #e8c84a 50%, #c9a227 100%)',
+              color: '#0a1535',
+              boxShadow: '0 4px 20px rgba(201,162,39,0.5)',
+            }}
+          >
+            {loading ? '...' : 'כניסה למערכת'}
+          </button>
+        </form>
 
         <p className="mt-6 text-xs" style={{ color: '#445577' }}>
           מערכת פנימית · גישה מורשית בלבד

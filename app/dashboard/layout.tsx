@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const NAV_LINKS = [
   { href: '/dashboard',             label: 'דשבורד'      },
@@ -34,6 +35,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const dragging = useRef(false)
   const startX   = useRef(0)
   const startW   = useRef(0)
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase.auth.getSession().then((result: any) => {
+      if (!result.data?.session) router.replace('/')
+    })
+  }, [])
 
   useEffect(() => {
     fetch('/api/settings')

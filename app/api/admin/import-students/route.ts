@@ -41,17 +41,26 @@ export async function POST(req: NextRequest) {
     // Row 0 is header — skip it
     const dataRows = rows.slice(1)
 
-    // Fetch all students from DB, build id_number → id map (fallback: name → id)
-    const { data: allStudents, error: fetchErr } = await supabaseAdmin
-      .from('students')
-      .select('id, name, id_number')
+    // Fetch students + parents — matching is via parent's ת"ז (col 5 = father's ID)
+    const [{ data: allStudents, error: fetchErr }, { data: allParents }] = await Promise.all([
+      supabaseAdmin.from('students').select('id, name, parent_ids'),
+      supabaseAdmin.from('parents').select('id, id_number'),
+    ])
     if (fetchErr) throw fetchErr
 
-    const idNumMap = new Map<string, string>()
-    const nameMap  = new Map<string, string>()
+    const nameMap          = new Map<string, string>()    // student name → student id
+    const parentIdNumMap   = new Map<string, string>()    // parent id_number → parent id
+    const parentStudentMap = new Map<string, string[]>()  // parent id → [student ids]
+
     for (const s of allStudents ?? []) {
-      if (s.id_number?.trim()) idNumMap.set(s.id_number.trim(), s.id)
-      if (s.name?.trim())      nameMap.set(s.name.trim(), s.id)
+      if (s.name?.trim()) nameMap.set(s.name.trim(), s.id)
+      for (const pid of (s.parent_ids ?? [])) {
+        if (!parentStudentMap.has(pid)) parentStudentMap.set(pid, [])
+        parentStudentMap.get(pid)!.push(s.id)
+      }
+    }
+    for (const p of allParents ?? []) {
+      if (p.id_number?.trim()) parentIdNumMap.set(p.id_number.trim(), p.id)
     }
 
     // ── Upsert classes from CSV (col 17: class, col 23: framework) ──────────
@@ -79,8 +88,21 @@ export async function POST(req: NextRequest) {
       const name     = row[0]?.trim()
       const idNumber = row[5]?.trim() || null
 
-      // Match by ת"ז first, then fall back to name
-      const id = (idNumber && idNumMap.get(idNumber)) ?? (name ? nameMap.get(name) : undefined)
+      // Match via parent's ת"ז → find student linked to that parent
+      let id: string | undefined
+      if (idNumber) {
+        const parentId = parentIdNumMap.get(idNumber)
+        if (parentId) {
+          const linked = parentStudentMap.get(parentId) ?? []
+          if (name && linked.length > 1) {
+            id = allStudents?.find(s => linked.includes(s.id) && s.name?.trim() === name)?.id ?? linked[0]
+          } else {
+            id = linked[0]
+          }
+        }
+      }
+      // Fallback: match by student name directly
+      if (!id && name) id = nameMap.get(name)
       if (!id) { if (name) notFound.push(name); continue }
 
       // Col 4: gender — "בן"→זכר, "בת"→נקבה
@@ -115,7 +137,6 @@ export async function POST(req: NextRequest) {
 
       const update: Record<string, unknown> = {}
       if (gender !== undefined)               update.gender               = gender
-      if (idNumber)                           update.id_number            = idNumber
       if (birthGreg !== undefined)            update.birth_date_gregorian = birthGreg
       if (birthHebrew !== undefined)          update.birth_date_hebrew    = birthHebrew
       if (className !== undefined)            update.class_name           = className
