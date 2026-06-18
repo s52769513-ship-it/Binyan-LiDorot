@@ -6,8 +6,10 @@ export async function GET() {
     supabaseAdmin.from('students').select('id, name, parent_ids'),
     supabaseAdmin.from('parents').select('id, name, first_name'),
   ])
-  const parentMap = new Map((parents ?? []).map(p => [p.id, p]))
-  const result = (students ?? []).map(s => {
+  type ParentRow = { id: string; name: string | null; first_name: string | null }
+  type StudentRow = { id: string; name: string | null; parent_ids: string[] | null }
+  const parentMap = new Map<string, ParentRow>(((parents ?? []) as ParentRow[]).map(p => [p.id, p]))
+  const result = ((students ?? []) as StudentRow[]).map(s => {
     const parentId = s.parent_ids?.[0] ?? null
     const parent = parentId ? parentMap.get(parentId) : null
     return {

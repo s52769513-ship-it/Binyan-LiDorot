@@ -180,16 +180,8 @@ export default function StudentImportWizard() {
             updates['transportation_cost'] = calcTransportCost(parts)
             continue
           }
-          // Map field to DB column
-          const dbCol = field === 'id_number' ? 'id_number'
-            : field === 'gender' ? 'gender'
-            : field === 'birth_date_hebrew' ? 'birth_date_hebrew'
-            : field === 'birth_date_gregorian' ? 'birth_date_gregorian'
-            : field === 'status' ? 'status'
-            : field === 'health_fund' ? 'health_fund'
-            : field === 'previous_school' ? 'previous_school'
-            : field
-          updates[dbCol] = val
+          // Map field to DB column — all remaining fields use their own name as the column
+          updates[field as string] = val
         }
         return updates
       }
