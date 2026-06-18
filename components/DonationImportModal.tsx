@@ -10,16 +10,12 @@ interface AnalyzeAction {
   parentId?:      string
   amount:         number
   paymentMethod:  string
-  category:       'hok' | 'salary' | 'manual'
-  action:         'update_so' | 'create_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
+  action:         'update_monthly_donation' | 'no_match' | 'skip'
   reason?:        string
   host?:          string
 }
 interface Counts {
-  update_so:               number
-  create_so:               number
   update_monthly_donation: number
-  info_only:               number
   no_match:                number
 }
 interface ParseResult {
@@ -27,26 +23,19 @@ interface ParseResult {
   sample:    { name: string; amount: number; paymentMethod: string; host: string }[]
 }
 interface ExecResult {
-  updatedSo:     number
-  updatedSalary: number
-  skipped:       number
-  total:         number
-  dryRun:        boolean
+  updated:  number
+  skipped:  number
+  total:    number
+  dryRun:   boolean
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  update_so:               'עדכון הו"ק',
-  create_so:               'יצירת הו"ק חדש',
-  update_monthly_donation: 'ניכוי משכרות',
-  info_only:               'ידני',
+  update_monthly_donation: 'יעודכן',
   no_match:                'לא נמצא',
   skip:                    'דולג',
 }
 const ACTION_COLOR: Record<string, string> = {
-  update_so:               'bg-blue-50 text-blue-700',
-  create_so:               'bg-green-50 text-green-700',
   update_monthly_donation: 'bg-emerald-50 text-emerald-700',
-  info_only:               'bg-amber-50 text-amber-700',
   no_match:                'bg-red-50 text-red-600',
   skip:                    'bg-gray-100 text-gray-500',
 }
@@ -262,21 +251,13 @@ export default function DonationImportModal({ onClose, onSuccess }: {
           {phase === 'analyze' && counts && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-center">
-                  <p className="text-2xl font-bold text-blue-700">{counts.update_so}</p>
-                  <p className="text-xs text-blue-600">עדכון הו"ק</p>
-                </div>
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
                   <p className="text-2xl font-bold text-emerald-700">{counts.update_monthly_donation}</p>
-                  <p className="text-xs text-emerald-600">ניכוי משכרות</p>
-                </div>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
-                  <p className="text-2xl font-bold text-amber-700">{counts.info_only}</p>
-                  <p className="text-xs text-amber-600">ידני / מזומן</p>
+                  <p className="text-xs text-emerald-600">יעודכנו</p>
                 </div>
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-center">
                   <p className="text-2xl font-bold text-red-700">{counts.no_match}</p>
-                  <p className="text-xs text-red-600">לא נמצא</p>
+                  <p className="text-xs text-red-600">לא נמצאו</p>
                 </div>
               </div>
 
@@ -343,9 +324,7 @@ export default function DonationImportModal({ onClose, onSuccess }: {
                 {dryRun ? 'בדיקה בלבד — ביצוע dry run' : 'לאשר ביצוע ייבוא?'}
               </p>
               <div className="text-sm text-gray-600 space-y-1">
-                <p>עדכון הו"ק: <strong>{counts.update_so}</strong></p>
-                <p>עדכון ניכוי משכרות: <strong>{counts.update_monthly_donation}</strong></p>
-                <p>פעולות ידניות: <strong>{counts.info_only}</strong></p>
+                <p>יעודכנו: <strong>{counts.update_monthly_donation}</strong></p>
                 <p>לא נמצאו: <strong>{counts.no_match}</strong></p>
               </div>
               {dryRun && (
@@ -363,14 +342,10 @@ export default function DonationImportModal({ onClose, onSuccess }: {
               <p className="font-bold text-gray-800 text-lg">
                 {execResult.dryRun ? 'בדיקה הושלמה' : 'הייבוא הושלם בהצלחה'}
               </p>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                  <p className="text-2xl font-bold text-blue-700">{execResult.updatedSo}</p>
-                  <p className="text-xs text-blue-600">הו"קים עודכנו</p>
-                </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <p className="text-2xl font-bold text-emerald-700">{execResult.updatedSalary}</p>
-                  <p className="text-xs text-emerald-600">ניכויים עודכנו</p>
+                  <p className="text-2xl font-bold text-emerald-700">{execResult.updated}</p>
+                  <p className="text-xs text-emerald-600">עודכנו</p>
                 </div>
                 <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl">
                   <p className="text-2xl font-bold text-gray-600">{execResult.skipped}</p>
@@ -414,7 +389,7 @@ export default function DonationImportModal({ onClose, onSuccess }: {
           {phase === 'analyze' && (
             <button
               onClick={() => setPhase('confirm')}
-              disabled={!counts || (counts.update_so === 0 && counts.update_monthly_donation === 0)}
+              disabled={!counts || counts.update_monthly_donation === 0}
               className="px-5 py-2 rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
             >

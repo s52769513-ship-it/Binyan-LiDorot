@@ -25,13 +25,6 @@ function stripShekel(s: string): number {
   return parseFloat((s ?? '').replace(/[₪,\s]/g, '')) || 0
 }
 
-function detectPaymentCategory(method: string): 'hok' | 'salary' | 'manual' {
-  const m = (method ?? '').trim()
-  if (m.includes('הו"ק') || m.includes('הוק') || m.includes('הו``ק')) return 'hok'
-  if (m.includes('ניכוי') || m.includes('משכרות') || m.includes('משכורת')) return 'salary'
-  return 'manual'
-}
-
 /* ─── Row parse from CSV ───────────────────────────── */
 interface CsvRow {
   status:        string  // *, @, #, ?
@@ -44,7 +37,7 @@ interface CsvRow {
   email:         string
   host:          string  // מארח
   amount:        number  // סכום
-  paymentMethod: string  // אופן התשלום
+  paymentMethod: string  // אופן התשלום (informational only)
   notes:         string  // הערות
   rawLine:       string
 }
@@ -119,40 +112,25 @@ async function handleParse(csvText: string) {
 async function handleAnalyze(csvText: string, _mapping: unknown) {
   const rows = parseCsvRows(csvText)
 
-  // Load all parents for matching
   const { data: parents } = await supabaseAdmin
     .from('parents')
     .select('id, name, first_name, last_name, father_phone, mother_phone')
     .order('last_name')
 
   const parentArr = parents ?? []
-
-  // Load existing donation standing orders
-  const { data: soRows } = await supabaseAdmin
-    .from('standing_orders')
-    .select('id, parent_id, project_name, charge_amount')
-    .eq('project_name', 'דמי מגבית')
-
-  const soParentIds = new Set((soRows ?? []).map((s: { parent_id: string }) => s.parent_id))
-
   const actions: AnalyzeAction[] = []
 
   for (const row of rows) {
     const fullName = `${row.firstName} ${row.lastName}`.trim()
-    const category = detectPaymentCategory(row.paymentMethod)
 
-    // Try to match by phone first, then by name
     let matchedParent = findByPhone(parentArr, row.fatherPhone, row.motherPhone)
-    if (!matchedParent) {
-      matchedParent = findByName(parentArr, fullName, row.lastName)
-    }
+    if (!matchedParent) matchedParent = findByName(parentArr, fullName, row.lastName)
 
     if (!matchedParent) {
       actions.push({
         rowName:       fullName,
         amount:        row.amount,
         paymentMethod: row.paymentMethod,
-        category,
         action:        'no_match',
         reason:        'לא נמצא הורה תואם',
         host:          row.host,
@@ -160,41 +138,20 @@ async function handleAnalyze(csvText: string, _mapping: unknown) {
       continue
     }
 
-    const action: AnalyzeAction = {
+    actions.push({
       rowName:       fullName,
       matchedName:   matchedParent.name,
       parentId:      matchedParent.id,
       amount:        row.amount,
       paymentMethod: row.paymentMethod,
-      category,
       host:          row.host,
-      action:        'skip',
-    }
-
-    if (category === 'hok') {
-      if (soParentIds.has(matchedParent.id)) {
-        action.action = 'update_so'
-        action.reason = 'יעדכן הו"ק קיים'
-      } else {
-        action.action = 'create_so'
-        action.reason = 'ייצור הו"ק חדש'
-      }
-    } else if (category === 'salary') {
-      action.action = 'update_monthly_donation'
-      action.reason = 'יעדכן ניכוי חודשי'
-    } else {
-      action.action = 'info_only'
-      action.reason = 'מזומן/לברר — ידני'
-    }
-
-    actions.push(action)
+      action:        'update_monthly_donation',
+      reason:        'יעדכן סכום תרומה',
+    })
   }
 
   const counts = {
-    update_so:               actions.filter(a => a.action === 'update_so').length,
-    create_so:               actions.filter(a => a.action === 'create_so').length,
     update_monthly_donation: actions.filter(a => a.action === 'update_monthly_donation').length,
-    info_only:               actions.filter(a => a.action === 'info_only').length,
     no_match:                actions.filter(a => a.action === 'no_match').length,
   }
 
@@ -211,79 +168,28 @@ async function handleExecute(csvText: string, _mapping: unknown, dryRun: boolean
     .order('last_name')
 
   const parentArr = parents ?? []
-
-  const { data: soRows } = await supabaseAdmin
-    .from('standing_orders')
-    .select('id, parent_id, project_name, charge_amount')
-    .eq('project_name', 'דמי מגבית')
-
-  const soByParent: Record<string, string> = {}
-  for (const s of soRows ?? []) soByParent[s.parent_id] = s.id
-
-  let updatedSo = 0, updatedSalary = 0, skipped = 0
+  let updated = 0, skipped = 0
 
   for (const row of rows) {
     if (!row.amount) { skipped++; continue }
 
     const fullName = `${row.firstName} ${row.lastName}`.trim()
-    const category = detectPaymentCategory(row.paymentMethod)
-
     let matched = findByPhone(parentArr, row.fatherPhone, row.motherPhone)
     if (!matched) matched = findByName(parentArr, fullName, row.lastName)
     if (!matched) { skipped++; continue }
 
     if (!dryRun) {
-      if (category === 'hok') {
-        const soId = soByParent[matched.id]
-        if (soId) {
-          await supabaseAdmin.from('standing_orders')
-            .update({ charge_amount: row.amount, project_name: 'דמי מגבית', ...(row.notes ? { notes: row.notes } : {}) })
-            .eq('id', soId)
-          if (row.notes) {
-            await supabaseAdmin.from('parents')
-              .update({ donation_notes: row.notes })
-              .eq('id', matched.id)
-          }
-          updatedSo++
-        } else {
-          await supabaseAdmin.from('standing_orders').insert({
-            id: crypto.randomUUID(),
-            parent_id: matched.id,
-            project_name: 'דמי מגבית',
-            charge_amount: row.amount,
-            so_status: 'פעיל',
-            notes: row.notes ?? '',
-            synced_at: '2099-12-31T23:59:59.999Z',
-          })
-          if (row.notes) {
-            await supabaseAdmin.from('parents')
-              .update({ donation_notes: row.notes })
-              .eq('id', matched.id)
-          }
-          updatedSo++
-        }
-      } else if (category === 'salary') {
-        await supabaseAdmin.from('parents')
-          .update({ monthly_donation: row.amount, ...(row.notes ? { donation_notes: row.notes } : {}) })
-          .eq('id', matched.id)
-        updatedSalary++
-      } else {
-        skipped++
-      }
-    } else {
-      if (category === 'hok' && soByParent[matched.id]) updatedSo++
-      else if (category === 'salary') updatedSalary++
-      else skipped++
+      await supabaseAdmin.from('parents')
+        .update({
+          monthly_donation: row.amount,
+          ...(row.notes ? { donation_notes: row.notes } : {}),
+        })
+        .eq('id', matched.id)
     }
+    updated++
   }
 
-  return NextResponse.json({
-    updatedSo,
-    updatedSalary,
-    skipped,
-    dryRun,
-    total: rows.length,
-  })
+  return NextResponse.json({ updated, skipped, dryRun, total: rows.length })
 }
 
 /* ─── helpers ────────────────────────────────────────── */
@@ -310,7 +216,6 @@ function findByName(parents: ParentRow[], fullName: string, lastName: string): P
   const normFull = normName(fullName)
   const normLast = normName(lastName)
 
-  // Exact last name candidates
   const candidates = parents.filter(p =>
     normName(p.last_name ?? '') === normLast ||
     normName(p.name ?? '').includes(normLast)
@@ -333,8 +238,7 @@ interface AnalyzeAction {
   parentId?:      string
   amount:         number
   paymentMethod:  string
-  category:       'hok' | 'salary' | 'manual'
-  action:         'update_so' | 'create_so' | 'update_monthly_donation' | 'info_only' | 'no_match' | 'skip'
+  action:         'update_monthly_donation' | 'no_match' | 'skip'
   reason?:        string
   host?:          string
 }
