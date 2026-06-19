@@ -19,7 +19,11 @@ const NAV_LINKS: { href: string; label: string; tabs?: { key: string; label: str
     { key: 'actual',   label: '💸 תשלומים בפועל' },
   ]},
   { href: '/dashboard/women',        label: 'נשים' },
-  { href: '/dashboard/donations',    label: '💚 מגבית' },
+  { href: '/dashboard/donations',    label: '💚 מגבית', tabs: [
+    { key: 'definitions', label: 'הגדרה' },
+    { key: 'planned',     label: 'תשלומים מתוכננים' },
+    { key: 'executed',    label: 'תשלומים שבוצעו' },
+  ]},
   { href: '/dashboard/reports',      label: 'דוחות', tabs: [
     { key: 'debts',              label: 'דוח חובות' },
     { key: 'tuition',            label: 'שכר לימוד לפי חודש' },
@@ -52,12 +56,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const startX   = useRef(0)
   const startW   = useRef(0)
   const [hoveredHref, setHoveredHref] = useState<string | null>(null)
-  const [tooltipY, setTooltipY]       = useState(0)
+  const [tooltipPos, setTooltipPos]   = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const onLinkEnter = (href: string, e: React.MouseEvent<HTMLElement>) => {
+  const onLinkEnter = (href: string, e: React.MouseEvent<HTMLElement>, mode: 'sidebar' | 'topbar') => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    setTooltipY((e.currentTarget as HTMLElement).getBoundingClientRect().top)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (mode === 'topbar') {
+      setTooltipPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    } else {
+      setTooltipPos({ top: rect.top, right: sideW + 6 })
+    }
     setHoveredHref(href)
   }
   const onLinkLeave = () => {
@@ -68,6 +77,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
   const onTooltipLeave = () => {
     hoverTimer.current = setTimeout(() => setHoveredHref(null), 120)
+  }
+
+  const renderTooltip = () => {
+    const link = hoveredHref ? NAV_LINKS.find(l => l.href === hoveredHref) : null
+    if (!link?.tabs?.length) return null
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: tooltipPos.top,
+          right: tooltipPos.right,
+          zIndex: 50,
+          background: 'linear-gradient(180deg, #0d1f52 0%, #1a3a7a 100%)',
+          borderRadius: 8,
+          padding: 4,
+          minWidth: 190,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          border: '1px solid rgba(255,255,255,0.12)',
+        }}
+        onMouseEnter={onTooltipEnter}
+        onMouseLeave={onTooltipLeave}
+      >
+        {link.tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setHoveredHref(null); router.push(`${link.href}?tab=${tab.key}`) }}
+            className="block w-full text-right px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors whitespace-nowrap"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    )
   }
 
   useEffect(() => {
@@ -143,21 +185,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Nav links */}
           <nav className="flex items-center gap-0.5 flex-1 overflow-x-auto">
-            {NAV_LINKS.map(({ href, label }) => {
+            {NAV_LINKS.map(({ href, label, tabs }) => {
               const isActive = href === '/dashboard'
                 ? pathname === '/dashboard'
                 : pathname.startsWith(href)
               return (
-                <Link key={href} href={href}
-                  className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${
-                    isActive
-                      ? 'text-[#0d1f52] font-bold'
-                      : 'text-white/80 hover:text-white hover:bg-white/10'
-                  }`}
-                  style={isActive ? { backgroundColor: '#d4a921' } : {}}
+                <div key={href} className="relative"
+                  onMouseEnter={tabs?.length ? (e) => onLinkEnter(href, e, 'topbar') : undefined}
+                  onMouseLeave={tabs?.length ? onLinkLeave : undefined}
                 >
-                  {label}
-                </Link>
+                  <Link href={href}
+                    className={`block px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${
+                      isActive
+                        ? 'text-[#0d1f52] font-bold'
+                        : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }`}
+                    style={isActive ? { backgroundColor: '#d4a921' } : {}}
+                  >
+                    {label}
+                  </Link>
+                </div>
               )
             })}
           </nav>
@@ -176,6 +223,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </header>
+
+        {renderTooltip()}
 
         <main className="min-h-screen py-6 px-4 sm:px-6" style={{ paddingTop: 64 }} dir="rtl">
           {children}
@@ -218,7 +267,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               : pathname.startsWith(href)
             return (
               <div key={href} className="mx-2 my-0.5"
-                onMouseEnter={tabs?.length ? (e) => onLinkEnter(href, e) : undefined}
+                onMouseEnter={tabs?.length ? (e) => onLinkEnter(href, e, 'sidebar') : undefined}
                 onMouseLeave={tabs?.length ? onLinkLeave : undefined}
               >
                 <Link href={href}
@@ -236,39 +285,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Tab tooltip – rendered as fixed so it escapes sidebar overflow */}
-        {(() => {
-          const link = hoveredHref ? NAV_LINKS.find(l => l.href === hoveredHref) : null
-          if (!link?.tabs?.length) return null
-          return (
-            <div
-              style={{
-                position: 'fixed',
-                top: tooltipY,
-                right: sideW + 6,
-                zIndex: 50,
-                background: 'linear-gradient(180deg, #0d1f52 0%, #1a3a7a 100%)',
-                borderRadius: 8,
-                padding: 4,
-                minWidth: 190,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                border: '1px solid rgba(255,255,255,0.12)',
-              }}
-              onMouseEnter={onTooltipEnter}
-              onMouseLeave={onTooltipLeave}
-            >
-              {link.tabs.map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => { setHoveredHref(null); router.push(`${link.href}?tab=${tab.key}`) }}
-                  className="block w-full text-right px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors whitespace-nowrap"
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          )
-        })()}
+        {renderTooltip()}
 
         {/* Toggle to topbar */}
         <div className="px-3 pt-2 border-t border-white/10">

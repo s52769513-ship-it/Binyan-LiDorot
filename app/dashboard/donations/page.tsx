@@ -1,7 +1,8 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 const EmployeeCard        = dynamic(() => import('@/components/EmployeeCard'),        { ssr: false })
 const DonationImportModal = dynamic(() => import('@/components/DonationImportModal'), { ssr: false })
@@ -41,6 +42,35 @@ interface Summary {
   totalUnpaid:  number
   month:        string
 }
+interface PlannedPP {
+  id:         string
+  name:       string
+  amount:     number
+  balance:    number
+  date:       string
+  monthYear:  string
+  parentIds:  string[]
+  parentName: string
+}
+interface DonationPayment {
+  id:           string
+  amount:       number
+  type:         string
+  date:         string
+  monthYear:    string
+  notes:        string
+  parentIds:    string[]
+  parentName:   string
+  projectNames: string[]
+}
+
+type Tab = 'definitions' | 'planned' | 'executed'
+
+const fmtDate = (d: string) => {
+  if (!d) return '—'
+  const [y, m, day] = d.split('-')
+  return day ? `${day}/${m}/${y.slice(2)}` : d
+}
 
 /* ─── Summary cards ──────────────────────────────────── */
 function SummaryCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
@@ -63,28 +93,65 @@ function StatusBadge({ donor }: { donor: DonorRow }) {
 }
 
 /* ─── Main page ──────────────────────────────────────── */
-export default function DonationsPage() {
+function DonationsPageContent() {
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<Tab>(
+    (searchParams.get('tab') as Tab) || 'definitions'
+  )
+  useEffect(() => {
+    const t = searchParams.get('tab') as Tab
+    if (t) setTab(t)
+  }, [searchParams])
   const [month, setMonth]           = useState(currentMY())
   const [donors, setDonors]         = useState<DonorRow[]>([])
   const [summary, setSummary]       = useState<Summary | null>(null)
+  const [planned, setPlanned]       = useState<PlannedPP[]>([])
+  const [executed, setExecuted]     = useState<DonationPayment[]>([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [filterMethod, setFilterMethod] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [linking, setLinking]       = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/donations?month=${encodeURIComponent(month)}`)
-      const d = await r.json()
-      setDonors(d.donors ?? [])
-      setSummary(d.summary ?? null)
+      if (tab === 'definitions') {
+        const r = await fetch(`/api/donations?month=${encodeURIComponent(month)}`)
+        const d = await r.json()
+        setDonors(d.donors ?? [])
+        setSummary(d.summary ?? null)
+      } else if (tab === 'planned') {
+        const r = await fetch(`/api/planned-payments?ppType=donation&monthYear=${encodeURIComponent(month)}&withParentNames=true`)
+        const d = await r.json()
+        setPlanned(Array.isArray(d) ? d : [])
+      } else {
+        const r = await fetch(`/api/donations/payments?month=${encodeURIComponent(month)}`)
+        const d = await r.json()
+        setExecuted(d.payments ?? [])
+      }
     } catch {} finally { setLoading(false) }
-  }, [month])
+  }, [month, tab])
 
   useEffect(() => { load() }, [load])
+
+  const linkPayments = async () => {
+    if (linking) return
+    setLinking(true)
+    try {
+      const r = await fetch('/api/admin/link-donation-payments', { method: 'POST' })
+      const d = await r.json()
+      if (d.error) alert('שגיאה בקישור: ' + d.error)
+      else alert(`קושרו ${d.linked} תנועות עבור ${d.parents} תורמים`)
+      await load()
+    } catch {
+      alert('שגיאה בקישור התשלומים')
+    } finally {
+      setLinking(false)
+    }
+  }
 
   const filtered = donors.filter(d => {
     if (search && !d.name.includes(search) && !d.lastName.includes(search)) return false
@@ -117,16 +184,46 @@ export default function DonationsPage() {
           />
           <span className="text-sm font-medium text-emerald-700">{fmtMY(month)}</span>
           <button
-            onClick={() => setShowImport(true)}
-            className="px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+            onClick={linkPayments}
+            disabled={linking}
+            className="px-4 py-2 rounded-xl text-sm font-semibold border border-emerald-600 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
           >
-            ⬆ ייבוא CSV
+            {linking ? 'מקשר...' : '🔗 קשר תשלומים'}
           </button>
+          {tab === 'definitions' && (
+            <button
+              onClick={() => setShowImport(true)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+            >
+              ⬆ ייבוא CSV
+            </button>
+          )}
         </div>
       </div>
 
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          ['definitions', 'הגדרה'],
+          ['planned',     'תשלומים מתוכננים'],
+          ['executed',    'תשלומים שבוצעו'],
+        ] as [Tab, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 transition-colors ${
+              tab === key
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Summary cards ── */}
-      {summary && (
+      {tab === 'definitions' && summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <SummaryCard
             label="תורמים פעילים"
@@ -152,7 +249,8 @@ export default function DonationsPage() {
         </div>
       )}
 
-      {/* ── Filters ── */}
+      {/* ── Filters (definitions) ── */}
+      {tab === 'definitions' && (
       <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -190,8 +288,10 @@ export default function DonationsPage() {
         )}
         <span className="text-xs text-gray-400 mr-auto">{filtered.length} תורמים</span>
       </div>
+      )}
 
-      {/* ── Table ── */}
+      {/* ── Table (definitions) ── */}
+      {tab === 'definitions' && (
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="p-8 space-y-3">
@@ -259,6 +359,110 @@ export default function DonationsPage() {
           </table>
         )}
       </div>
+      )}
+
+      {/* ── Planned payments tab ── */}
+      {tab === 'planned' && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="p-8 space-y-3">
+              {[1,2,3,4,5].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse"/>)}
+            </div>
+          ) : planned.length === 0 ? (
+            <div className="p-12 text-center text-gray-400">
+              <p className="text-4xl mb-3">📅</p>
+              <p className="font-medium">אין תשלומים מתוכננים לחודש זה</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b sticky top-0">
+                <tr className="text-right text-xs text-gray-500">
+                  <th className="px-4 py-3">תורם</th>
+                  <th className="px-4 py-3">תיאור</th>
+                  <th className="px-4 py-3">תאריך</th>
+                  <th className="px-4 py-3 text-left">סכום</th>
+                  <th className="px-4 py-3 text-left">יתרה</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {planned.map(pp => (
+                  <tr
+                    key={pp.id}
+                    onClick={() => pp.parentIds[0] && setSelectedParent(pp.parentIds[0])}
+                    className="hover:bg-emerald-50/50 cursor-pointer transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-gray-800">{pp.parentName || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500">{pp.name}</td>
+                    <td className="px-4 py-3 text-gray-500 tabular-nums">{fmtDate(pp.date)}</td>
+                    <td className="px-4 py-3 text-left tabular-nums text-emerald-700 font-semibold">{fmt(pp.amount)}</td>
+                    <td className="px-4 py-3 text-left tabular-nums text-gray-500">{fmt(pp.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 border-t">
+                <tr className="text-xs font-semibold text-gray-600">
+                  <td className="px-4 py-3" colSpan={3}>סה&quot;כ ({planned.length})</td>
+                  <td className="px-4 py-3 text-left tabular-nums text-emerald-700">
+                    {fmt(planned.reduce((s, p) => s + p.amount, 0))}
+                  </td>
+                  <td className="px-4 py-3 text-left tabular-nums">
+                    {fmt(planned.reduce((s, p) => s + p.balance, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── Executed payments tab ── */}
+      {tab === 'executed' && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="p-8 space-y-3">
+              {[1,2,3,4,5].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse"/>)}
+            </div>
+          ) : executed.length === 0 ? (
+            <div className="p-12 text-center text-gray-400">
+              <p className="text-4xl mb-3">✅</p>
+              <p className="font-medium">אין תשלומים שבוצעו לחודש זה</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b sticky top-0">
+                <tr className="text-right text-xs text-gray-500">
+                  <th className="px-4 py-3">תורם</th>
+                  <th className="px-4 py-3">תאריך</th>
+                  <th className="px-4 py-3">אמצעי</th>
+                  <th className="px-4 py-3 text-left">סכום</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {executed.map(p => (
+                  <tr
+                    key={p.id}
+                    onClick={() => p.parentIds[0] && setSelectedParent(p.parentIds[0])}
+                    className="hover:bg-emerald-50/50 cursor-pointer transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-gray-800">{p.parentName || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 tabular-nums">{fmtDate(p.date)}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.type || '—'}</td>
+                    <td className="px-4 py-3 text-left tabular-nums text-emerald-700 font-semibold">{fmt(p.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 border-t">
+                <tr className="text-xs font-semibold text-gray-600">
+                  <td className="px-4 py-3" colSpan={3}>סה&quot;כ ({executed.length})</td>
+                  <td className="px-4 py-3 text-left tabular-nums text-emerald-700">
+                    {fmt(executed.reduce((s, p) => s + p.amount, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* ── Parent card modal ── */}
       {selectedParent && (
@@ -277,4 +481,8 @@ export default function DonationsPage() {
       )}
     </div>
   )
+}
+
+export default function DonationsPage() {
+  return <Suspense><DonationsPageContent /></Suspense>
 }
