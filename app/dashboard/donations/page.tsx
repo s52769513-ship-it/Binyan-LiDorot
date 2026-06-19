@@ -426,7 +426,6 @@ export default function DonationsPage() {
                   <th className="px-4 py-3">תורם</th>
                   <th className="px-4 py-3">תאריך</th>
                   <th className="px-4 py-3">אמצעי</th>
-                  <th className="px-4 py-3">הערות</th>
                   <th className="px-4 py-3 text-left">סכום</th>
                 </tr>
               </thead>
@@ -440,14 +439,13 @@ export default function DonationsPage() {
                     <td className="px-4 py-3 font-medium text-gray-800">{p.parentName || '—'}</td>
                     <td className="px-4 py-3 text-gray-500 tabular-nums">{fmtDate(p.date)}</td>
                     <td className="px-4 py-3 text-gray-600">{p.type || '—'}</td>
-                    <td className="px-4 py-3 text-gray-400 max-w-[220px] truncate">{p.notes || '—'}</td>
                     <td className="px-4 py-3 text-left tabular-nums text-emerald-700 font-semibold">{fmt(p.amount)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-gray-50 border-t">
                 <tr className="text-xs font-semibold text-gray-600">
-                  <td className="px-4 py-3" colSpan={4}>סה&quot;כ ({executed.length})</td>
+                  <td className="px-4 py-3" colSpan={3}>סה&quot;כ ({executed.length})</td>
                   <td className="px-4 py-3 text-left tabular-nums text-emerald-700">
                     {fmt(executed.reduce((s, p) => s + p.amount, 0))}
                   </td>

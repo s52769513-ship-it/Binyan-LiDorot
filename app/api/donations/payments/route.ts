@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         monthYear:    String(t.month_year || ''),
         notes:        String(t.notes || ''),
         parentIds:    ids,
-        parentName:   ids.map(id => parentMap[id]).filter(Boolean).join(', '),
+        parentName:   ids[0] ? (parentMap[ids[0]] ?? '') : '',
         projectNames: (t.project_names as string[]) ?? [],
       }
     })
