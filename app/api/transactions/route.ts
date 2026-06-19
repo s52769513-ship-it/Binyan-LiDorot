@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcDonationPPs } from '@/app/api/admin/link-donation-payments/route'
 
 const PAGE_SIZE = 50
 
@@ -263,6 +264,15 @@ export async function POST(req: NextRequest) {
       } catch (ppErr) {
         console.error('planned payment balance update error:', ppErr)
         // Do not fail the transaction — it was already saved
+      }
+    }
+
+    // Auto-link donation payments to donation PPs (oldest debt first)
+    if (Array.isArray(projectNames) && projectNames.includes('דמי מגבית') && Array.isArray(parentIds)) {
+      try {
+        for (const pid of parentIds) await recalcDonationPPs(pid)
+      } catch (donErr) {
+        console.warn('donation auto-link skipped:', donErr)
       }
     }
 
