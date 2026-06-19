@@ -136,7 +136,7 @@ export default function DonationsPage() {
       const r = await fetch('/api/admin/link-donation-payments', { method: 'POST' })
       const d = await r.json()
       if (d.error) alert('שגיאה בקישור: ' + d.error)
-      else alert(`קושרו ${d.linked} תנועות, עודכנו ${d.ppsUpdated} תשלומים מתוכננים`)
+      else alert(`קושרו ${d.linked} תנועות עבור ${d.parents} תורמים`)
       await load()
     } catch {
       alert('שגיאה בקישור התשלומים')
