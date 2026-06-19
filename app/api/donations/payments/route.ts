@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
+
+/**
+ * תנועות תשלום של דמי מגבית — תשלומים שבוצעו כנגד PP מסוג donation.
+ * אופציונלי מסונן לפי חודש (month_year של ה-PP).
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const month = req.nextUrl.searchParams.get('month') ?? ''
+
+    // 1. Find donation PPs (optionally for a specific month)
+    let ppQuery = supabaseAdmin
+      .from('planned_payments')
+      .select('id')
+      .eq('pp_type', 'donation')
+    if (month) ppQuery = ppQuery.eq('month_year', month)
+    const { data: pps, error: e1 } = await ppQuery
+    if (e1) throw e1
+
+    const ppIds = (pps ?? []).map(p => p.id)
+    if (ppIds.length === 0) return NextResponse.json({ payments: [] })
+
+    // 2. Transactions linked to those donation PPs
+    const { data: txs, error: e2 } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+      .in('planned_payment_id', ppIds)
+      .order('date', { ascending: false })
+    if (e2) throw e2
+
+    // 3. Join parent names
+    const allParentIds = [...new Set((txs ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
+    let parentMap: Record<string, string> = {}
+    if (allParentIds.length > 0) {
+      const { data: pData } = await supabaseAdmin.from('parents').select('id, name').in('id', allParentIds)
+      parentMap = Object.fromEntries((pData ?? []).map(p => [p.id, p.name as string]))
+    }
+
+    const payments = (txs ?? []).map(t => {
+      const ids = (t.parent_ids as string[]) ?? []
+      return {
+        id:           t.id as string,
+        amount:       Number(t.amount) || 0,
+        type:         String(t.type || ''),
+        date:         String(t.date || ''),
+        monthYear:    String(t.month_year || ''),
+        notes:        String(t.notes || ''),
+        parentIds:    ids,
+        parentName:   ids.map(id => parentMap[id]).filter(Boolean).join(', '),
+        projectNames: (t.project_names as string[]) ?? [],
+      }
+    })
+
+    return NextResponse.json({ payments })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
