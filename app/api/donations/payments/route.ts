@@ -2,34 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
 /**
- * תנועות תשלום של דמי מגבית — תשלומים שבוצעו כנגד PP מסוג donation.
- * אופציונלי מסונן לפי חודש (month_year של ה-PP).
+ * תנועות תשלום של דמי מגבית — כל התנועות שמסווגות כ"דמי מגבית".
+ * אינן חייבות להיות מקושרות ל-PP (תנועות מיובאות לרוב אינן מקושרות).
+ * אופציונלי מסונן לפי חודש (month_year).
  */
 export async function GET(req: NextRequest) {
   try {
     const month = req.nextUrl.searchParams.get('month') ?? ''
 
-    // 1. Find donation PPs (optionally for a specific month)
-    let ppQuery = supabaseAdmin
-      .from('planned_payments')
-      .select('id')
-      .eq('pp_type', 'donation')
-    if (month) ppQuery = ppQuery.eq('month_year', month)
-    const { data: pps, error: e1 } = await ppQuery
-    if (e1) throw e1
-
-    const ppIds = (pps ?? []).map(p => p.id)
-    if (ppIds.length === 0) return NextResponse.json({ payments: [] })
-
-    // 2. Transactions linked to those donation PPs
-    const { data: txs, error: e2 } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('transactions')
       .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
-      .in('planned_payment_id', ppIds)
+      .contains('project_names', ['דמי מגבית'])
       .order('date', { ascending: false })
-    if (e2) throw e2
+    if (month) query = query.eq('month_year', month)
 
-    // 3. Join parent names
+    const { data: txs, error } = await query
+    if (error) throw error
+
+    // Join parent names
     const allParentIds = [...new Set((txs ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
     let parentMap: Record<string, string> = {}
     if (allParentIds.length > 0) {
