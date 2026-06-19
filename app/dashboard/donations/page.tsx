@@ -105,6 +105,7 @@ export default function DonationsPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [linking, setLinking]       = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -127,6 +128,22 @@ export default function DonationsPage() {
   }, [month, tab])
 
   useEffect(() => { load() }, [load])
+
+  const linkPayments = async () => {
+    if (linking) return
+    setLinking(true)
+    try {
+      const r = await fetch('/api/admin/link-donation-payments', { method: 'POST' })
+      const d = await r.json()
+      if (d.error) alert('שגיאה בקישור: ' + d.error)
+      else alert(`קושרו ${d.linked} תנועות, עודכנו ${d.ppsUpdated} תשלומים מתוכננים`)
+      await load()
+    } catch {
+      alert('שגיאה בקישור התשלומים')
+    } finally {
+      setLinking(false)
+    }
+  }
 
   const filtered = donors.filter(d => {
     if (search && !d.name.includes(search) && !d.lastName.includes(search)) return false
@@ -158,6 +175,13 @@ export default function DonationsPage() {
             dir="ltr"
           />
           <span className="text-sm font-medium text-emerald-700">{fmtMY(month)}</span>
+          <button
+            onClick={linkPayments}
+            disabled={linking}
+            className="px-4 py-2 rounded-xl text-sm font-semibold border border-emerald-600 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+          >
+            {linking ? 'מקשר...' : '🔗 קשר תשלומים'}
+          </button>
           {tab === 'definitions' && (
             <button
               onClick={() => setShowImport(true)}
