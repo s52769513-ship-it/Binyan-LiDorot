@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EmployeeCard from '@/components/EmployeeCard'
 
@@ -821,7 +821,7 @@ function InfoChip({ label, value, color }: { label: string; value: string; color
 /* ═══════════════════════════════════════════════════════
    MAIN PAGE
 ═══════════════════════════════════════════════════════ */
-export default function SalariesPage() {
+function SalariesPageContent() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<TabKey>(
     (searchParams.get('tab') as TabKey) || 'settings'
@@ -866,4 +866,8 @@ export default function SalariesPage() {
       {tab === 'actual'   && <ActualTab />}
     </div>
   )
+}
+
+export default function SalariesPage() {
+  return <Suspense><SalariesPageContent /></Suspense>
 }

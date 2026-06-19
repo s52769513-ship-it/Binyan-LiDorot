@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
@@ -57,7 +57,7 @@ interface PreviewData {
 
 type TuitionTab = 'kids' | 'planned'
 
-export default function TuitionPage() {
+function TuitionPageContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<TuitionTab>(
     (searchParams.get('tab') as TuitionTab) || 'kids'
@@ -868,4 +868,8 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
       )}
     </div>
   )
+}
+
+export default function TuitionPage() {
+  return <Suspense><TuitionPageContent /></Suspense>
 }

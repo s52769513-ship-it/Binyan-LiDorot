@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
@@ -468,7 +468,7 @@ function ParentPicker({ student, parents, onLink }: {
 }
 
 /* ─── Main settings page ──────────────────────────────── */
-export default function SettingsPage() {
+function SettingsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(
@@ -671,6 +671,10 @@ CREATE POLICY "service_role_all" ON institution_settings
 
 
 const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white text-right'
+
+export default function SettingsPage() {
+  return <Suspense><SettingsPageContent /></Suspense>
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 /* ─── Interfaces ─── */
@@ -368,7 +368,7 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
 /* ════════════════════════════════════════════════════
    MAIN REPORTS PAGE
 ════════════════════════════════════════════════════ */
-export default function ReportsPage() {
+function ReportsPageContent() {
   const searchParams = useSearchParams()
   const [report, setReport] = useState<ReportType>(
     (searchParams.get('tab') as ReportType) || 'debts'
@@ -661,4 +661,8 @@ export default function ReportsPage() {
       )}
     </div>
   )
+}
+
+export default function ReportsPage() {
+  return <Suspense><ReportsPageContent /></Suspense>
 }
