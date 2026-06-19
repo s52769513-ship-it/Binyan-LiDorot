@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
@@ -57,10 +58,14 @@ interface PreviewData {
 type TuitionTab = 'kids' | 'planned'
 
 export default function TuitionPage() {
-  const [activeTab, setActiveTab] = useState<TuitionTab>(() => {
-    if (typeof window === 'undefined') return 'kids'
-    return (new URLSearchParams(window.location.search).get('tab') as TuitionTab) || 'kids'
-  })
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState<TuitionTab>(
+    (searchParams.get('tab') as TuitionTab) || 'kids'
+  )
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TuitionTab
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
   const [data, setData]         = useState<KidsData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')

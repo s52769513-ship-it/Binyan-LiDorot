@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 /* ─── Interfaces ─── */
 interface DebtRow {
@@ -368,7 +369,14 @@ function ParentDebtReportModal({ parentId, onClose }: { parentId: string; onClos
    MAIN REPORTS PAGE
 ════════════════════════════════════════════════════ */
 export default function ReportsPage() {
-  const [report, setReport]             = useState<ReportType>('debts')
+  const searchParams = useSearchParams()
+  const [report, setReport] = useState<ReportType>(
+    (searchParams.get('tab') as ReportType) || 'debts'
+  )
+  useEffect(() => {
+    const tab = searchParams.get('tab') as ReportType
+    if (tab) setReport(tab)
+  }, [searchParams])
   const [loading, setLoading]           = useState(false)
   const [debtRows, setDebtRows]         = useState<DebtRow[]>([])
   const [tuitionRows, setTuitionRows]   = useState<TuitionRow[]>([])

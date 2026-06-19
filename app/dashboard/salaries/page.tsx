@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import EmployeeCard from '@/components/EmployeeCard'
 
 const AddTransactionModal = dynamic(() => import('@/components/AddTransactionModal'), { ssr: false })
@@ -821,10 +822,14 @@ function InfoChip({ label, value, color }: { label: string; value: string; color
    MAIN PAGE
 ═══════════════════════════════════════════════════════ */
 export default function SalariesPage() {
-  const [tab, setTab] = useState<TabKey>(() => {
-    if (typeof window === 'undefined') return 'settings'
-    return (new URLSearchParams(window.location.search).get('tab') as TabKey) || 'settings'
-  })
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<TabKey>(
+    (searchParams.get('tab') as TabKey) || 'settings'
+  )
+  useEffect(() => {
+    const t = searchParams.get('tab') as TabKey
+    if (t) setTab(t)
+  }, [searchParams])
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'settings', label: '⚙ הגדרות משכורת' },

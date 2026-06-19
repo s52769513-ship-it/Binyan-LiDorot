@@ -20,7 +20,11 @@ const NAV_LINKS: { href: string; label: string; tabs?: { key: string; label: str
   ]},
   { href: '/dashboard/women',        label: 'נשים' },
   { href: '/dashboard/donations',    label: '💚 מגבית' },
-  { href: '/dashboard/reports',      label: 'דוחות' },
+  { href: '/dashboard/reports',      label: 'דוחות', tabs: [
+    { key: 'debts',              label: 'דוח חובות' },
+    { key: 'tuition',            label: 'שכר לימוד לפי חודש' },
+    { key: 'students-per-class', label: 'תלמידים לפי כיתה' },
+  ]},
   { href: '/dashboard/register',     label: 'רישום תלמיד' },
   { href: '/dashboard/settings',     label: '⚙ הגדרות', tabs: [
     { key: 'general',     label: 'הגדרות מוסד' },

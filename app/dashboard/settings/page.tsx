@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 
@@ -470,10 +470,14 @@ function ParentPicker({ student, parents, onLink }: {
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const router = useRouter()
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
-    if (typeof window === 'undefined') return 'general'
-    return (new URLSearchParams(window.location.search).get('tab') as SettingsTab) || 'general'
-  })
+  const searchParams = useSearchParams()
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(
+    (searchParams.get('tab') as SettingsTab) || 'general'
+  )
+  useEffect(() => {
+    const tab = searchParams.get('tab') as SettingsTab
+    if (tab) setSettingsTab(tab)
+  }, [searchParams])
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
