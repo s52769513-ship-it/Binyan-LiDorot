@@ -57,7 +57,10 @@ interface PreviewData {
 type TuitionTab = 'kids' | 'planned'
 
 export default function TuitionPage() {
-  const [activeTab, setActiveTab] = useState<TuitionTab>('kids')
+  const [activeTab, setActiveTab] = useState<TuitionTab>(() => {
+    if (typeof window === 'undefined') return 'kids'
+    return (new URLSearchParams(window.location.search).get('tab') as TuitionTab) || 'kids'
+  })
   const [data, setData]         = useState<KidsData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')

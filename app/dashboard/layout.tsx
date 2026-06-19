@@ -4,18 +4,30 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
-const NAV_LINKS = [
-  { href: '/dashboard',             label: 'דשבורד'      },
-  { href: '/dashboard/parents',     label: 'אנ"ש'        },
-  { href: '/dashboard/students',    label: 'תלמידים'     },
-  { href: '/dashboard/tuition',     label: 'שכ"ל'        },
-  { href: '/dashboard/transactions',label: 'תנועות'      },
-  { href: '/dashboard/salaries',    label: '💼 משכורות'  },
-  { href: '/dashboard/women',       label: 'נשים'        },
-  { href: '/dashboard/donations',    label: '💚 מגבית'    },
-  { href: '/dashboard/reports',     label: 'דוחות'       },
-  { href: '/dashboard/register',    label: 'רישום תלמיד' },
-  { href: '/dashboard/settings',    label: '⚙ הגדרות'   },
+const NAV_LINKS: { href: string; label: string; tabs?: { key: string; label: string }[] }[] = [
+  { href: '/dashboard',              label: 'דשבורד' },
+  { href: '/dashboard/parents',      label: 'אנ"ש' },
+  { href: '/dashboard/students',     label: 'תלמידים' },
+  { href: '/dashboard/tuition',      label: 'שכ"ל', tabs: [
+    { key: 'kids',    label: 'ילדים' },
+    { key: 'planned', label: '📋 תשלומים מתוכננים' },
+  ]},
+  { href: '/dashboard/transactions', label: 'תנועות' },
+  { href: '/dashboard/salaries',     label: '💼 משכורות', tabs: [
+    { key: 'settings', label: '⚙ הגדרות משכורת' },
+    { key: 'planned',  label: '📋 תשלומים מתוכננים' },
+    { key: 'actual',   label: '💸 תשלומים בפועל' },
+  ]},
+  { href: '/dashboard/women',        label: 'נשים' },
+  { href: '/dashboard/donations',    label: '💚 מגבית' },
+  { href: '/dashboard/reports',      label: 'דוחות' },
+  { href: '/dashboard/register',     label: 'רישום תלמיד' },
+  { href: '/dashboard/settings',     label: '⚙ הגדרות', tabs: [
+    { key: 'general',     label: 'הגדרות מוסד' },
+    { key: 'automations', label: '🤖 אוטומציות' },
+    { key: 'merge',       label: '🔗 איחוד כרטיסים' },
+    { key: 'import',      label: '📤 ייבוא תלמידים' },
+  ]},
 ]
 
 const MIN_W = 160
@@ -35,6 +47,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const dragging = useRef(false)
   const startX   = useRef(0)
   const startW   = useRef(0)
+  const [hoveredHref, setHoveredHref] = useState<string | null>(null)
+  const [tooltipY, setTooltipY]       = useState(0)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const onLinkEnter = (href: string, e: React.MouseEvent<HTMLElement>) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setTooltipY((e.currentTarget as HTMLElement).getBoundingClientRect().top)
+    setHoveredHref(href)
+  }
+  const onLinkLeave = () => {
+    hoverTimer.current = setTimeout(() => setHoveredHref(null), 120)
+  }
+  const onTooltipEnter = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+  }
+  const onTooltipLeave = () => {
+    hoverTimer.current = setTimeout(() => setHoveredHref(null), 120)
+  }
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('auth_email')) {
@@ -178,24 +208,63 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV_LINKS.map(({ href, label }) => {
+          {NAV_LINKS.map(({ href, label, tabs }) => {
             const isActive = href === '/dashboard'
               ? pathname === '/dashboard'
               : pathname.startsWith(href)
             return (
-              <Link key={href} href={href}
-                className={`flex items-center gap-2 px-3 py-2 mx-2 my-0.5 rounded-lg text-sm font-medium transition-all truncate ${
-                  isActive
-                    ? 'text-[#0d1f52] font-bold shadow-sm'
-                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                style={isActive ? { backgroundColor: '#d4a921' } : {}}
+              <div key={href} className="mx-2 my-0.5"
+                onMouseEnter={tabs?.length ? (e) => onLinkEnter(href, e) : undefined}
+                onMouseLeave={tabs?.length ? onLinkLeave : undefined}
               >
-                {label}
-              </Link>
+                <Link href={href}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all truncate ${
+                    isActive
+                      ? 'text-[#0d1f52] font-bold shadow-sm'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                  style={isActive ? { backgroundColor: '#d4a921' } : {}}
+                >
+                  {label}
+                </Link>
+              </div>
             )
           })}
         </nav>
+
+        {/* Tab tooltip – rendered as fixed so it escapes sidebar overflow */}
+        {(() => {
+          const link = hoveredHref ? NAV_LINKS.find(l => l.href === hoveredHref) : null
+          if (!link?.tabs?.length) return null
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                top: tooltipY,
+                right: sideW + 6,
+                zIndex: 50,
+                background: 'linear-gradient(180deg, #0d1f52 0%, #1a3a7a 100%)',
+                borderRadius: 8,
+                padding: 4,
+                minWidth: 190,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.12)',
+              }}
+              onMouseEnter={onTooltipEnter}
+              onMouseLeave={onTooltipLeave}
+            >
+              {link.tabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => { setHoveredHref(null); router.push(`${link.href}?tab=${tab.key}`) }}
+                  className="block w-full text-right px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors whitespace-nowrap"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Toggle to topbar */}
         <div className="px-3 pt-2 border-t border-white/10">

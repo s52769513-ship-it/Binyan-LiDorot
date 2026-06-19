@@ -470,7 +470,10 @@ function ParentPicker({ student, parents, onLink }: {
 /* ─── Main settings page ──────────────────────────────── */
 export default function SettingsPage() {
   const router = useRouter()
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
+    if (typeof window === 'undefined') return 'general'
+    return (new URLSearchParams(window.location.search).get('tab') as SettingsTab) || 'general'
+  })
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)

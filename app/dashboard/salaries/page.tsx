@@ -821,7 +821,10 @@ function InfoChip({ label, value, color }: { label: string; value: string; color
    MAIN PAGE
 ═══════════════════════════════════════════════════════ */
 export default function SalariesPage() {
-  const [tab, setTab] = useState<TabKey>('settings')
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window === 'undefined') return 'settings'
+    return (new URLSearchParams(window.location.search).get('tab') as TabKey) || 'settings'
+  })
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'settings', label: '⚙ הגדרות משכורת' },
