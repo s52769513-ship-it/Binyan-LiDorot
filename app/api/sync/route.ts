@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, S, T, D, PP, PROJ, PS, W } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
+import { linkAllDonationPayments } from '@/app/api/admin/link-donation-payments/route'
 
 async function upsertAndPrune<R extends { id: string; synced_at: string }>(
   table: string,
@@ -357,6 +358,13 @@ export async function POST() {
       }
     } catch (allocErr) {
       console.warn('payment_allocations skipped (run schema migration):', allocErr)
+    }
+
+    // Auto-link donation payments to donation PPs (oldest debt first)
+    try {
+      await linkAllDonationPayments()
+    } catch (donErr) {
+      console.warn('donation auto-link skipped:', donErr)
     }
 
     // Record sync log

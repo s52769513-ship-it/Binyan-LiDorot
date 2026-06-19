@@ -16,7 +16,7 @@ function parseMY(my: string): number {
   return (y || 0) * 100 + (m || 0)
 }
 
-async function recalcDonationPPs(parentId: string): Promise<number> {
+export async function recalcDonationPPs(parentId: string): Promise<number> {
   // PPs מגבית מהישן לחדש
   const { data: ppsRaw } = await supabaseAdmin
     .from('planned_payments')
@@ -75,23 +75,27 @@ async function recalcDonationPPs(parentId: string): Promise<number> {
   return linked
 }
 
+// קישור כל תשלומי המגבית עבור כל ההורים שיש להם PP מגבית
+export async function linkAllDonationPayments(): Promise<{ linked: number; parents: number }> {
+  const { data: pps, error } = await supabaseAdmin
+    .from('planned_payments')
+    .select('parent_ids')
+    .eq('pp_type', 'donation')
+  if (error) throw error
+
+  const parentIds = [...new Set((pps ?? []).flatMap(p => (p.parent_ids as string[]) ?? []))]
+
+  let linked = 0
+  for (const pid of parentIds) {
+    linked += await recalcDonationPPs(pid)
+  }
+  return { linked, parents: parentIds.length }
+}
+
 export async function POST() {
   try {
-    // כל ההורים שיש להם PP מגבית
-    const { data: pps, error } = await supabaseAdmin
-      .from('planned_payments')
-      .select('parent_ids')
-      .eq('pp_type', 'donation')
-    if (error) throw error
-
-    const parentIds = [...new Set((pps ?? []).flatMap(p => (p.parent_ids as string[]) ?? []))]
-
-    let linked = 0
-    for (const pid of parentIds) {
-      linked += await recalcDonationPPs(pid)
-    }
-
-    return NextResponse.json({ success: true, linked, parents: parentIds.length })
+    const { linked, parents } = await linkAllDonationPayments()
+    return NextResponse.json({ success: true, linked, parents })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('link-donation-payments error:', message)
