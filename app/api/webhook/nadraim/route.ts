@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
         .from('planned_payments')
         .select('id, amount, balance, month_year, name')
         .contains('parent_ids', [ppParentId])
-        .neq('name', 'משכורת')
+        .eq('pp_type', 'tuition')
         .gt('balance', 0)
         .order('month_year', { ascending: false })
 
