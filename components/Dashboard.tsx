@@ -415,15 +415,15 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-3 py-2 text-right font-semibold text-gray-600 whitespace-nowrap">חודש</th>
               {/* Tuition group */}
-              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={4}>
+              <th className="px-2 py-2 text-center font-semibold text-blue-700 whitespace-nowrap border-r border-gray-300 bg-blue-50" colSpan={4}>
                 הכנסות שכ״ל
               </th>
               {/* Donation group */}
-              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={2}>
+              <th className="px-2 py-2 text-center font-semibold text-emerald-700 whitespace-nowrap border-r border-gray-300 bg-emerald-50" colSpan={3}>
                 דמי מגבית
               </th>
               {/* Salary group */}
-              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
+              <th className="px-2 py-2 text-center font-semibold text-red-700 whitespace-nowrap border-r border-gray-300 bg-red-50" colSpan={3}>
                 הוצאות משכורת
               </th>
               <th className="px-3 py-2 text-center font-semibold text-gray-600 whitespace-nowrap">נטו</th>
@@ -433,12 +433,13 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-1 text-center">צפוי</th>
               <th className="px-2 py-1 text-center">נגבה</th>
               <th className="px-2 py-1 text-center">יתרה</th>
-              <th className="px-2 py-1 text-center border-r border-gray-100">%</th>
+              <th className="px-2 py-1 text-center border-r border-gray-300">%</th>
               <th className="px-2 py-1 text-center">צפוי</th>
-              <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
+              <th className="px-2 py-1 text-center">נגבה</th>
+              <th className="px-2 py-1 text-center border-r border-gray-300">יתרה</th>
               <th className="px-2 py-1 text-center">צפוי</th>
               <th className="px-2 py-1 text-center">שולם</th>
-              <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
+              <th className="px-2 py-1 text-center border-r border-gray-300">יתרה</th>
               <th className="px-3 py-1 text-center"></th>
             </tr>
           </thead>
@@ -472,7 +473,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                     <td className={`px-2 py-2 text-center tabular-nums ${row.tuition.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
                       {row.tuition.remaining > 0 ? `₪${fmt(row.tuition.remaining)}` : '—'}
                     </td>
-                    <td className="px-2 py-2 text-center border-r border-gray-100">
+                    <td className="px-2 py-2 text-center border-r border-gray-300">
                       {row.tuition.planned > 0 ? (
                         <span className={`text-[10px] px-1 py-0.5 rounded-full font-medium ${
                           row.tuition.collectionPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
@@ -485,7 +486,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                     </td>
                     {/* Donation */}
                     <td className="px-2 py-2 text-center tabular-nums">{row.donation.planned > 0 ? `₪${fmt(row.donation.planned)}` : '—'}</td>
-                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                    <td className={`px-2 py-2 text-center tabular-nums ${row.donation.collected > 0 && !isPast ? 'text-emerald-700' : ''}`}>
+                      {row.donation.collected > 0 ? `₪${fmt(row.donation.collected)}` : '—'}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-300 ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
                       {row.donation.remaining > 0 ? `₪${fmt(row.donation.remaining)}` : '—'}
                     </td>
                     {/* Salary */}
@@ -493,7 +497,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                     <td className={`px-2 py-2 text-center tabular-nums ${row.salary.paid > 0 && !isPast ? 'text-red-600' : ''}`}>
                       {row.salary.paid > 0 ? `₪${fmt(row.salary.paid)}` : '—'}
                     </td>
-                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.salary.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-300 ${row.salary.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
                       {row.salary.remaining > 0 ? `₪${fmt(row.salary.remaining)}` : '—'}
                     </td>
                     {/* Net */}
@@ -522,10 +526,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                       <td className="px-2 py-1.5 text-center tabular-nums">{vals.planned > 0 ? `₪${fmt(vals.planned)}` : '—'}</td>
                       <td className="px-2 py-1.5 text-center tabular-nums">{vals.collected > 0 ? `₪${fmt(vals.collected)}` : '—'}</td>
                       <td className="px-2 py-1.5 text-center tabular-nums">{vals.remaining > 0 ? `₪${fmt(vals.remaining)}` : '—'}</td>
-                      <td className="px-2 py-1.5 text-center border-r border-gray-100">
+                      <td className="px-2 py-1.5 text-center border-r border-gray-300">
                         {vals.planned > 0 ? `${Math.round((vals.collected / vals.planned) * 100)}%` : '—'}
                       </td>
-                      <td colSpan={6} />
+                      <td colSpan={7} />
                     </tr>
                   ))}
                 </>
