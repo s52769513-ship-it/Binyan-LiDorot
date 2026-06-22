@@ -31,16 +31,19 @@ export async function GET() {
       supabaseAdmin.from('classes').select('class_name, framework'),
     ])
 
-    // Build parent→framework map
+    // Build parent→framework map (by child count per framework)
     const classFrameworkMap: Record<string, string> = {}
     for (const c of classesRes.data ?? []) {
       if (c.framework) classFrameworkMap[c.class_name as string] = c.framework as string
     }
-    const parentFrameworkMap: Record<string, string> = {}
+    const parentFwCounts: Record<string, Record<string, number>> = {}
     for (const s of studentsRes.data ?? []) {
       const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
+      if (!fw) continue
       for (const pid of (s.parent_ids as string[]) ?? []) {
-        if (pid && fw && !parentFrameworkMap[pid]) parentFrameworkMap[pid] = fw
+        if (!pid) continue
+        if (!parentFwCounts[pid]) parentFwCounts[pid] = {}
+        parentFwCounts[pid][fw] = (parentFwCounts[pid][fw] ?? 0) + 1
       }
     }
 
@@ -78,15 +81,22 @@ export async function GET() {
       tuitionByMonth[m].collected += collected
       tuitionByMonth[m].remaining += balance
 
-      // dept breakdown
+      // dept breakdown — split proportionally by children per framework
       const pids = (row.parent_ids as string[]) ?? []
-      const fw = pids.length > 0 ? (parentFrameworkMap[pids[0]] ?? 'אחר') : 'אחר'
-      if (!tuitionByMonth[m].byDept[fw]) {
-        tuitionByMonth[m].byDept[fw] = { planned: 0, collected: 0, remaining: 0 }
+      const pid = pids[0] ?? ''
+      const fwCounts = pid ? (parentFwCounts[pid] ?? {}) : {}
+      const totalKids = Object.values(fwCounts).reduce((s, n) => s + n, 0)
+      const fwEntries: Array<[string, number]> = totalKids > 0
+        ? Object.entries(fwCounts).map(([fw, n]) => [fw, n / totalKids])
+        : [['אחר', 1]]
+      for (const [fw, weight] of fwEntries) {
+        if (!tuitionByMonth[m].byDept[fw]) {
+          tuitionByMonth[m].byDept[fw] = { planned: 0, collected: 0, remaining: 0 }
+        }
+        tuitionByMonth[m].byDept[fw].planned += amount * weight
+        tuitionByMonth[m].byDept[fw].collected += collected * weight
+        tuitionByMonth[m].byDept[fw].remaining += balance * weight
       }
-      tuitionByMonth[m].byDept[fw].planned += amount
-      tuitionByMonth[m].byDept[fw].collected += collected
-      tuitionByMonth[m].byDept[fw].remaining += balance
     }
 
     for (const row of salaryRes.data ?? []) {

@@ -136,16 +136,25 @@ export async function GET() {
     for (const c of classesRes.data ?? []) {
       if (c.framework) classFrameworkMap[c.class_name as string] = c.framework as string
     }
-    // parentFrameworksMap: parentId → Set of all frameworks their children attend
-    const parentFrameworksMap: Record<string, Set<string>> = {}
+    // parentFwCounts: parentId → { framework: childCount }
+    const parentFwCounts: Record<string, Record<string, number>> = {}
     for (const s of studentsRes.data ?? []) {
       const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
+      if (!fw) continue
       for (const pid of (s.parent_ids as string[]) ?? []) {
-        if (pid && fw) {
-          if (!parentFrameworksMap[pid]) parentFrameworksMap[pid] = new Set()
-          parentFrameworksMap[pid].add(fw)
-        }
+        if (!pid) continue
+        if (!parentFwCounts[pid]) parentFwCounts[pid] = {}
+        parentFwCounts[pid][fw] = (parentFwCounts[pid][fw] ?? 0) + 1
       }
+    }
+
+    // Split amount proportionally by children per framework
+    const splitByFw = (pids: string[], amount: number): Array<[string, number]> => {
+      const pid = pids[0]
+      const counts = pid ? (parentFwCounts[pid] ?? {}) : {}
+      const total = Object.values(counts).reduce((s, n) => s + n, 0)
+      if (total === 0) return [['אחר', amount]]
+      return Object.entries(counts).map(([fw, n]) => [fw, amount * n / total])
     }
 
     const DEPT_KEYS = ['תלמוד תורה', 'בית חינוך לבנות'] as const
@@ -156,34 +165,26 @@ export async function GET() {
       'אחר':              { planned: 0, actual: 0, debt: 0, parentsInDebt: new Set() },
     }
 
-    // For planned/actual: first framework of parent (as before) — no need to split
-    const getFirstFramework = (pids: string[]) => {
-      for (const pid of pids) {
-        const fws = parentFrameworksMap[pid]
-        if (fws && fws.size > 0) return [...fws][0]
-      }
-      return 'אחר'
-    }
     for (const pp of ppDeptRes.data ?? []) {
-      const fw = getFirstFramework((pp.parent_ids as string[]) ?? [])
-      ;(deptAcc[fw as DeptKey] ?? deptAcc['אחר']).planned += Number(pp.amount) || 0
+      for (const [fw, share] of splitByFw((pp.parent_ids as string[]) ?? [], Number(pp.amount) || 0)) {
+        ;(deptAcc[fw as DeptKey] ?? deptAcc['אחר']).planned += share
+      }
     }
     for (const tx of (txDeptRes.data ?? []).filter(isTuitionIncome)) {
-      const fw = getFirstFramework((tx.parent_ids as string[]) ?? [])
-      ;(deptAcc[fw as DeptKey] ?? deptAcc['אחר']).actual += Number(tx.amount) || 0
+      for (const [fw, share] of splitByFw((tx.parent_ids as string[]) ?? [], Number(tx.amount) || 0)) {
+        ;(deptAcc[fw as DeptKey] ?? deptAcc['אחר']).actual += share
+      }
     }
 
-    // Debt: from non-past open tuition PPs only, split across all frameworks of each parent
+    // Debt: split proportionally by children per framework
     for (const pp of nonPastDebtPPsRes.data ?? []) {
       const pids = (pp.parent_ids as string[]) ?? []
-      for (const pid of pids) {
-        const fws = [...(parentFrameworksMap[pid] ?? new Set<string>(['אחר']))]
-        const share = (Number(pp.balance) || 0) / fws.length
-        for (const fw of fws) {
-          const b = deptAcc[fw as DeptKey] ?? deptAcc['אחר']
-          b.debt += share
-          b.parentsInDebt.add(pid)
-        }
+      const pid = pids[0]
+      if (!pid) continue
+      for (const [fw, share] of splitByFw([pid], Number(pp.balance) || 0)) {
+        const b = deptAcc[fw as DeptKey] ?? deptAcc['אחר']
+        b.debt += share
+        b.parentsInDebt.add(pid)
       }
     }
     const departmentStats = (Object.entries(deptAcc) as [DeptKey, typeof deptAcc['אחר']][])
