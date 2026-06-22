@@ -27,7 +27,7 @@ export async function GET() {
         .eq('pp_type', 'salary')
         .in('month_year', months),
 
-      supabaseAdmin.from('students').select('parent_ids, class_name'),
+      supabaseAdmin.from('students').select('parent_ids, class_name, status'),
       supabaseAdmin.from('classes').select('class_name, framework'),
     ])
 
@@ -38,6 +38,7 @@ export async function GET() {
     }
     const parentFwCounts: Record<string, Record<string, number>> = {}
     for (const s of studentsRes.data ?? []) {
+      if (s.status !== 'פעיל') continue
       const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
       if (!fw) continue
       for (const pid of (s.parent_ids as string[]) ?? []) {
