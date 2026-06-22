@@ -34,7 +34,7 @@ function projectBadge(name: string) { return PROJECT_COLORS[name] ?? defaultBadg
 interface TxRow {
   id: string; amount: number; type: string; date: string
   monthYear: string; notes: string; parentName: string; parentIds: string[]
-  projectNames: string[]
+  projectNames: string[]; plannedPaymentId?: string | null
 }
 
 export default function TransactionsPage() {
@@ -197,6 +197,9 @@ export default function TransactionsPage() {
                             ))
                           : <span className="text-sm text-gray-300">—</span>
                         }
+                        {tx.plannedPaymentId && (
+                          <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-500 border border-indigo-100">PP</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{tx.type || '—'}</td>
@@ -239,6 +242,13 @@ export default function TransactionsPage() {
           tx={{ ...selectedTx, projectNames: selectedTx.projectNames }}
           onClose={() => setSelectedTx(null)}
           onOpenParent={id => { setSelectedTx(null); setSelectedParent(id) }}
+          onSaved={updated => {
+            setRows(prev => prev.map(r => r.id === updated.id
+              ? { ...r, plannedPaymentId: updated.plannedPaymentId ?? null }
+              : r
+            ))
+            setSelectedTx(null)
+          }}
         />
       )}
     </div>
