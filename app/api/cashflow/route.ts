@@ -13,8 +13,8 @@ export async function GET() {
       months.push(`${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`)
     }
 
-    // Fetch planned_payments for tuition and salary across all 9 months
-    const [tuitionRes, salaryRes, studentsRes, classesRes] = await Promise.all([
+    // Fetch planned_payments for tuition, salary and donation across all 9 months
+    const [tuitionRes, salaryRes, donationRes, studentsRes, classesRes] = await Promise.all([
       supabaseAdmin
         .from('planned_payments')
         .select('month_year, amount, balance, parent_ids')
@@ -27,6 +27,12 @@ export async function GET() {
         .eq('pp_type', 'salary')
         .in('month_year', months),
 
+      supabaseAdmin
+        .from('planned_payments')
+        .select('month_year, amount, balance')
+        .eq('pp_type', 'donation')
+        .in('month_year', months),
+
       supabaseAdmin.from('students').select('parent_ids, class_name, status'),
       supabaseAdmin.from('classes').select('class_name, framework'),
     ])
@@ -36,10 +42,16 @@ export async function GET() {
     for (const c of classesRes.data ?? []) {
       if (c.framework) classFrameworkMap[c.class_name as string] = c.framework as string
     }
+    const detectFramework = (cn: string) => {
+      if (cn.includes('תלמוד תורה')) return 'תלמוד תורה'
+      if (cn.includes('בית חינוך'))  return 'בית חינוך לבנות'
+      return ''
+    }
     const parentFwCounts: Record<string, Record<string, number>> = {}
     for (const s of studentsRes.data ?? []) {
       if (s.status !== 'פעיל') continue
-      const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
+      const cn = (s.class_name as string) ?? ''
+      const fw = classFrameworkMap[cn] || detectFramework(cn)
       if (!fw) continue
       for (const pid of (s.parent_ids as string[]) ?? []) {
         if (!pid) continue
@@ -62,13 +74,20 @@ export async function GET() {
       paid: number
       remaining: number
     }
+    interface DonationAcc {
+      planned: number
+      collected: number
+      remaining: number
+    }
 
     const tuitionByMonth: Record<string, TuitionAcc> = {}
     const salaryByMonth: Record<string, SalaryAcc> = {}
+    const donationByMonth: Record<string, DonationAcc> = {}
 
     for (const m of months) {
       tuitionByMonth[m] = { planned: 0, collected: 0, remaining: 0, byDept: {} }
       salaryByMonth[m] = { planned: 0, paid: 0, remaining: 0 }
+      donationByMonth[m] = { planned: 0, collected: 0, remaining: 0 }
     }
 
     for (const row of tuitionRes.data ?? []) {
@@ -112,9 +131,20 @@ export async function GET() {
       salaryByMonth[m].remaining += balance
     }
 
+    for (const row of donationRes.data ?? []) {
+      const m = row.month_year as string
+      if (!donationByMonth[m]) continue
+      const amount = Number(row.amount) || 0
+      const balance = Number(row.balance) || 0
+      donationByMonth[m].planned += amount
+      donationByMonth[m].collected += amount - balance
+      donationByMonth[m].remaining += balance
+    }
+
     const result = months.map(m => {
       const t = tuitionByMonth[m]
       const s = salaryByMonth[m]
+      const don = donationByMonth[m]
       const isPast = m !== currentMonthYear && months.indexOf(m) < months.indexOf(currentMonthYear)
       const isCurrent = m === currentMonthYear
 
@@ -143,8 +173,13 @@ export async function GET() {
           paid: Math.round(s.paid),
           remaining: Math.round(s.remaining),
         },
-        net: Math.round(t.planned - s.planned),
-        netActual: Math.round(t.collected - s.paid),
+        donation: {
+          planned: Math.round(don.planned),
+          collected: Math.round(don.collected),
+          remaining: Math.round(don.remaining),
+        },
+        net: Math.round(t.planned + don.planned - s.planned),
+        netActual: Math.round(t.collected + don.collected - s.paid),
       }
     })
 

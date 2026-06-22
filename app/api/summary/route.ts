@@ -136,11 +136,17 @@ export async function GET() {
     for (const c of classesRes.data ?? []) {
       if (c.framework) classFrameworkMap[c.class_name as string] = c.framework as string
     }
+    const detectFramework = (cn: string) => {
+      if (cn.includes('תלמוד תורה')) return 'תלמוד תורה'
+      if (cn.includes('בית חינוך'))  return 'בית חינוך לבנות'
+      return ''
+    }
     // parentFwCounts: parentId → { framework: activeChildCount }
     const parentFwCounts: Record<string, Record<string, number>> = {}
     for (const s of studentsRes.data ?? []) {
       if (s.status !== 'פעיל') continue
-      const fw = classFrameworkMap[(s.class_name as string) ?? ''] ?? ''
+      const cn = (s.class_name as string) ?? ''
+      const fw = classFrameworkMap[cn] || detectFramework(cn)
       if (!fw) continue
       for (const pid of (s.parent_ids as string[]) ?? []) {
         if (!pid) continue

@@ -526,7 +526,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // הו"ק tab state
   const [selectedSo, setSelectedSo]                 = useState<StandingOrderItem | null>(null)
-  const [soTxs, setSoTxs]                           = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;plannedPaymentId:string|null}[]>([])
+  const [soTxs, setSoTxs]                           = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;plannedPaymentId:string|null;parentIds:string[];projectNames:string[]}[]>([])
   const [loadingSoTxs, setLoadingSoTxs]             = useState(false)
   const [showAddSo, setShowAddSo]                   = useState(false)
   const [editingSoId, setEditingSoId]               = useState<string | null>(null)
@@ -1923,7 +1923,21 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                               {soTxs.map(tx => (
-                                <tr key={tx.id} className="hover:bg-white transition-colors">
+                                <tr
+                                  key={tx.id}
+                                  className="hover:bg-white transition-colors cursor-pointer"
+                                  onClick={() => setSelectedPpTx({
+                                    id: tx.id,
+                                    amount: Math.abs(tx.amount),
+                                    type: tx.type,
+                                    date: tx.date,
+                                    monthYear: tx.monthYear,
+                                    notes: tx.notes,
+                                    projectNames: tx.projectNames ?? [],
+                                    parentIds: tx.parentIds ?? [],
+                                    plannedPaymentId: tx.plannedPaymentId,
+                                  })}
+                                >
                                   <td className="py-1.5 text-right text-gray-500 max-w-[120px] truncate">{tx.notes || '—'}</td>
                                   <td className="py-1.5 text-right text-gray-600">{tx.monthYear}</td>
                                   <td className="py-1.5 text-right text-gray-500">{fmtDate(tx.date)}</td>

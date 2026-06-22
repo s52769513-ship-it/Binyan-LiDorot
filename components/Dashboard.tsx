@@ -48,6 +48,7 @@ interface CashflowMonth {
   isCurrent: boolean
   tuition: { planned: number; collected: number; remaining: number; collectionPct: number; byDept: Record<string, { planned: number; collected: number; remaining: number }> }
   salary: { planned: number; paid: number; remaining: number }
+  donation: { planned: number; collected: number; remaining: number }
   net: number
   netActual: number
 }
@@ -417,6 +418,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={4}>
                 הכנסות שכ״ל
               </th>
+              {/* Donation group */}
+              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={2}>
+                דמי מגבית
+              </th>
               {/* Salary group */}
               <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
                 הוצאות משכורת
@@ -429,6 +434,8 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-1 text-center">נגבה</th>
               <th className="px-2 py-1 text-center">יתרה</th>
               <th className="px-2 py-1 text-center border-r border-gray-100">%</th>
+              <th className="px-2 py-1 text-center">צפוי</th>
+              <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
               <th className="px-2 py-1 text-center">צפוי</th>
               <th className="px-2 py-1 text-center">שולם</th>
               <th className="px-2 py-1 text-center border-r border-gray-100">יתרה</th>
@@ -476,6 +483,11 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                         </span>
                       ) : '—'}
                     </td>
+                    {/* Donation */}
+                    <td className="px-2 py-2 text-center tabular-nums">{row.donation.planned > 0 ? `₪${fmt(row.donation.planned)}` : '—'}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                      {row.donation.remaining > 0 ? `₪${fmt(row.donation.remaining)}` : '—'}
+                    </td>
                     {/* Salary */}
                     <td className="px-2 py-2 text-center tabular-nums">{row.salary.planned > 0 ? `₪${fmt(row.salary.planned)}` : '—'}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.salary.paid > 0 && !isPast ? 'text-red-600' : ''}`}>
@@ -513,7 +525,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                       <td className="px-2 py-1.5 text-center border-r border-gray-100">
                         {vals.planned > 0 ? `${Math.round((vals.collected / vals.planned) * 100)}%` : '—'}
                       </td>
-                      <td colSpan={4} />
+                      <td colSpan={6} />
                     </tr>
                   ))}
                 </>
