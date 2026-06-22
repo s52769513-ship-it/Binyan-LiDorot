@@ -343,7 +343,51 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   const [ppError, setPpError]   = useState(false)
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
+  // Link-PP panel state
+  const parentId = tx.parentIds?.[0]
+  const defaultPpType = (): 'tuition' | 'donation' | 'salary' => {
+    const p = tx.projectNames?.[0] ?? ''
+    if (p === 'משכורת' || tx.type?.includes('משכורת') || tx.type?.includes('שכר')) return 'salary'
+    if (p === 'דמי מגבית' || tx.type === 'קיזוז דמי מגבית') return 'donation'
+    return 'tuition'
+  }
+  const [showLinkPanel, setShowLinkPanel] = useState(false)
+  const [linkPpType, setLinkPpType]       = useState<'tuition' | 'donation' | 'salary'>(defaultPpType)
+  const [availablePPs, setAvailablePPs]   = useState<{ id: string; name: string; monthYear: string; balance: number; amount: number }[]>([])
+  const [loadingPPs, setLoadingPPs]       = useState(false)
+  const [linking, setLinking]             = useState(false)
+  const [linkError, setLinkError]         = useState('')
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
+
+  // Fetch available PPs for link panel
+  useEffect(() => {
+    if (!showLinkPanel || !parentId) return
+    setLoadingPPs(true)
+    setAvailablePPs([])
+    setLinkError('')
+    fetch(`/api/planned-payments?parentId=${encodeURIComponent(parentId)}&open=true&ppType=${linkPpType}&limit=50`)
+      .then(r => r.json())
+      .then(d => setAvailablePPs(Array.isArray(d) ? d : []))
+      .catch(() => setLinkError('שגיאה בטעינת תשלומים'))
+      .finally(() => setLoadingPPs(false))
+  }, [showLinkPanel, linkPpType, parentId])
+
+  const linkToPP = async (ppId: string) => {
+    setLinking(true)
+    setLinkError('')
+    try {
+      const r = await fetch(`/api/transactions/${tx.id}/link-pp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ppId }),
+      })
+      const data = await r.json()
+      if (!r.ok || data.error) { setLinkError(data.error ?? 'שגיאה בקישור'); return }
+      onSaved?.({ ...draft, plannedPaymentId: ppId })
+      onClose()
+    } finally { setLinking(false) }
+  }
 
   // Load PP info by direct ID lookup + compute paid amount from linked transactions
   useEffect(() => {
@@ -484,10 +528,16 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
               const remaining = Math.max(0, ppInfo.amount - paid)
               return (
                 <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
-                  {/* Header: title + unlink */}
+                  {/* Header: title + re-link + unlink */}
                   <div className="flex justify-between items-center">
-                    <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
-                      className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
+                        className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                      {parentId && (
+                        <button onClick={() => { setShowLinkPanel(p => !p) }}
+                          className="text-xs text-indigo-400 hover:text-indigo-600">שנה קישור</button>
+                      )}
+                    </div>
                     <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
                   </div>
 
@@ -531,6 +581,69 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
           )}
           {unlinking && (
             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">הקישור לתשלום המתוכנן יוסר בשמירה</div>
+          )}
+
+          {/* Link-PP panel: shown when no PP linked, or when "שנה קישור" clicked */}
+          {parentId && (!draft.plannedPaymentId || showLinkPanel) && !unlinking && (
+            <div className="border border-[#1a3a7a]/20 rounded-xl overflow-hidden">
+              {/* Header with toggle button */}
+              {!draft.plannedPaymentId && !showLinkPanel ? (
+                <button
+                  onClick={() => setShowLinkPanel(true)}
+                  className="w-full py-2 text-xs text-[#1a3a7a] font-medium hover:bg-blue-50 transition-colors"
+                >
+                  + קשר לתשלום מתוכנן
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  {/* Type selector */}
+                  <div className="flex border-b border-[#1a3a7a]/10">
+                    {([['tuition', 'שכ"ל'], ['donation', 'מגבית'], ['salary', 'משכורת']] as const).map(([t, label]) => (
+                      <button key={t}
+                        onClick={() => setLinkPpType(t)}
+                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${linkPpType === t ? 'bg-[#1a3a7a] text-white' : 'text-gray-500 hover:bg-blue-50'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* PP list */}
+                  <div className="px-2 pb-2 max-h-44 overflow-y-auto space-y-1">
+                    {loadingPPs && <div className="text-xs text-gray-400 text-center py-3">טוען...</div>}
+                    {!loadingPPs && availablePPs.length === 0 && (
+                      <div className="text-xs text-gray-400 text-center py-3">אין תשלומים פתוחים</div>
+                    )}
+                    {availablePPs.map(pp => (
+                      <button
+                        key={pp.id}
+                        onClick={() => linkToPP(pp.id)}
+                        disabled={linking}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[#1a3a7a]/10 transition-colors text-right disabled:opacity-60"
+                      >
+                        <span className="text-xs font-bold text-emerald-600 tabular-nums">
+                          ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(pp.balance)}
+                        </span>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-gray-800">{pp.name || pp.monthYear}</div>
+                          {pp.monthYear && pp.name !== pp.monthYear && (
+                            <div className="text-xs text-gray-400">{pp.monthYear}</div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                    {linkError && <div className="text-xs text-red-500 text-center py-1">{linkError}</div>}
+                  </div>
+
+                  {showLinkPanel && (
+                    <div className="px-2 pb-2">
+                      <button onClick={() => setShowLinkPanel(false)}
+                        className="w-full py-1 text-xs text-gray-400 hover:text-gray-600">ביטול</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
