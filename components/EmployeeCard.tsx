@@ -1688,6 +1688,261 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {parent && tab === 'donation' && (
             <DonationTab parent={parent} onUpdate={load} />
           )}
+
+          {/* ── הו"ק TAB ── */}
+          {parent && tab === 'horaatkeva' && (
+            <div className="p-4 space-y-3">
+
+              {/* Header row */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] hover:bg-[#0d1f52] text-white font-medium transition-colors"
+                >+ הוסף הו"ק</button>
+                <h3 className="text-sm font-semibold text-gray-700">הוראות קבע</h3>
+              </div>
+
+              {/* Add / Edit form */}
+              {(showAddSo || editingSoId) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-[#1a3a7a] text-right">{editingSoId ? 'עריכת הו"ק' : 'הו"ק חדש'}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">מזהה הו"ק (חיצוני)</label>
+                      <input
+                        type="text"
+                        value={soDraft.externalId ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, externalId: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        placeholder='מספר הו"ק מנדרים'
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">סוג הו"ק</label>
+                      <input
+                        type="text"
+                        value={soDraft.standingOrderType ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, standingOrderType: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        placeholder='סוג'
+                      />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">בנק</label>
+                      <input
+                        type="text"
+                        value={soDraft.bankName ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, bankName: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        placeholder='שם בנק'
+                      />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">סניף</label>
+                      <input
+                        type="text"
+                        value={soDraft.bankBranch ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, bankBranch: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        dir="ltr"
+                        placeholder='מס׳ סניף'
+                      />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">מספר חשבון</label>
+                      <input
+                        type="text"
+                        value={soDraft.bankAccount ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, bankAccount: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        dir="ltr"
+                        placeholder='חשבון'
+                      />
+                    </div>
+                    <div className="text-right">
+                      <label className="text-[10px] font-medium text-gray-500">יום חיוב</label>
+                      <input
+                        type="number"
+                        value={soDraft.chargeDay ?? ''}
+                        onChange={e => setSoDraft(d => ({ ...d, chargeDay: e.target.value }))}
+                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                        placeholder='1-31'
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Linked parent – paying for someone else */}
+                  <div className="text-right">
+                    <label className="text-[10px] font-medium text-gray-500">משלם עבור (בן אדם אחר)</label>
+                    {soDraft.linkedParentId && soDraft.linkedParentName ? (
+                      <div className="flex items-center justify-end gap-2 mt-0.5">
+                        <button
+                          onClick={() => setSoDraft(d => ({ ...d, linkedParentId: '', linkedParentName: '' }))}
+                          className="text-[10px] text-red-500 hover:text-red-700"
+                        >✕ הסר</button>
+                        <span className="text-sm font-medium text-[#1a3a7a] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">{soDraft.linkedParentName}</span>
+                      </div>
+                    ) : (
+                      <div className="relative mt-0.5">
+                        <input
+                          type="text"
+                          value={soParentQuery}
+                          onChange={e => setSoParentQuery(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                          placeholder='חיפוש שם הורה לקישור...'
+                        />
+                        {soParentSearching && <span className="absolute left-2 top-1.5 text-[10px] text-gray-400">...</span>}
+                        {soParentResults.length > 0 && (
+                          <div className="absolute z-20 right-0 left-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-0.5 max-h-40 overflow-y-auto">
+                            {soParentResults.map(p => (
+                              <button
+                                key={p.id}
+                                className="w-full text-right px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                                onClick={() => { setSoDraft(d => ({ ...d, linkedParentId: p.id, linkedParentName: p.name })); setSoParentQuery(''); setSoParentResults([]) }}
+                              >{p.name}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!soDraft.linkedParentId && (
+                      <p className="text-[10px] text-gray-400 mt-0.5 text-right">אם ריק, תשלומים יקושרו לבן אדם זה</p>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <label className="text-[10px] font-medium text-gray-500">הערות</label>
+                    <textarea
+                      value={soDraft.notes ?? ''}
+                      onChange={e => setSoDraft(d => ({ ...d, notes: e.target.value }))}
+                      rows={2}
+                      className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-start">
+                    <button
+                      onClick={() => { setShowAddSo(false); setEditingSoId(null) }}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    >ביטול</button>
+                    <button
+                      disabled={savingSo}
+                      onClick={async () => {
+                        setSavingSo(true)
+                        try {
+                          if (editingSoId) {
+                            const res = await fetch(`/api/standing-orders/${editingSoId}`, {
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
+                            })
+                            const updated = await res.json()
+                            if (!updated.error) {
+                              setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.map(so => so.id === editingSoId ? updated : so) } : prev)
+                              if (selectedSo?.id === editingSoId) setSelectedSo(updated)
+                            }
+                          } else {
+                            const res = await fetch('/api/standing-orders', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ parentId, ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
+                            })
+                            const created = await res.json()
+                            if (!created.error) setParent(prev => prev ? { ...prev, standingOrders: [...(prev.standingOrders ?? []), created] } : prev)
+                          }
+                          setShowAddSo(false); setEditingSoId(null)
+                        } finally { setSavingSo(false) }
+                      }}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] text-white hover:bg-[#0d1f52] disabled:opacity-40"
+                    >{savingSo ? '...' : editingSoId ? 'שמור' : 'הוסף'}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Standing order list */}
+              {(parent.standingOrders ?? []).length === 0 && !showAddSo && (
+                <p className="text-center text-gray-400 text-sm py-8">אין הוראות קבע רשומות</p>
+              )}
+
+              {(parent.standingOrders ?? []).map(so => (
+                <div key={so.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  {/* Card header */}
+                  <div
+                    className={`px-4 py-3 cursor-pointer transition-colors ${selectedSo?.id === so.id ? 'bg-blue-50 border-b border-blue-200' : 'hover:bg-gray-50 border-b border-gray-100'}`}
+                    onClick={() => setSelectedSo(prev => prev?.id === so.id ? null : so)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={e => { e.stopPropagation(); if (!confirm('למחוק הו"ק זה?')) return; fetch(`/api/standing-orders/${so.id}`, { method: 'DELETE' }).then(() => { setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.filter(x => x.id !== so.id) } : prev); if (selectedSo?.id === so.id) setSelectedSo(null) }) }}
+                          className="text-[11px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
+                        >מחק</button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
+                          className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
+                        >עריכה</button>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-2 justify-end">
+                          <span className="font-semibold text-sm text-gray-900 font-mono" dir="ltr">{so.externalId || '—'}</span>
+                          {so.standingOrderType && <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{so.standingOrderType}</span>}
+                        </div>
+                        {(so.bankName || so.bankBranch || so.bankAccount) && (
+                          <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
+                            {[so.bankName, so.bankBranch, so.bankAccount].filter(Boolean).join(' · ')}
+                            {so.chargeDay ? ` · יום ${so.chargeDay}` : ''}
+                          </p>
+                        )}
+                        {so.linkedParentName && (
+                          <p className="text-[11px] mt-0.5">
+                            <span className="text-gray-400">משלם עבור: </span>
+                            <span className="font-medium text-[#1a3a7a]">{so.linkedParentName}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transactions panel */}
+                  {selectedSo?.id === so.id && (
+                    <div className="p-3 bg-gray-50">
+                      {loadingSoTxs ? (
+                        <div className="text-center text-xs text-gray-400 py-3">טוען תנועות...</div>
+                      ) : soTxs.length === 0 ? (
+                        <p className="text-center text-xs text-gray-400 py-3">אין תנועות מקושרות להו"ק זה</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-gray-500 border-b border-gray-200">
+                                <th className="pb-1.5 text-right font-medium">הערות</th>
+                                <th className="pb-1.5 text-right font-medium">חודש</th>
+                                <th className="pb-1.5 text-right font-medium">תאריך</th>
+                                <th className="pb-1.5 text-left font-medium">סכום</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {soTxs.map(tx => (
+                                <tr key={tx.id} className="hover:bg-white transition-colors">
+                                  <td className="py-1.5 text-right text-gray-500 max-w-[120px] truncate">{tx.notes || '—'}</td>
+                                  <td className="py-1.5 text-right text-gray-600">{tx.monthYear}</td>
+                                  <td className="py-1.5 text-right text-gray-500">{fmtDate(tx.date)}</td>
+                                  <td className="py-1.5 text-left font-medium text-emerald-600 tabular-nums" dir="ltr">{fmt(tx.amount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p className="text-right text-[11px] text-gray-400 mt-2">
+                            סה"כ {soTxs.length} תנועות · {fmt(soTxs.reduce((s, t) => s + t.amount, 0))}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1985,261 +2240,6 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           </div>
         </div>
       )}
-
-          {/* ── הו"ק TAB ── */}
-          {parent && tab === 'horaatkeva' && (
-            <div className="p-4 space-y-3">
-
-              {/* Header row */}
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => { setShowAddSo(true); setEditingSoId(null); setSoDraft({ externalId: '', standingOrderType: '', bankName: '', bankBranch: '', bankAccount: '', chargeDay: '', linkedParentId: '', linkedParentName: '', notes: '' }); setSoParentQuery('') }}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] hover:bg-[#0d1f52] text-white font-medium transition-colors"
-                >+ הוסף הו"ק</button>
-                <h3 className="text-sm font-semibold text-gray-700">הוראות קבע</h3>
-              </div>
-
-              {/* Add / Edit form */}
-              {(showAddSo || editingSoId) && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-semibold text-[#1a3a7a] text-right">{editingSoId ? 'עריכת הו"ק' : 'הו"ק חדש'}</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">מזהה הו"ק (חיצוני)</label>
-                      <input
-                        type="text"
-                        value={soDraft.externalId ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, externalId: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='מספר הו"ק מנדרים'
-                        dir="ltr"
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">סוג הו"ק</label>
-                      <input
-                        type="text"
-                        value={soDraft.standingOrderType ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, standingOrderType: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='סוג'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">בנק</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankName ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankName: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='שם בנק'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">סניף</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankBranch ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankBranch: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        dir="ltr"
-                        placeholder='מס׳ סניף'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">מספר חשבון</label>
-                      <input
-                        type="text"
-                        value={soDraft.bankAccount ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, bankAccount: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        dir="ltr"
-                        placeholder='חשבון'
-                      />
-                    </div>
-                    <div className="text-right">
-                      <label className="text-[10px] font-medium text-gray-500">יום חיוב</label>
-                      <input
-                        type="number"
-                        value={soDraft.chargeDay ?? ''}
-                        onChange={e => setSoDraft(d => ({ ...d, chargeDay: e.target.value }))}
-                        className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                        placeholder='1-31'
-                        dir="ltr"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linked parent – paying for someone else */}
-                  <div className="text-right">
-                    <label className="text-[10px] font-medium text-gray-500">משלם עבור (בן אדם אחר)</label>
-                    {soDraft.linkedParentId && soDraft.linkedParentName ? (
-                      <div className="flex items-center justify-end gap-2 mt-0.5">
-                        <button
-                          onClick={() => setSoDraft(d => ({ ...d, linkedParentId: '', linkedParentName: '' }))}
-                          className="text-[10px] text-red-500 hover:text-red-700"
-                        >✕ הסר</button>
-                        <span className="text-sm font-medium text-[#1a3a7a] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">{soDraft.linkedParentName}</span>
-                      </div>
-                    ) : (
-                      <div className="relative mt-0.5">
-                        <input
-                          type="text"
-                          value={soParentQuery}
-                          onChange={e => setSoParentQuery(e.target.value)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
-                          placeholder='חיפוש שם הורה לקישור...'
-                        />
-                        {soParentSearching && <span className="absolute left-2 top-1.5 text-[10px] text-gray-400">...</span>}
-                        {soParentResults.length > 0 && (
-                          <div className="absolute z-20 right-0 left-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-0.5 max-h-40 overflow-y-auto">
-                            {soParentResults.map(p => (
-                              <button
-                                key={p.id}
-                                className="w-full text-right px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0"
-                                onClick={() => { setSoDraft(d => ({ ...d, linkedParentId: p.id, linkedParentName: p.name })); setSoParentQuery(''); setSoParentResults([]) }}
-                              >{p.name}</button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {!soDraft.linkedParentId && (
-                      <p className="text-[10px] text-gray-400 mt-0.5 text-right">אם ריק, תשלומים יקושרו לבן אדם זה</p>
-                    )}
-                  </div>
-
-                  <div className="text-right">
-                    <label className="text-[10px] font-medium text-gray-500">הערות</label>
-                    <textarea
-                      value={soDraft.notes ?? ''}
-                      onChange={e => setSoDraft(d => ({ ...d, notes: e.target.value }))}
-                      rows={2}
-                      className="w-full mt-0.5 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right resize-none"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 justify-start">
-                    <button
-                      onClick={() => { setShowAddSo(false); setEditingSoId(null) }}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    >ביטול</button>
-                    <button
-                      disabled={savingSo}
-                      onClick={async () => {
-                        setSavingSo(true)
-                        try {
-                          if (editingSoId) {
-                            const res = await fetch(`/api/standing-orders/${editingSoId}`, {
-                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
-                            })
-                            const updated = await res.json()
-                            if (!updated.error) {
-                              setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.map(so => so.id === editingSoId ? updated : so) } : prev)
-                              if (selectedSo?.id === editingSoId) setSelectedSo(updated)
-                            }
-                          } else {
-                            const res = await fetch('/api/standing-orders', {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ parentId, ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
-                            })
-                            const created = await res.json()
-                            if (!created.error) setParent(prev => prev ? { ...prev, standingOrders: [...(prev.standingOrders ?? []), created] } : prev)
-                          }
-                          setShowAddSo(false); setEditingSoId(null)
-                        } finally { setSavingSo(false) }
-                      }}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-[#1a3a7a] text-white hover:bg-[#0d1f52] disabled:opacity-40"
-                    >{savingSo ? '...' : editingSoId ? 'שמור' : 'הוסף'}</button>
-                  </div>
-                </div>
-              )}
-
-              {/* Standing order list */}
-              {(parent.standingOrders ?? []).length === 0 && !showAddSo && (
-                <p className="text-center text-gray-400 text-sm py-8">אין הוראות קבע רשומות</p>
-              )}
-
-              {(parent.standingOrders ?? []).map(so => (
-                <div key={so.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  {/* Card header */}
-                  <div
-                    className={`px-4 py-3 cursor-pointer transition-colors ${selectedSo?.id === so.id ? 'bg-blue-50 border-b border-blue-200' : 'hover:bg-gray-50 border-b border-gray-100'}`}
-                    onClick={() => setSelectedSo(prev => prev?.id === so.id ? null : so)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={e => { e.stopPropagation(); if (!confirm('למחוק הו"ק זה?')) return; fetch(`/api/standing-orders/${so.id}`, { method: 'DELETE' }).then(() => { setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.filter(x => x.id !== so.id) } : prev); if (selectedSo?.id === so.id) setSelectedSo(null) }) }}
-                          className="text-[11px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
-                        >מחק</button>
-                        <button
-                          onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
-                          className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
-                        >עריכה</button>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-2 justify-end">
-                          <span className="font-semibold text-sm text-gray-900 font-mono" dir="ltr">{so.externalId || '—'}</span>
-                          {so.standingOrderType && <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{so.standingOrderType}</span>}
-                        </div>
-                        {(so.bankName || so.bankBranch || so.bankAccount) && (
-                          <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
-                            {[so.bankName, so.bankBranch, so.bankAccount].filter(Boolean).join(' · ')}
-                            {so.chargeDay ? ` · יום ${so.chargeDay}` : ''}
-                          </p>
-                        )}
-                        {so.linkedParentName && (
-                          <p className="text-[11px] mt-0.5">
-                            <span className="text-gray-400">משלם עבור: </span>
-                            <span className="font-medium text-[#1a3a7a]">{so.linkedParentName}</span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Transactions panel */}
-                  {selectedSo?.id === so.id && (
-                    <div className="p-3 bg-gray-50">
-                      {loadingSoTxs ? (
-                        <div className="text-center text-xs text-gray-400 py-3">טוען תנועות...</div>
-                      ) : soTxs.length === 0 ? (
-                        <p className="text-center text-xs text-gray-400 py-3">אין תנועות מקושרות להו"ק זה</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-gray-500 border-b border-gray-200">
-                                <th className="pb-1.5 text-right font-medium">הערות</th>
-                                <th className="pb-1.5 text-right font-medium">חודש</th>
-                                <th className="pb-1.5 text-right font-medium">תאריך</th>
-                                <th className="pb-1.5 text-left font-medium">סכום</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {soTxs.map(tx => (
-                                <tr key={tx.id} className="hover:bg-white transition-colors">
-                                  <td className="py-1.5 text-right text-gray-500 max-w-[120px] truncate">{tx.notes || '—'}</td>
-                                  <td className="py-1.5 text-right text-gray-600">{tx.monthYear}</td>
-                                  <td className="py-1.5 text-right text-gray-500">{fmtDate(tx.date)}</td>
-                                  <td className="py-1.5 text-left font-medium text-emerald-600 tabular-nums" dir="ltr">{fmt(tx.amount)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <p className="text-right text-[11px] text-gray-400 mt-2">
-                            סה"כ {soTxs.length} תנועות · {fmt(soTxs.reduce((s, t) => s + t.amount, 0))}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
 
       {/* ── Modals ── */}
       {showAddTx && parent && (
