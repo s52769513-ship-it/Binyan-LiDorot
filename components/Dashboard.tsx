@@ -415,15 +415,15 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-3 py-2 text-right font-semibold text-gray-600 whitespace-nowrap">חודש</th>
               {/* Tuition group */}
-              <th className="px-2 py-2 text-center font-semibold text-blue-700 whitespace-nowrap border-r border-gray-300 bg-blue-50" colSpan={4}>
+              <th className="px-2 py-2 text-center font-semibold text-blue-700 border-r border-gray-300 bg-blue-50" colSpan={4}>
                 הכנסות שכ״ל
               </th>
               {/* Donation group */}
-              <th className="px-2 py-2 text-center font-semibold text-emerald-700 whitespace-nowrap border-r border-gray-300 bg-emerald-50" colSpan={3}>
+              <th className="px-2 py-2 text-center font-semibold text-emerald-700 border-r border-gray-300 bg-emerald-50" colSpan={3}>
                 דמי מגבית
               </th>
               {/* Salary group */}
-              <th className="px-2 py-2 text-center font-semibold text-red-700 whitespace-nowrap border-r border-gray-300 bg-red-50" colSpan={3}>
+              <th className="px-2 py-2 text-center font-semibold text-red-700 border-r border-gray-300 bg-red-50" colSpan={3}>
                 הוצאות משכורת
               </th>
               <th className="px-3 py-2 text-center font-semibold text-gray-600 whitespace-nowrap">נטו</th>
