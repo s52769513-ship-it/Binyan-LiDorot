@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
       supabaseAdmin
         .from('planned_payments')
         .select('id, parent_ids, amount, balance, month_year')
-        .eq('month_year', month),
+        .eq('month_year', month)
+        .eq('pp_type', 'tuition'),
 
       supabaseAdmin
         .from('students')
@@ -20,7 +21,8 @@ export async function GET(req: NextRequest) {
 
       supabaseAdmin
         .from('planned_payments')
-        .select('month_year'),
+        .select('month_year')
+        .eq('pp_type', 'tuition'),
     ])
 
     if (ppRes.error) throw ppRes.error

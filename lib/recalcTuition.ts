@@ -40,7 +40,7 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
     .contains('parent_ids', [parentId])
 
   const tuitionBalance = (allPPs ?? [])
-    .filter(p => p.pp_type !== 'salary')
+    .filter(p => p.pp_type === 'tuition' || p.pp_type == null)
     .reduce((s, p) => s + Math.max(0, Number(p.balance ?? 0)), 0)
 
   await supabaseAdmin.from('parents').update({
