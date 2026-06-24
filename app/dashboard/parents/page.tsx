@@ -20,6 +20,7 @@ export default function ParentsPage() {
   const [filterDebt, setFilterDebt]       = useState<FilterDebt>('all')
   const [filterCity, setFilterCity]       = useState('')
   const [filterHasChildren, setFilterHasChildren] = useState(false)
+  const [filterHasDeductions, setFilterHasDeductions] = useState(false)
   const [sortField, setSortField]       = useState<SortField>('last_name')
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc')
   const [selectedId, setSelectedId]         = useState<string | null>(null)
@@ -44,6 +45,7 @@ export default function ParentsPage() {
       sort: sortField, dir: sortDir,
       ...(filterCity ? { city: filterCity } : {}),
       ...(filterHasChildren ? { hasChildren: 'true' } : {}),
+      ...(filterHasDeductions ? { hasDeductions: 'true' } : {}),
     })
     fetch(`/api/parents?${params}`)
       .then(r => r.json())
@@ -55,7 +57,7 @@ export default function ParentsPage() {
       })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
-  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren])
+  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren, filterHasDeductions])
 
   useEffect(() => { loadParents() }, [loadParents])
   useRealtimeRefresh(loadParents, ['parents', 'transactions', 'planned_payments'])
@@ -101,9 +103,19 @@ export default function ParentsPage() {
         >
           הר יונה
         </button>
-        {(filterHasChildren || filterCity) && (
+        <button
+          onClick={() => { setFilterHasDeductions(v => !v); setPage(0) }}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            filterHasDeductions
+              ? 'bg-amber-600 text-white border-amber-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-amber-500'
+          }`}
+        >
+          עם קיזוזים באוטומציות
+        </button>
+        {(filterHasChildren || filterCity || filterHasDeductions) && (
           <button
-            onClick={() => { setFilterHasChildren(false); setFilterCity(''); setPage(0) }}
+            onClick={() => { setFilterHasChildren(false); setFilterCity(''); setFilterHasDeductions(false); setPage(0) }}
             className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
           >
             נקה פילטרים ✕

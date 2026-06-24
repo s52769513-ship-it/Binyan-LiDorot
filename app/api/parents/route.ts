@@ -11,14 +11,15 @@ export async function GET(req: NextRequest) {
     const status      = searchParams.get('status') ?? ''
     const debt        = searchParams.get('debt') ?? 'all'
     const city        = searchParams.get('city') ?? ''
-    const hasChildren = searchParams.get('hasChildren') === 'true'
+    const hasChildren    = searchParams.get('hasChildren') === 'true'
+    const hasDeductions  = searchParams.get('hasDeductions') === 'true'
     const sort   = searchParams.get('sort') ?? 'last_name'
     const dir    = searchParams.get('dir') ?? 'asc'
 
     let query = supabaseAdmin
       .from('parents')
       .select(
-        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance, id_number',
+        'id, name, first_name, last_name, father_phone, mother_phone, email, city, status, children_count, tuition_total, tuition_balance, id_number, deduct_tuition, deduct_donation',
         { count: 'exact' }
       )
 
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
 
     if (hasChildren) {
       query = query.gt('children_count', 0)
+    }
+
+    if (hasDeductions) {
+      query = query.or('deduct_tuition.eq.true,deduct_donation.eq.true')
     }
 
     const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']
