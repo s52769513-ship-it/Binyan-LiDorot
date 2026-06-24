@@ -252,35 +252,41 @@ export default function PaymentCard({ paymentId, onClose, onOpenParent }: Props)
               </div>
             )}
 
-            {/* Related transactions */}
-            {transactions.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  תנועות קשורות לחודש זה
+            {/* Related transactions (excluding דמי מגבית) */}
+            {(() => {
+              const filteredTxs = transactions.filter(tx =>
+                !(tx.projectNames ?? []).includes('דמי מגבית')
+              )
+              if (filteredTxs.length === 0) return null
+              return (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    תנועות קשורות לחודש זה
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
+                        <th className="px-3 py-2">תאריך</th>
+                        <th className="px-3 py-2">סוג</th>
+                        <th className="px-3 py-2 text-left">סכום</th>
+                        <th className="px-3 py-2">הערות</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTxs.map(tx => (
+                        <TransactionRow
+                          key={tx.id}
+                          tx={tx}
+                          onUpdate={u => setTransactions(prev => prev.map(t => t.id === u.id ? u : t))}
+                          onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
-                      <th className="px-3 py-2">תאריך</th>
-                      <th className="px-3 py-2">סוג</th>
-                      <th className="px-3 py-2 text-left">סכום</th>
-                      <th className="px-3 py-2">הערות</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.map(tx => (
-                      <TransactionRow
-                        key={tx.id}
-                        tx={tx}
-                        onUpdate={u => setTransactions(prev => prev.map(t => t.id === u.id ? u : t))}
-                        onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              )
+            })()}
           </>
         )}
       </div>
