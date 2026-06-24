@@ -129,3 +129,30 @@ export async function PATCH(
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    // Get parent IDs BEFORE deleting student
+    const { data: st } = await supabaseAdmin
+      .from('students').select('parent_ids').eq('id', id).single()
+    const parentIds = (st?.parent_ids as string[]) ?? []
+
+    // Delete the student
+    const { error } = await supabaseAdmin.from('students').delete().eq('id', id)
+    if (error) throw error
+
+    // Recalculate tuition for all parents who had this student
+    for (const pid of parentIds) {
+      await recalcTuitionForParent(pid)
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
