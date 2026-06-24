@@ -299,8 +299,28 @@ function DonationTab({ parent, onUpdate, transactions, onUpdateTransactions }: {
     ? donationSOs.reduce((s, so) => s + (so.amount ?? 0), 0)
     : (parent.monthlyDonation ?? 0)
 
+  const totalDonationDebt = donationPPs.reduce((s, pp) => s + Math.max(0, pp.balance), 0)
+  const totalDonationPaid = donationPPs.reduce((s, pp) => s + Math.max(0, pp.amount - pp.balance), 0)
+  const openPPs = donationPPs.filter(pp => pp.balance > 0).length
+
   return (
     <div className="p-4 space-y-4" dir="rtl">
+      {!loadingPPs && donationPPs.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-red-50 rounded-xl p-3 text-center border border-red-100">
+            <p className="text-xs text-red-400 mb-0.5">חוב פתוח</p>
+            <p className="text-base font-bold text-red-600">{fmt2(totalDonationDebt)}</p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+            <p className="text-xs text-emerald-500 mb-0.5">שולם</p>
+            <p className="text-base font-bold text-emerald-700">{fmt2(totalDonationPaid)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
+            <p className="text-xs text-gray-400 mb-0.5">פתוחים</p>
+            <p className="text-base font-bold text-gray-700">{openPPs}</p>
+          </div>
+        </div>
+      )}
       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">דמי מגבית</span>
