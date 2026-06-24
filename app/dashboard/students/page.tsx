@@ -21,6 +21,16 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const refreshAllTuition = async () => {
+    setRefreshing(true)
+    try {
+      await fetch('/api/admin/recalculate-tuition', { method: 'POST' })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -55,6 +65,13 @@ export default function StudentsPage() {
             <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
             <button onClick={() => setView('list')}  className={`px-3 py-1.5 ${view==='list'  ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>רשימה</button>
           </div>
+          <button
+            onClick={refreshAllTuition}
+            disabled={refreshing}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {refreshing ? '...' : '🔄 רענן סכומים'}
+          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
