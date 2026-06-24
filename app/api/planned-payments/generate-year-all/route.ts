@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcTuitionForParent } from '@/lib/recalcTuition'
 
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
@@ -118,10 +119,13 @@ export async function POST(req: NextRequest) {
     let created = 0
     let skipped = 0
 
+    const parentsWithNewPPs: string[] = []
+
     for (const parent of parents) {
       const amount = Number(parent.tuition_total) || 0
       if (!amount) continue
 
+      let parentCreated = 0
       for (const { monthYear, date } of months) {
         if (existingSet.has(`${parent.id}|${monthYear}`)) {
           skipped++
@@ -142,8 +146,14 @@ export async function POST(req: NextRequest) {
           console.error('generate-year-all insert error:', parent.id, monthYear, error.message)
         } else {
           created++
+          parentCreated++
         }
       }
+      if (parentCreated > 0) parentsWithNewPPs.push(parent.id)
+    }
+
+    for (const pid of parentsWithNewPPs) {
+      await recalcTuitionForParent(pid)
     }
 
     return NextResponse.json({ created, skipped })
