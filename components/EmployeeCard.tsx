@@ -224,7 +224,12 @@ function WomanLinkField({ women, parentId, onUpdate }: {
 }
 
 /* ─── DonationTab ────────────────────────────────────── */
-function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () => void }) {
+function DonationTab({ parent, onUpdate, transactions, onUpdateTransactions }: {
+  parent: ParentDetail
+  onUpdate: () => void
+  transactions: TransactionItem[]
+  onUpdateTransactions: (updated: TransactionItem) => void
+}) {
   const fmt2 = (n: number) =>
     new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
@@ -442,6 +447,43 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           </div>
         )}
       </div>
+
+      {/* Donation transactions */}
+      {(() => {
+        const donationTxs = transactions.filter(tx =>
+          (tx.projectNames ?? []).includes('דמי מגבית')
+        )
+        if (donationTxs.length === 0) return null
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-600 bg-gray-50 flex items-center justify-between">
+              <span className="text-xs text-gray-400">{donationTxs.length} תנועות</span>
+              <span>תנועות מגבית</span>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
+                  <th className="px-3 py-2">תאריך</th>
+                  <th className="px-3 py-2">סוג</th>
+                  <th className="px-3 py-2 text-left">סכום</th>
+                  <th className="px-3 py-2">הערות</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {donationTxs.map(tx => (
+                  <TransactionRow
+                    key={tx.id}
+                    tx={tx}
+                    onUpdate={onUpdateTransactions}
+                    onDelete={() => {}}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -1187,37 +1229,43 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               )}
 
-              {/* Transactions */}
-              {transactions.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-600 bg-gray-50 flex items-center justify-between">
-                    <span className="text-xs text-gray-400">{transactions.length} תנועות</span>
-                    <span>תנועות כספיות</span>
+              {/* Transactions (excluding דמי מגבית which should only appear in Donation tab) */}
+              {(() => {
+                const paymentsTabTxs = transactions.filter(tx =>
+                  !(tx.projectNames ?? []).includes('דמי מגבית')
+                )
+                if (paymentsTabTxs.length === 0) return null
+                return (
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-600 bg-gray-50 flex items-center justify-between">
+                      <span className="text-xs text-gray-400">{paymentsTabTxs.length} תנועות</span>
+                      <span>תנועות כספיות</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
+                          <th className="px-3 py-2">תאריך</th>
+                          <th className="px-3 py-2">סוג</th>
+                          <th className="px-3 py-2 text-left">סכום</th>
+                          <th className="px-3 py-2">הערות</th>
+                          <th className="px-3 py-2">קטגוריה</th>
+                          <th className="px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paymentsTabTxs.map(tx => (
+                          <TransactionRow
+                            key={tx.id}
+                            tx={tx}
+                            onUpdate={updated => setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))}
+                            onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-right text-xs text-gray-400 border-b border-gray-100">
-                        <th className="px-3 py-2">תאריך</th>
-                        <th className="px-3 py-2">סוג</th>
-                        <th className="px-3 py-2 text-left">סכום</th>
-                        <th className="px-3 py-2">הערות</th>
-                        <th className="px-3 py-2">קטגוריה</th>
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transactions.map(tx => (
-                        <TransactionRow
-                          key={tx.id}
-                          tx={tx}
-                          onUpdate={updated => setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))}
-                          onDelete={id => setTransactions(prev => prev.filter(t => t.id !== id))}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                )
+              })()}
             </div>
           )}
 
@@ -1686,7 +1734,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
           {/* ── DONATION TAB ── */}
           {parent && tab === 'donation' && (
-            <DonationTab parent={parent} onUpdate={load} />
+            <DonationTab
+              parent={parent}
+              onUpdate={load}
+              transactions={transactions}
+              onUpdateTransactions={updated => setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t))}
+            />
           )}
         </div>
       </div>
