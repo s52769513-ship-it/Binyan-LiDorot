@@ -1082,6 +1082,25 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {/* ── CHILDREN TAB ── */}
           {parent && tab === 'children' && (
             <div className="p-4 space-y-3">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/parents/${parentId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ refreshTuition: true }),
+                    })
+                    if (res.ok) {
+                      load()
+                    }
+                  } catch (err) {
+                    console.error('Error refreshing tuition:', err)
+                  }
+                }}
+                className="w-full py-2 px-4 rounded-lg border border-[#1a3a7a]/30 text-[#1a3a7a] text-sm font-medium hover:bg-blue-50 transition-colors"
+              >
+                🔄 רענן וחדש סכומים
+              </button>
               {parent.students.length === 0 ? (
                 <p className="text-center text-gray-400 text-sm py-8">אין ילדים רשומים</p>
               ) : (

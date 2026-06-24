@@ -90,6 +90,12 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
+
+    // Get old parent IDs BEFORE any updates
+    const { data: oldSt } = await supabaseAdmin
+      .from('students').select('parent_ids').eq('id', id).single()
+    const oldParentIds = new Set((oldSt?.parent_ids as string[]) ?? [])
+
     const update: Record<string, unknown> = {}
     for (const [clientKey, dbKey] of Object.entries(ALLOWED_FIELDS)) {
       if (clientKey in body) update[dbKey] = body[clientKey]
@@ -99,13 +105,18 @@ export async function PATCH(
     const { error } = await supabaseAdmin.from('students').update(update).eq('id', id)
     if (error) throw error
 
-    // If status or transportation changed, recalculate parent tuition + open planned payments
+    // If status, transportation, or parents changed, recalculate parent tuition
     const TUITION_FIELDS = new Set(['status', 'transportationCost', 'parentIds'])
     if (Object.keys(body).some(k => TUITION_FIELDS.has(k))) {
       try {
-        const { data: st } = await supabaseAdmin
+        // Get new parent IDs (after update)
+        const { data: newSt } = await supabaseAdmin
           .from('students').select('parent_ids').eq('id', id).single()
-        for (const pid of ((st?.parent_ids as string[]) ?? [])) {
+        const newParentIds = new Set((newSt?.parent_ids as string[]) ?? [])
+
+        // Recalculate for all affected parents (both old and new)
+        const affectedParents = new Set([...oldParentIds, ...newParentIds])
+        for (const pid of affectedParents) {
           await recalcTuitionForParent(pid)
         }
       } catch (rcErr) {

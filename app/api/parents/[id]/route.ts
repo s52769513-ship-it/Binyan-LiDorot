@@ -51,6 +51,15 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
+
+    // Handle tuition refresh
+    if (body.refreshTuition) {
+      const { recalcTuitionForParent } = await import('@/lib/recalcTuition')
+      await recalcTuitionForParent(id)
+      const { data: parent } = await supabaseAdmin.from('parents').select('*').eq('id', id).single()
+      return NextResponse.json(parent)
+    }
+
     const update: Record<string, unknown> = {}
     for (const [key, dbKey] of Object.entries(FIELD_MAP)) {
       if (key in body) update[dbKey] = body[key]

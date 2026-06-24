@@ -12,25 +12,41 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
   const baseTuition = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
   const newTuition = baseTuition + transportTotal
 
-  // Update open future PPs first (date >= today, pp_type = tuition)
-  const today = new Date()
-  const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-
-  const { data: openPPs } = await supabaseAdmin
+  // Get all tuition PPs for this parent
+  const { data: allTuitionPPs } = await supabaseAdmin
     .from('planned_payments')
-    .select('id, amount, balance')
+    .select('id, amount, balance, date, pp_type')
     .contains('parent_ids', [parentId])
     .eq('pp_type', 'tuition')
-    .gt('balance', 0)
-    .gte('date', currentMonthDate)
 
-  for (const pp of openPPs ?? []) {
-    const alreadyPaid = Math.max(0, Number(pp.amount) - Number(pp.balance))
-    const newBalance  = Math.max(0, newTuition - alreadyPaid)
-    await supabaseAdmin.from('planned_payments').update({
-      amount:  newTuition,
-      balance: newBalance,
-    }).eq('id', pp.id)
+  // If tuition is now 0, delete all future PPs; otherwise update them
+  if (newTuition === 0) {
+    // Delete all future PPs (date >= today)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+
+    const ppsToDelete = (allTuitionPPs ?? []).filter(pp => (pp.date ?? '') >= todayStr)
+    for (const pp of ppsToDelete) {
+      await supabaseAdmin.from('planned_payments').delete().eq('id', pp.id)
+    }
+  } else {
+    // Update future PPs with new tuition amount
+    const today = new Date()
+    const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+
+    const openPPs = (allTuitionPPs ?? []).filter(pp =>
+      pp.date >= currentMonthDate && Number(pp.balance) > 0
+    )
+
+    for (const pp of openPPs) {
+      const alreadyPaid = Math.max(0, Number(pp.amount) - Number(pp.balance))
+      const newBalance  = Math.max(0, newTuition - alreadyPaid)
+      await supabaseAdmin.from('planned_payments').update({
+        amount:  newTuition,
+        balance: newBalance,
+      }).eq('id', pp.id)
+    }
   }
 
   // Recompute tuition_balance from ALL PP balances (ground truth, not delta)
