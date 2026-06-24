@@ -596,7 +596,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           try {
             const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
               (d.plannedPayments ?? [])
-                .filter((pp: { ppType: string; balance: number }) => pp.ppType !== 'salary' && pp.balance > 0)
+                .filter((pp: { ppType: string; balance: number }) => pp.ppType === 'tuition' && pp.balance > 0)
                 .sort((a: { monthYear: string }, b: { monthYear: string }) => {
                   const [am, ay] = a.monthYear.split('/').map(Number)
                   const [bm, by] = b.monthYear.split('/').map(Number)
@@ -745,7 +745,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
 
   // Tuition PPs only (for payments tab)
-  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType !== 'salary')
+  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'tuition')
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
