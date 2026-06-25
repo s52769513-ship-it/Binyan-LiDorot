@@ -267,6 +267,18 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
     await patch({ transportation: next, transportationCost: cost })
   }
 
+  const deleteStudent = async () => {
+    if (!student || !confirm(`מחק תלמיד: ${student.name}?`)) return
+    try {
+      const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(await res.text())
+      onUpdate?.()
+      onClose()
+    } catch (err) {
+      setError(`שגיאה בהוספה: ${err}`)
+    }
+  }
+
   const frameworkColor = student?.framework === 'בית חינוך לבנות'
     ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'
 
@@ -280,7 +292,10 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
         {/* Header */}
         <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
           <div className="flex items-start justify-between mb-2">
-            <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            <div className="flex gap-1">
+              <button onClick={deleteStudent} className="p-1.5 rounded-lg text-white/60 hover:text-red-300 hover:bg-red-500/20 text-lg leading-none" title="מחק תלמיד">🗑</button>
+              <button onClick={onClose} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none">✕</button>
+            </div>
             <div className="text-right flex-1 mr-2">
               {loading
                 ? <div className="h-6 w-40 bg-white/20 rounded animate-pulse ml-auto" />

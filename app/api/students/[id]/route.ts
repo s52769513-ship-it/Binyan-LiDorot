@@ -90,6 +90,15 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
+
+    // Get old parent_ids if parentIds are being changed
+    let oldParentIds: string[] = []
+    if ('parentIds' in body) {
+      const { data: st } = await supabaseAdmin
+        .from('students').select('parent_ids').eq('id', id).single()
+      oldParentIds = (st?.parent_ids as string[]) ?? []
+    }
+
     const update: Record<string, unknown> = {}
     for (const [clientKey, dbKey] of Object.entries(ALLOWED_FIELDS)) {
       if (clientKey in body) update[dbKey] = body[clientKey]
@@ -100,16 +109,51 @@ export async function PATCH(
     if (error) throw error
 
     // If status or transportation changed, recalculate parent tuition + open planned payments
-    const TUITION_FIELDS = new Set(['status', 'transportationCost', 'parentIds'])
-    if (Object.keys(body).some(k => TUITION_FIELDS.has(k))) {
+    const TUITION_FIELDS = new Set(['status', 'transportation_cost', 'parent_ids'])
+    if (Object.keys(update).some(k => TUITION_FIELDS.has(k))) {
       try {
         const { data: st } = await supabaseAdmin
           .from('students').select('parent_ids').eq('id', id).single()
-        for (const pid of ((st?.parent_ids as string[]) ?? [])) {
+        const newParentIds = (st?.parent_ids as string[]) ?? []
+
+        // Recalculate for all affected parents (old and new)
+        const allParentIds = new Set([...oldParentIds, ...newParentIds])
+        for (const pid of allParentIds) {
           await recalcTuitionForParent(pid)
         }
       } catch (rcErr) {
         console.error('recalcTuition error after student PATCH:', rcErr)
+      }
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    // Get parent_ids before deletion
+    const { data: student } = await supabaseAdmin
+      .from('students').select('parent_ids').eq('id', id).single()
+    const parentIds = (student?.parent_ids as string[]) ?? []
+
+    // Delete the student
+    const { error } = await supabaseAdmin.from('students').delete().eq('id', id)
+    if (error) throw error
+
+    // Recalculate tuition for each parent
+    for (const pid of parentIds) {
+      try {
+        await recalcTuitionForParent(pid)
+      } catch (rcErr) {
+        console.error(`recalcTuition error for parent ${pid}:`, rcErr)
       }
     }
 

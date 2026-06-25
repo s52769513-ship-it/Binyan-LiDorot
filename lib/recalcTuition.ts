@@ -33,6 +33,20 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
     }).eq('id', pp.id)
   }
 
+  // If parent has no children, delete all tuition planned payments
+  if (activeCount === 0) {
+    const { data: emptyPPs } = await supabaseAdmin
+      .from('planned_payments')
+      .select('id')
+      .contains('parent_ids', [parentId])
+      .eq('pp_type', 'tuition')
+
+    for (const pp of emptyPPs ?? []) {
+      await supabaseAdmin.from('transactions').delete().eq('planned_payment_id', pp.id)
+      await supabaseAdmin.from('planned_payments').delete().eq('id', pp.id)
+    }
+  }
+
   // Recompute tuition_balance from ALL PP balances (ground truth, not delta)
   const { data: allPPs } = await supabaseAdmin
     .from('planned_payments')
