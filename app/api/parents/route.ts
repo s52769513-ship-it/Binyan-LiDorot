@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
     const status      = searchParams.get('status') ?? ''
     const debt        = searchParams.get('debt') ?? 'all'
     const city        = searchParams.get('city') ?? ''
-    const hasChildren = searchParams.get('hasChildren') === 'true'
+    const hasChildren   = searchParams.get('hasChildren') === 'true'
+    const deductTuition = searchParams.get('deductTuition') === 'true'
     const sort   = searchParams.get('sort') ?? 'last_name'
     const dir    = searchParams.get('dir') ?? 'asc'
 
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
 
     if (hasChildren) {
       query = query.gt('children_count', 0)
+    }
+
+    if (deductTuition) {
+      query = query.eq('deduct_tuition', true)
     }
 
     const validSort = ['last_name', 'city', 'children_count', 'tuition_total', 'tuition_balance']
