@@ -717,6 +717,20 @@ export default function Dashboard() {
           ))}
         </div>
 
+        <button onClick={async () => {
+          try {
+            const res = await fetch('/api/parents/cleanup-empty', { method: 'POST' })
+            const data = await res.json()
+            alert(`נוקה ${data.cleaned ?? 0} תשלומים מתוכננים`)
+            load()
+          } catch (err) {
+            alert(`שגיאה: ${err}`)
+          }
+        }}
+          className="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-medium transition-colors">
+          🧹 נקה PP ריקים
+        </button>
+
         {lastSyncLabel && (
           <span className="mr-auto text-[10px] text-gray-400">סנכרן {lastSyncLabel}</span>
         )}
