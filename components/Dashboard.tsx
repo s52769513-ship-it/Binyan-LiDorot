@@ -48,6 +48,7 @@ interface CashflowMonth {
   isCurrent: boolean
   tuition: { planned: number; collected: number; remaining: number; collectionPct: number; byDept: Record<string, { planned: number; collected: number; remaining: number }> }
   salary: { planned: number; paid: number; remaining: number }
+  donation: { planned: number; collected: number; remaining: number; collectionPct: number }
   net: number
   netActual: number
 }
