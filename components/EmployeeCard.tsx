@@ -294,8 +294,26 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
     ? donationSOs.reduce((s, so) => s + (so.amount ?? 0), 0)
     : (parent.monthlyDonation ?? 0)
 
+  const totalPaid    = donationPPs.reduce((s, p) => s + Math.max(0, p.amount - p.balance), 0)
+  const totalOpen    = donationPPs.reduce((s, p) => s + Math.max(0, p.balance), 0)
+  const openCount    = donationPPs.filter(p => p.balance > 0).length
+
   return (
     <div className="p-4 space-y-4" dir="rtl">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-gray-200 p-3 text-center">
+          <p className="text-[11px] text-gray-500 mb-1">פתוחים</p>
+          <p className="text-xl font-bold text-gray-800">{openCount}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+          <p className="text-[11px] text-emerald-600 mb-1">שולם</p>
+          <p className="text-xl font-bold text-emerald-700">{fmt2(totalPaid)}</p>
+        </div>
+        <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-center">
+          <p className="text-[11px] text-red-500 mb-1">חוב פתוח</p>
+          <p className="text-xl font-bold text-red-600">{fmt2(totalOpen)}</p>
+        </div>
+      </div>
       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">דמי מגבית</span>
