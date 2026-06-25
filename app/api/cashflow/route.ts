@@ -13,8 +13,8 @@ export async function GET() {
       months.push(`${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`)
     }
 
-    // Fetch planned_payments for tuition and salary across all 9 months
-    const [tuitionRes, salaryRes, studentsRes, classesRes] = await Promise.all([
+    // Fetch planned_payments for tuition, salary, and donation across all 9 months
+    const [tuitionRes, salaryRes, donationRes, studentsRes, classesRes] = await Promise.all([
       supabaseAdmin
         .from('planned_payments')
         .select('month_year, amount, balance, parent_ids')
@@ -25,6 +25,12 @@ export async function GET() {
         .from('planned_payments')
         .select('month_year, amount, balance, parent_ids')
         .eq('pp_type', 'salary')
+        .in('month_year', months),
+
+      supabaseAdmin
+        .from('planned_payments')
+        .select('month_year, amount, balance, parent_ids')
+        .eq('pp_type', 'donation')
         .in('month_year', months),
 
       supabaseAdmin.from('students').select('parent_ids, class_name'),
@@ -58,13 +64,20 @@ export async function GET() {
       paid: number
       remaining: number
     }
+    interface DonationAcc {
+      planned: number
+      collected: number
+      remaining: number
+    }
 
     const tuitionByMonth: Record<string, TuitionAcc> = {}
     const salaryByMonth: Record<string, SalaryAcc> = {}
+    const donationByMonth: Record<string, DonationAcc> = {}
 
     for (const m of months) {
       tuitionByMonth[m] = { planned: 0, collected: 0, remaining: 0, byDept: {} }
       salaryByMonth[m] = { planned: 0, paid: 0, remaining: 0 }
+      donationByMonth[m] = { planned: 0, collected: 0, remaining: 0 }
     }
 
     for (const row of tuitionRes.data ?? []) {
@@ -101,9 +114,22 @@ export async function GET() {
       salaryByMonth[m].remaining += balance
     }
 
+    for (const row of donationRes.data ?? []) {
+      const m = row.month_year as string
+      if (!donationByMonth[m]) continue
+      const amount = Number(row.amount) || 0
+      const balance = Number(row.balance) || 0
+      const collected = amount - balance
+
+      donationByMonth[m].planned += amount
+      donationByMonth[m].collected += collected
+      donationByMonth[m].remaining += balance
+    }
+
     const result = months.map(m => {
       const t = tuitionByMonth[m]
       const s = salaryByMonth[m]
+      const d = donationByMonth[m]
       const isPast = m !== currentMonthYear && months.indexOf(m) < months.indexOf(currentMonthYear)
       const isCurrent = m === currentMonthYear
 
@@ -132,8 +158,14 @@ export async function GET() {
           paid: Math.round(s.paid),
           remaining: Math.round(s.remaining),
         },
-        net: Math.round(t.planned - s.planned),
-        netActual: Math.round(t.collected - s.paid),
+        donation: {
+          planned: Math.round(d.planned),
+          collected: Math.round(d.collected),
+          remaining: Math.round(d.remaining),
+          collectionPct: d.planned > 0 ? Math.round((d.collected / d.planned) * 100) : 0,
+        },
+        net: Math.round(t.planned + d.planned - s.planned),
+        netActual: Math.round(t.collected + d.collected - s.paid),
       }
     })
 

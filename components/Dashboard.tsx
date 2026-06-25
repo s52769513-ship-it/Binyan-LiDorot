@@ -417,6 +417,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
               <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={4}>
                 הכנסות שכ״ל
               </th>
+              {/* Donation group */}
+              <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={4}>
+                דמי מגבית
+              </th>
               {/* Salary group */}
               <th className="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap border-r border-gray-100" colSpan={3}>
                 הוצאות משכורת
@@ -425,6 +429,10 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
             </tr>
             <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-400">
               <th className="px-3 py-1 text-right"></th>
+              <th className="px-2 py-1 text-center">צפוי</th>
+              <th className="px-2 py-1 text-center">נגבה</th>
+              <th className="px-2 py-1 text-center">יתרה</th>
+              <th className="px-2 py-1 text-center border-r border-gray-100">%</th>
               <th className="px-2 py-1 text-center">צפוי</th>
               <th className="px-2 py-1 text-center">נגבה</th>
               <th className="px-2 py-1 text-center">יתרה</th>
@@ -473,6 +481,25 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                           'bg-red-100 text-red-700'
                         }`}>
                           {row.tuition.collectionPct}%
+                        </span>
+                      ) : '—'}
+                    </td>
+                    {/* Donation */}
+                    <td className="px-2 py-2 text-center tabular-nums">{row.donation.planned > 0 ? `₪${fmt(row.donation.planned)}` : '—'}</td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
+                      {row.donation.collected > 0 ? `₪${fmt(row.donation.collected)}` : '—'}
+                    </td>
+                    <td className={`px-2 py-2 text-center tabular-nums ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
+                      {row.donation.remaining > 0 ? `₪${fmt(row.donation.remaining)}` : '—'}
+                    </td>
+                    <td className="px-2 py-2 text-center border-r border-gray-100">
+                      {row.donation.planned > 0 ? (
+                        <span className={`text-[10px] px-1 py-0.5 rounded-full font-medium ${
+                          row.donation.collectionPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
+                          row.donation.collectionPct >= 60 ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.donation.collectionPct}%
                         </span>
                       ) : '—'}
                     </td>
