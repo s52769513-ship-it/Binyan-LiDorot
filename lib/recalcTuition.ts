@@ -47,15 +47,29 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
     }
   }
 
-  // Recompute tuition_balance from ALL PP balances (ground truth, not delta)
+  // Recompute tuition_balance = overdue debt minus ppCredit (matches "חוב באיחור" in detail card)
   const { data: allPPs } = await supabaseAdmin
     .from('planned_payments')
-    .select('balance, pp_type')
+    .select('balance, pp_type, date')
     .contains('parent_ids', [parentId])
 
-  const tuitionBalance = (allPPs ?? [])
-    .filter(p => p.pp_type !== 'salary')
-    .reduce((s, p) => s + Math.max(0, Number(p.balance ?? 0)), 0)
+  const { data: parentData } = await supabaseAdmin
+    .from('parents')
+    .select('pp_credit')
+    .eq('id', parentId)
+    .single()
+
+  const ppCredit = Number(parentData?.pp_credit ?? 0)
+
+  // Calculate overdue balance (what shows as "חוב באיחור" in detail)
+  const overduePPs = (allPPs ?? []).filter(p =>
+    p.pp_type !== 'salary' &&
+    Number(p.balance ?? 0) > 0 &&
+    p.date &&
+    new Date(p.date) < today
+  )
+  const overdueTotal = overduePPs.reduce((s, pp) => s + Number(pp.balance ?? 0), 0)
+  const tuitionBalance = Math.max(0, overdueTotal - ppCredit)
 
   await supabaseAdmin.from('parents').update({
     tuition_total:   newTuition,
