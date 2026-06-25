@@ -1023,13 +1023,20 @@ function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) 
 
   const save = async () => {
     setSaving(true); setSaved(false)
-    await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key('day')]: day, [key('time')]: time, [key('hour')]: Number(time.split(':')[0]) }),
-    }).catch(() => {})
-    setSaving(false); setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    try {
+      const r = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key('day')]: day, [key('time')]: time, [key('hour')]: Number(time.split(':')[0]) }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      alert(`שגיאה בשמירה: ${String(err)}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -1059,6 +1066,74 @@ function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) 
       {enabled && <span className="text-xs text-indigo-400 mr-auto">הבא: {nextRunLabel(day)} בשעה {time}</span>}
       {!enabled && <span className="text-xs text-gray-400 mr-auto">כבוי — הפעל עם המתג למעלה</span>}
     </div>
+  )
+}
+
+/* ─── ScheduleTableRow ────────────────────────────────────────────────── */
+function ScheduleTableRow({ def, enabled }: { def: AutoDef; enabled: boolean }) {
+  const key = (f: string) => `${def.id.replace(/-/g, '_')}_${f}`
+  const [day,  setDay]  = useState(1)
+  const [time, setTime] = useState('08:00')
+  const [saving, setSaving] = useState(false)
+  const [saved,  setSaved]  = useState(false)
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(d => {
+        if (d[key('day')]  != null) setDay(Number(d[key('day')]))
+        if (d[key('time')] != null) setTime(String(d[key('time')]))
+        else if (d[key('hour')] != null) setTime(`${String(Number(d[key('hour')])).padStart(2,'0')}:00`)
+      })
+      .catch(() => {})
+  }, [def.id])
+
+  const save = async () => {
+    setSaving(true); setSaved(false)
+    try {
+      const r = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key('day')]: day, [key('time')]: time, [key('hour')]: Number(time.split(':')[0]) }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      alert(`שגיאה בשמירה: ${String(err)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <tr className={!enabled ? 'opacity-50 bg-gray-50' : ''}>
+      <td className="px-4 py-2 font-medium text-sm">{def.icon} {def.name}</td>
+      <td className="px-4 py-2">
+        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+          {enabled ? '✓ פעיל' : '⏸ כבוי'}
+        </span>
+      </td>
+      <td className="px-4 py-2">
+        <select value={day} onChange={e => setDay(Number(e.target.value))} disabled={!enabled}
+          className="px-2 py-0.5 rounded border border-gray-200 text-xs bg-white focus:outline-none disabled:opacity-40">
+          {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </td>
+      <td className="px-4 py-2">
+        <input type="time" value={time} onChange={e => setTime(e.target.value)} disabled={!enabled}
+          className="px-2 py-0.5 rounded border border-gray-200 text-xs bg-white focus:outline-none disabled:opacity-40" dir="ltr" />
+      </td>
+      <td className="px-4 py-2 text-xs text-gray-500">
+        {enabled ? `${nextRunLabel(day)} ${time}` : '—'}
+      </td>
+      <td className="px-4 py-2">
+        <button onClick={save} disabled={saving || !enabled}
+          className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
+          {saving ? '...' : saved ? '✓' : 'שמור'}
+        </button>
+      </td>
+    </tr>
   )
 }
 
@@ -1092,6 +1167,30 @@ export default function AutomationsTab() {
 
   return (
     <div className="space-y-4" dir="rtl">
+      {/* Schedule table for all automations */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+          <h3 className="font-bold text-gray-800">🕐 תזמון אוטומטי לכל האוטומציות</h3>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b text-right text-gray-400 text-xs">
+              <th className="px-4 py-2">אוטומציה</th>
+              <th className="px-4 py-2">סטטוס</th>
+              <th className="px-4 py-2">יום</th>
+              <th className="px-4 py-2">שעה</th>
+              <th className="px-4 py-2">הבא</th>
+              <th className="px-4 py-2">שמור</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {DEFS.map(def => (
+              <ScheduleTableRow key={def.id} def={def} enabled={enabled[def.id] ?? true} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* Automation selector pills */}
       <div className="flex gap-2 flex-wrap">
         {DEFS.map(d => (

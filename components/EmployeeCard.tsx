@@ -721,7 +721,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
 
   // Tuition PPs only (for payments tab)
-  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType !== 'salary')
+  const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'tuition')
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
