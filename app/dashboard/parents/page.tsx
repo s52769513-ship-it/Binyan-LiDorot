@@ -21,6 +21,7 @@ export default function ParentsPage() {
   const [filterCity, setFilterCity]       = useState('')
   const [filterHasChildren, setFilterHasChildren] = useState(false)
   const [filterDeductTuition, setFilterDeductTuition] = useState(false)
+  const [filterHasGaps, setFilterHasGaps]     = useState(false)
   const [sortField, setSortField]       = useState<SortField>('last_name')
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc')
   const [selectedId, setSelectedId]         = useState<string | null>(null)
@@ -46,6 +47,7 @@ export default function ParentsPage() {
       ...(filterCity ? { city: filterCity } : {}),
       ...(filterHasChildren ? { hasChildren: 'true' } : {}),
       ...(filterDeductTuition ? { deductTuition: 'true' } : {}),
+      ...(filterHasGaps ? { hasGaps: 'true' } : {}),
     })
     fetch(`/api/parents?${params}`)
       .then(r => r.json())
@@ -57,7 +59,7 @@ export default function ParentsPage() {
       })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
-  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren, filterDeductTuition])
+  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren, filterDeductTuition, filterHasGaps])
 
   useEffect(() => { loadParents() }, [loadParents])
   useRealtimeRefresh(loadParents, ['parents', 'transactions', 'planned_payments'])
@@ -113,9 +115,19 @@ export default function ParentsPage() {
         >
           עם קיזוזים באוטומציות
         </button>
-        {(filterHasChildren || filterCity || filterDeductTuition) && (
+        <button
+          onClick={() => { setFilterHasGaps(v => !v); setPage(0) }}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            filterHasGaps
+              ? 'bg-red-600 text-white border-red-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-red-400'
+          }`}
+        >
+          🔴 עם פערים בתשלומים
+        </button>
+        {(filterHasChildren || filterCity || filterDeductTuition || filterHasGaps) && (
           <button
-            onClick={() => { setFilterHasChildren(false); setFilterCity(''); setFilterDeductTuition(false); setPage(0) }}
+            onClick={() => { setFilterHasChildren(false); setFilterCity(''); setFilterDeductTuition(false); setFilterHasGaps(false); setPage(0) }}
             className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
           >
             נקה פילטרים ✕

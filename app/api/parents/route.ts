@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const city        = searchParams.get('city') ?? ''
     const hasChildren   = searchParams.get('hasChildren') === 'true'
     const deductTuition = searchParams.get('deductTuition') === 'true'
+    const hasGaps       = searchParams.get('hasGaps') === 'true'
     const sort   = searchParams.get('sort') ?? 'last_name'
     const dir    = searchParams.get('dir') ?? 'asc'
 
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
     // Compute overdue balance (past-date PPs only) per parent
     const parentIds = (data ?? []).map(p => p.id as string)
     const overdueByParent: Record<string, number> = {}
+    const parentGaps: Record<string, boolean> = {}
     if (parentIds.length > 0) {
       const { data: overduePPs } = await supabaseAdmin
         .from('planned_payments')
@@ -84,6 +86,47 @@ export async function GET(req: NextRequest) {
           }
         }
       }
+
+      // Detect gaps for each parent (only if filter is active or needed)
+      if (hasGaps) {
+        const { data: allPPs } = await supabaseAdmin
+          .from('planned_payments')
+          .select('parent_ids, month_year')
+          .eq('pp_type', 'tuition')
+          .overlaps('parent_ids', parentIds)
+
+        for (const parentId of parentIds) {
+          const parentPPs = (allPPs ?? [])
+            .filter(pp => (pp.parent_ids as string[])?.includes(parentId))
+            .map(pp => pp.month_year as string)
+            .filter(Boolean)
+
+          if (parentPPs.length < 2) {
+            parentGaps[parentId] = false
+            continue
+          }
+
+          const months = parentPPs.map(my => {
+            const [m, y] = my.split('/').map(Number)
+            return y * 12 + m
+          }).sort((a, b) => a - b)
+
+          let hasGap = false
+          for (let i = 0; i < months.length - 1; i++) {
+            if (months[i + 1] - months[i] > 1) {
+              hasGap = true
+              break
+            }
+          }
+          parentGaps[parentId] = hasGap
+        }
+      }
+    }
+
+    // Filter by gaps if needed
+    let filteredData = data ?? []
+    if (hasGaps) {
+      filteredData = filteredData.filter(p => parentGaps[p.id as string] === true)
     }
 
     const statusSet = new Set<string>()
@@ -94,7 +137,7 @@ export async function GET(req: NextRequest) {
     }
     const statusOptions = [...statusSet].sort((a, b) => a.localeCompare(b, 'he'))
 
-    const mapped = (data ?? []).map(p => ({
+    const mapped = filteredData.map(p => ({
       id: p.id,
       name: p.name ?? '',
       firstName: p.first_name ?? '',
