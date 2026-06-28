@@ -10,6 +10,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
+import { DebtModal }         from './DebtModal'
 
 /* ─── helpers ──────────────────────────────────────── */
 const fmt = (n: number) =>
@@ -526,6 +527,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [deleteInfo, setDeleteInfo]             = useState<{ txCount: number; ppCount: number; soCount: number; studentCount: number } | null>(null)
   const [deleteChecks, setDeleteChecks]         = useState({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
   const [deleting, setDeleting]                 = useState(false)
+
+  // Debt modal
+  const [showDebtModal, setShowDebtModal]       = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -1122,6 +1126,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <SummaryNum label="שולם החודש"     value={fmt(paidThisMonth)}   color="text-emerald-700" bg="bg-emerald-50" />
                 <SummaryNum label="נותר לחודש"     value={fmt(remainThisMonth)} color="text-amber-600"   bg="bg-amber-50" />
               </div>
+
+              {/* Debt summary button */}
+              <button
+                onClick={() => setShowDebtModal(true)}
+                className="w-full px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 hover:from-indigo-100 hover:to-purple-100 transition-colors text-sm font-medium text-indigo-700"
+              >
+                📊 סיכום חובות מלא
+              </button>
 
               {/* Overdue banner */}
               {overdueTotal > 0 && (
@@ -2291,6 +2303,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
       {showReport && parent && (
         <ReportModal parent={parent} onClose={() => setShowReport(false)} />
+      )}
+
+      {/* ── Debt modal ── */}
+      {showDebtModal && (
+        <DebtModal parentId={parentId} isOpen={showDebtModal} onClose={() => setShowDebtModal(false)} />
       )}
 
       {showAddSalaryPP && parent && (() => {
