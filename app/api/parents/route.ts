@@ -87,39 +87,37 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Detect gaps for each parent (only if filter is active or needed)
-      if (hasGaps) {
-        const { data: allPPs } = await supabaseAdmin
-          .from('planned_payments')
-          .select('parent_ids, month_year')
-          .eq('pp_type', 'tuition')
-          .overlaps('parent_ids', parentIds)
+      // Detect gaps for each parent
+      const { data: allPPs } = await supabaseAdmin
+        .from('planned_payments')
+        .select('parent_ids, month_year')
+        .eq('pp_type', 'tuition')
+        .overlaps('parent_ids', parentIds)
 
-        for (const parentId of parentIds) {
-          const parentPPs = (allPPs ?? [])
-            .filter(pp => (pp.parent_ids as string[])?.includes(parentId))
-            .map(pp => pp.month_year as string)
-            .filter(Boolean)
+      for (const parentId of parentIds) {
+        const parentPPs = (allPPs ?? [])
+          .filter(pp => (pp.parent_ids as string[])?.includes(parentId))
+          .map(pp => pp.month_year as string)
+          .filter(Boolean)
 
-          if (parentPPs.length < 2) {
-            parentGaps[parentId] = false
-            continue
-          }
-
-          const months = parentPPs.map(my => {
-            const [m, y] = my.split('/').map(Number)
-            return y * 12 + m
-          }).sort((a, b) => a - b)
-
-          let hasGap = false
-          for (let i = 0; i < months.length - 1; i++) {
-            if (months[i + 1] - months[i] > 1) {
-              hasGap = true
-              break
-            }
-          }
-          parentGaps[parentId] = hasGap
+        if (parentPPs.length < 2) {
+          parentGaps[parentId] = false
+          continue
         }
+
+        const months = parentPPs.map(my => {
+          const [m, y] = my.split('/').map(Number)
+          return y * 12 + m
+        }).sort((a, b) => a - b)
+
+        let hasGap = false
+        for (let i = 0; i < months.length - 1; i++) {
+          if (months[i + 1] - months[i] > 1) {
+            hasGap = true
+            break
+          }
+        }
+        parentGaps[parentId] = hasGap
       }
     }
 
