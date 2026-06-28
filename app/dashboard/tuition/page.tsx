@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
-import { DeleteOldPPsModal } from '@/components/DeleteOldPPsModal'
 import dynamic from 'next/dynamic'
 const AddTransactionModal = dynamic(() => import('@/components/AddTransactionModal'), { ssr: false })
 
@@ -82,9 +81,6 @@ export default function TuitionPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
-
-  // Delete old PPs state
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const loadPreview = async (future = futureOnly) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
@@ -240,12 +236,6 @@ export default function TuitionPage() {
             </span>
           )}
           {genError && <span className="text-sm text-red-600">{genError}</span>}
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="px-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors whitespace-nowrap"
-          >
-            🗑️ מחק תשלומים ישנים
-          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">שכר לימוד</h2>
       </div>
@@ -510,12 +500,6 @@ export default function TuitionPage() {
           </div>
         </div>
       )}
-
-      <DeleteOldPPsModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onSuccess={() => load()}
-      />
     </div>
   )
 }
