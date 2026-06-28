@@ -155,7 +155,10 @@ export default function ParentsPage() {
       {selectedId && (
         <EmployeeCard
           parentId={selectedId}
-          onClose={() => setSelectedId(null)}
+          onClose={() => {
+            setSelectedId(null)
+            loadParents()
+          }}
           onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
         />
       )}
