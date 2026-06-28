@@ -46,7 +46,16 @@ function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
 export async function GET(req: NextRequest) {
   try {
     const futureOnly = req.nextUrl.searchParams.get('futureOnly') === '1'
-    const months    = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    const singleMonth = req.nextUrl.searchParams.get('month')
+
+    let months: { monthYear: string; date: string }[]
+    if (singleMonth) {
+      const [m, y] = singleMonth.split('/').map(Number)
+      const mm = String(m).padStart(2, '0')
+      months = [{ monthYear: `${mm}/${y}`, date: `${y}-${mm}-01` }]
+    } else {
+      months = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    }
     const monthYears = months.map(m => m.monthYear)
 
     // Get all parents that have tuition (i.e. active children)

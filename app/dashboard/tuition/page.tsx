@@ -74,6 +74,8 @@ export default function TuitionPage() {
   const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
   const [genError, setGenError]       = useState('')
   const [futureOnly, setFutureOnly]   = useState(false)
+  const [genMode, setGenMode]         = useState<'future' | 'month'>('future')
+  const [selectedGenMonth, setSelectedGenMonth] = useState('')
 
   // Reset-tuition-all state
   const [resetLoading, setResetLoading] = useState(false)
@@ -167,14 +169,44 @@ export default function TuitionPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => loadPreview()}
-            disabled={genLoading}
-            className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
-          >
-            {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGenMode(genMode === 'future' ? 'month' : 'future')}
+              className="px-3 py-2 text-sm font-semibold rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+            >
+              {genMode === 'future' ? '📅 בחר חודש' : '🚀 חודשים עתידיים'}
+            </button>
+            {genMode === 'month' && data?.months && (
+              <select
+                value={selectedGenMonth}
+                onChange={e => setSelectedGenMonth(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white"
+              >
+                <option value="">בחר חודש...</option>
+                {data.months.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => {
+                if (genMode === 'future') loadPreview()
+                else if (selectedGenMonth) {
+                  setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
+                  fetch(`/api/planned-payments/generate-year-all?month=${encodeURIComponent(selectedGenMonth)}`)
+                    .then(r => r.json())
+                    .then(d => { if (d.error) { setGenError(d.error); return }; setGenPreview(d) })
+                    .catch(() => setGenError('שגיאת רשת'))
+                    .finally(() => setGenLoading(false))
+                }
+              }}
+              disabled={genLoading || (genMode === 'month' && !selectedGenMonth)}
+              className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+            >
+              {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים'}
+            </button>
+          </div>
           {/* Reset button */}
           {!resetConfirm ? (
             <button
