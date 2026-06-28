@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const parentId = params.id
+    const { id: parentId } = await params
 
     // Fetch all planned payments for this parent
     // Note: is_legacy column may not exist yet, gracefully handle it
