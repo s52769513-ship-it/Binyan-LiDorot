@@ -31,7 +31,7 @@ export function DeleteOldPPsModal({ isOpen, onClose, onSuccess }: DeleteOldPPsMo
       const res = await fetch('/api/planned-payments/delete-before-month', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeMonth: '04/2026', execute: false }),
+        body: JSON.stringify({ beforeMonth: '09/2026', execute: false }),
       })
 
       const data = await res.json()
@@ -63,7 +63,7 @@ export function DeleteOldPPsModal({ isOpen, onClose, onSuccess }: DeleteOldPPsMo
       const res = await fetch('/api/planned-payments/delete-before-month', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beforeMonth: '04/2026', execute: true }),
+        body: JSON.stringify({ beforeMonth: '09/2026', execute: true }),
       })
 
       const data = await res.json()
@@ -97,7 +97,7 @@ export function DeleteOldPPsModal({ isOpen, onClose, onSuccess }: DeleteOldPPsMo
           <>
             <h2 className="text-xl font-bold mb-4">מחיקת תשלומים מתוכננים ישנים</h2>
             <p className="text-gray-600 mb-4">
-              יוסרו כל תשלומים מתוכננים שכ"ל מלפני 04/2026
+              יוסרו כל תשלומים מתוכננים שכ"ל מלפני 09/2026
             </p>
             {error && <div className="text-red-600 mb-4 text-sm">{error}</div>}
             <div className="flex gap-3">
