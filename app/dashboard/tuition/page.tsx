@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
-import { DeleteOldPPsModal } from '@/components/DeleteOldPPsModal'
 import dynamic from 'next/dynamic'
 const AddTransactionModal = dynamic(() => import('@/components/AddTransactionModal'), { ssr: false })
 
@@ -83,8 +82,8 @@ export default function TuitionPage() {
   const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
 
-  // Delete old PPs state
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  // Gen confirm state
+  const [genConfirm, setGenConfirm] = useState(false)
 
   const loadPreview = async (future = futureOnly) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
@@ -193,17 +192,7 @@ export default function TuitionPage() {
               </select>
             )}
             <button
-              onClick={() => {
-                if (genMode === 'future') loadPreview()
-                else if (selectedGenMonth) {
-                  setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
-                  fetch(`/api/planned-payments/generate-year-all?month=${encodeURIComponent(selectedGenMonth)}`)
-                    .then(r => r.json())
-                    .then(d => { if (d.error) { setGenError(d.error); return }; setGenPreview(d) })
-                    .catch(() => setGenError('שגיאת רשת'))
-                    .finally(() => setGenLoading(false))
-                }
-              }}
+              onClick={() => setGenConfirm(true)}
               disabled={genLoading || (genMode === 'month' && !selectedGenMonth)}
               className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
@@ -240,12 +229,6 @@ export default function TuitionPage() {
             </span>
           )}
           {genError && <span className="text-sm text-red-600">{genError}</span>}
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="px-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors whitespace-nowrap"
-          >
-            🗑️ מחק תשלומים ישנים
-          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">שכר לימוד</h2>
       </div>
@@ -511,11 +494,33 @@ export default function TuitionPage() {
         </div>
       )}
 
-      <DeleteOldPPsModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onSuccess={() => load()}
-      />
+      {/* Gen confirm modal */}
+      {genConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-bold mb-4">אישור יצירת תשלומים</h2>
+            <p className="text-gray-600 mb-6">
+              {genMode === 'future'
+                ? 'יוצרים תשלומים מתוכננים לחודשים הנוכחיים והעתידיים?'
+                : `יוצרים תשלומים מתוכננים לחודש ${selectedGenMonth}?`}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setGenConfirm(false)}
+                className="flex-1 px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => { setGenConfirm(false); executeGen() }}
+                className="flex-1 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+              >
+                כן, צור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
