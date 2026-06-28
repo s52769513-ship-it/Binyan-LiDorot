@@ -169,7 +169,15 @@ export default function ParentsPage() {
           parentId={selectedId}
           onClose={() => {
             setSelectedId(null)
-            loadParents()
+            // Refresh the updated parent in the list
+            fetch(`/api/parents?search=${encodeURIComponent(selectedId)}`)
+              .then(r => r.json())
+              .then(d => {
+                if (d.data?.length > 0) {
+                  setParents(prev => prev.map(p => p.id === selectedId ? d.data[0] : p))
+                }
+              })
+              .catch(() => {})
           }}
           onOpenStudent={id => { setSelectedId(null); setSelectedStudentId(id) }}
         />
