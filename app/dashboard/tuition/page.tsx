@@ -697,6 +697,29 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
   const totalBalance = filtered.reduce((s, r) => s + Math.max(0, r.balance), 0)
   const totalAmount  = filtered.reduce((s, r) => s + r.amount, 0)
 
+  // Detect gaps for each parent
+  const getParentGaps = (parentName: string): string[] => {
+    const parentRows = rows.filter(r => r.parentName === parentName && r.ppType === 'tuition')
+    if (parentRows.length < 2) return []
+
+    const months = parentRows.map(r => {
+      const [m, y] = r.monthYear.split('/').map(Number)
+      return y * 12 + m
+    }).sort((a, b) => a - b)
+
+    const gaps: string[] = []
+    for (let i = 0; i < months.length - 1; i++) {
+      if (months[i + 1] - months[i] > 1) {
+        for (let gap = months[i] + 1; gap < months[i + 1]; gap++) {
+          const y = Math.floor(gap / 12)
+          const m = gap % 12 || 12
+          gaps.push(`${String(m).padStart(2, '0')}/${y}`)
+        }
+      }
+    }
+    return gaps
+  }
+
   return (
     <div className="space-y-4">
       {/* Summary */}
@@ -932,11 +955,21 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
               {filtered.map(r => {
                 const isOverdue = r.balance > 0 && !!r.date && new Date(r.date) < today
                 const isPaid    = r.balance <= 0
+                const gaps = getParentGaps(r.parentName || '')
                 return (
                   <tr key={r.id}
                     onClick={() => setSelectedPP(r)}
                     className={`cursor-pointer hover:bg-blue-50/40 transition-colors ${isOverdue ? 'bg-red-50/30' : ''}`}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName || '—'}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">
+                      <div className="flex items-center gap-2">
+                        <span>{r.parentName || '—'}</span>
+                        {gaps.length > 0 && (
+                          <span title={`חודשים חסרים: ${gaps.join(', ')}`} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                            🔴 {gaps.length} בור{gaps.length > 1 ? 'ים' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-gray-600">
                       <div>{r.monthYear}</div>
                       {r.monthYear && <div className="text-[10px] text-gray-400">{HEBREW_MONTH[r.monthYear.split('/')[0]] || ''}</div>}
