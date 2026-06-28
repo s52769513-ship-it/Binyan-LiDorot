@@ -23,9 +23,13 @@ function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
 /** Returns current-month and all future months from the Hebrew year */
 function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today = new Date()
-  const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-  // Use >= to include the current month
-  return getFullHebrewYearMonths().filter(m => m.date >= currentMonthDate)
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const currentMonthDate = `${year}-${month}-01`
+
+  // Include current month and all future months (must use >= not >)
+  const allMonths = getFullHebrewYearMonths()
+  return allMonths.filter(m => m.date >= currentMonthDate)
 }
 
 /** GET — preview: returns what would be created without committing */
