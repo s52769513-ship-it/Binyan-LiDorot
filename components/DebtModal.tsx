@@ -48,6 +48,7 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
   const loadDebtSummary = async () => {
     setLoading(true)
     setError(null)
+    setData(null)
     try {
       const res = await fetch(`/api/parents/${parentId}/debt-summary`)
       if (!res.ok) throw new Error('שגיאה בטעינת נתונים')
@@ -60,10 +61,10 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
     }
   }
 
-  if (!isOpen || !data) return null
+  if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" dir="rtl">
       <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">סיכום חובות</h2>
@@ -77,6 +78,14 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
 
         {error && <div className="text-red-600 mb-4 text-sm">{error}</div>}
 
+        {loading && !data && (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+          </div>
+        )}
+
+        {data && (
+        <>
         {/* Summary section */}
         <div className="grid grid-cols-2 gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
           <div>
@@ -84,7 +93,7 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
             <div className="text-lg font-bold">₪{data.grandTotal.toLocaleString('he-IL')}</div>
           </div>
           <div>
-            <div className="text-xs text-gray-600">סה"כ תשלום</div>
+            <div className="text-xs text-gray-600">חוב פתוח</div>
             <div className="text-lg font-bold text-red-600">₪{data.grandBalance.toLocaleString('he-IL')}</div>
           </div>
         </div>
@@ -138,7 +147,7 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
                           <span className="font-semibold">₪{Number(item.amount).toLocaleString('he-IL')}</span>
                         </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          {item.monthYear} • תשלום: ₪{Number(item.balance).toLocaleString('he-IL')}
+                          {item.monthYear} • יתרה: ₪{Number(item.balance).toLocaleString('he-IL')}
                         </div>
                       </div>
                     ))}
@@ -157,7 +166,7 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
                           <span className="font-semibold">₪{Number(item.amount).toLocaleString('he-IL')}</span>
                         </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          {item.monthYear} • תשלום: ₪{Number(item.balance).toLocaleString('he-IL')}
+                          {item.monthYear} • יתרה: ₪{Number(item.balance).toLocaleString('he-IL')}
                         </div>
                       </div>
                     ))}
@@ -182,7 +191,7 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
                         <span className="font-semibold">₪{Number(item.amount).toLocaleString('he-IL')}</span>
                       </div>
                       <div className="text-xs text-gray-600 mt-1">
-                        {item.monthYear} • תשלום: ₪{Number(item.balance).toLocaleString('he-IL')}
+                        {item.monthYear} • יתרה: ₪{Number(item.balance).toLocaleString('he-IL')}
                       </div>
                     </div>
                   ))}
@@ -215,6 +224,8 @@ export function DebtModal({ isOpen, onClose, parentId }: DebtModalProps) {
             </>
           )}
         </div>
+        </>
+        )}
 
         <div className="mt-6 flex gap-3">
           <button
