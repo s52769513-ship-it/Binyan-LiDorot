@@ -267,7 +267,7 @@ export default function TuitionPage() {
 
       {error && activeTab === 'kids' && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
-      {activeTab === 'planned' && <PlannedPaymentsTab onOpenParent={id => setSelectedParent(id)} showDeleteModal={showDeleteModal} setShowDeleteModal={setShowDeleteModal} loadParents={load} />}
+      {activeTab === 'planned' && <PlannedPaymentsTab onOpenParent={id => setSelectedParent(id)} />}
 
       {activeTab === 'kids' && <>
       {/* Summary KPIs */}
@@ -511,6 +511,11 @@ export default function TuitionPage() {
         </div>
       )}
 
+      <DeleteOldPPsModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onSuccess={() => load()}
+      />
     </div>
   )
 }
@@ -533,7 +538,7 @@ type PpTxItem = {
   type: string; notes: string; parentIds: string[]; projectNames: string[]; isCredit: boolean
 }
 
-function PlannedPaymentsTab({ onOpenParent, showDeleteModal, setShowDeleteModal, loadParents }: { onOpenParent: (id: string) => void; showDeleteModal: boolean; setShowDeleteModal: (b: boolean) => void; loadParents: () => void }) {
+function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => void }) {
   const [rows, setRows]         = useState<PPRow[]>([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
@@ -942,12 +947,6 @@ function PlannedPaymentsTab({ onOpenParent, showDeleteModal, setShowDeleteModal,
           </table>
         </div>
       )}
-
-      <DeleteOldPPsModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onSuccess={() => load()}
-      />
     </div>
   )
 }
