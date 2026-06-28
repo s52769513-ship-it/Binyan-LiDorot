@@ -20,10 +20,11 @@ function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   return months
 }
 
-/** Returns only current-month and future months from the Hebrew year */
+/** Returns current-month and all future months from the Hebrew year */
 function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today = new Date()
   const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  // Use >= to include the current month
   return getFullHebrewYearMonths().filter(m => m.date >= currentMonthDate)
 }
 

@@ -417,7 +417,7 @@ export default function TuitionPage() {
                   onChange={e => { setFutureOnly(e.target.checked); loadPreview(e.target.checked) }}
                   className="w-4 h-4 rounded accent-[#1a3a7a]"
                 />
-                <span className="text-sm text-gray-700">רק חודשים עתידיים (בלי עבר)</span>
+                <span className="text-sm text-gray-700">רק חודשים עתידיים (כולל נוכחי)</span>
               </label>
             </div>
 
