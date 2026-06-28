@@ -382,7 +382,13 @@ export default function TuitionPage() {
       )}
 
       {selectedParent && (
-        <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
+        <EmployeeCard
+          parentId={selectedParent}
+          onClose={() => {
+            setSelectedParent(null)
+            load()  // Reload PP list in case parent details were updated
+          }}
+        />
       )}
       </>}
 
@@ -554,7 +560,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
 
   const filtered = rows
     .filter(r => {
-      if (r.ppType === 'salary') return false
+      if (r.ppType !== 'tuition') return false  // Only show tuition PP, exclude salary and other types
       if (monthFilter && r.monthYear !== monthFilter) return false
       if (search.trim()) {
         const q = search.trim()
