@@ -552,15 +552,17 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
     return by !== ay ? by - ay : bm - am
   })
 
-  const filtered = rows.filter(r => {
-    if (r.ppType === 'salary') return false
-    if (monthFilter && r.monthYear !== monthFilter) return false
-    if (search.trim()) {
-      const q = search.trim()
-      return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
-    }
-    return true
-  })
+  const filtered = rows
+    .filter(r => {
+      if (r.ppType === 'salary') return false
+      if (monthFilter && r.monthYear !== monthFilter) return false
+      if (search.trim()) {
+        const q = search.trim()
+        return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
+      }
+      return true
+    })
+    .sort((a, b) => (a.parentName || '').localeCompare(b.parentName || '', 'he'))
 
   const deletePP = async (id: string) => {
     if (!confirm('למחוק תשלום מתוכנן זה? גם תנועות המשויכות אליו יימחקו.')) return
