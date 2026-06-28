@@ -54,7 +54,7 @@ interface PreviewData {
   parents: ParentPreview[]; totalToCreate: number; months: string[]
 }
 
-type TuitionTab = 'kids' | 'planned'
+type TuitionTab = 'kids' | 'planned' | 'collection-fee'
 
 export default function TuitionPage() {
   const [activeTab, setActiveTab] = useState<TuitionTab>('kids')
@@ -183,20 +183,6 @@ export default function TuitionPage() {
           >
             {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
           </button>
-          {/* Add collection fee button */}
-          <button
-            onClick={() => {
-              setShowCollectionFeeModal(true)
-              setCollectionFeeAmount('')
-              setCollectionFeeDate('')
-              setCollectionFeeNotes('')
-              setCollectionFeeError('')
-            }}
-            className="px-3 py-2 text-sm font-semibold rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
-          >
-            ➕ הוסף מגבית PP
-          </button>
-
           {/* Reset button */}
           {!resetConfirm ? (
             <button
@@ -235,6 +221,7 @@ export default function TuitionPage() {
         {([
           { key: 'kids',    label: 'ילדים' },
           { key: 'planned', label: '📋 תשלומים מתוכננים' },
+          { key: 'collection-fee', label: '💰 מגבית' },
         ] as { key: TuitionTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -248,6 +235,23 @@ export default function TuitionPage() {
       {error && activeTab === 'kids' && <div className="text-red-600 text-sm bg-red-50 rounded-xl p-3">{error}</div>}
 
       {activeTab === 'planned' && <PlannedPaymentsTab onOpenParent={id => setSelectedParent(id)} />}
+
+      {activeTab === 'collection-fee' && (
+        <CollectionFeeTab
+          showModal={showCollectionFeeModal}
+          setShowModal={setShowCollectionFeeModal}
+          amount={collectionFeeAmount}
+          setAmount={setCollectionFeeAmount}
+          date={collectionFeeDate}
+          setDate={setCollectionFeeDate}
+          notes={collectionFeeNotes}
+          setNotes={setCollectionFeeNotes}
+          error={collectionFeeError}
+          setError={setCollectionFeeError}
+          loading={collectionFeeLoading}
+          setLoading={setCollectionFeeLoading}
+        />
+      )}
 
       {activeTab === 'kids' && <>
       {/* Summary KPIs */}
@@ -491,25 +495,209 @@ export default function TuitionPage() {
         </div>
       )}
 
-      {/* Collection Fee PP Modal */}
-      {showCollectionFeeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowCollectionFeeModal(false) }}>
+    </div>
+  )
+}
+
+function hebrewDate(iso: string): string {
+  if (!iso) return ''
+  try {
+    return new Intl.DateTimeFormat('he-IL', { dateStyle: 'long' }).format(new Date(iso))
+  } catch { return iso }
+}
+
+/* ─── CollectionFeeTab ─────────────────────────────── */
+interface CollectionFeeTabProps {
+  showModal: boolean
+  setShowModal: (show: boolean) => void
+  amount: string
+  setAmount: (amount: string) => void
+  date: string
+  setDate: (date: string) => void
+  notes: string
+  setNotes: (notes: string) => void
+  error: string
+  setError: (error: string) => void
+  loading: boolean
+  setLoading: (loading: boolean) => void
+}
+
+function CollectionFeeTab({
+  showModal, setShowModal, amount, setAmount, date, setDate, notes, setNotes, error, setError, loading, setLoading,
+}: CollectionFeeTabProps) {
+  const [rows, setRows] = useState<PPRow[]>([])
+  const [tabLoading, setTabLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const load = () => {
+    setTabLoading(true)
+    fetch('/api/planned-payments?withParentNames=true&limit=500')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setRows(d) })
+      .catch(() => {})
+      .finally(() => setTabLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const filtered = rows
+    .filter(r => {
+      if (r.ppType !== 'donation') return false  // Only show collection fee PP (donation type)
+      if (monthFilter && r.monthYear !== monthFilter) return false
+      if (search.trim()) {
+        const q = search.trim()
+        return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
+      }
+      return true
+    })
+    .sort((a, b) => {
+      const [am, ay] = a.monthYear.split('/').map(Number)
+      const [bm, by] = b.monthYear.split('/').map(Number)
+      return by !== ay ? by - ay : bm - am
+    })
+
+  const months = [...new Set(rows.filter(r => r.ppType === 'donation').map(r => r.monthYear).filter(Boolean))].sort((a, b) => {
+    const [am, ay] = a.split('/').map(Number)
+    const [bm, by] = b.split('/').map(Number)
+    return by !== ay ? by - ay : bm - am
+  })
+
+  const deletePP = async (id: string) => {
+    if (!confirm('למחוק מגבית זו? גם תנועות המשויכות אליה יימחקו.')) return
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (d.error) { alert(d.error); return }
+      setRows(prev => prev.filter(r => r.id !== id))
+    } catch { alert('שגיאה במחיקה') }
+    finally { setDeleting(null) }
+  }
+
+  const totalAmount = filtered.reduce((s, r) => s + r.amount, 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Header with add button */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => {
+            setShowModal(true)
+            setAmount('')
+            setDate('')
+            setNotes('')
+            setError('')
+          }}
+          className="px-3 py-2 text-sm font-semibold rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
+        >
+          ➕ הוסף מגבית
+        </button>
+      </div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 text-center">
+          <p className="text-xs text-gray-500">סה"כ מגביות</p>
+          <p className="text-lg font-bold text-gray-800">{filtered.length}</p>
+        </div>
+        <div className="bg-blue-50 rounded-xl border border-blue-100 p-3 text-center">
+          <p className="text-xs text-gray-500">סה"כ סכום</p>
+          <p className="text-lg font-bold text-blue-700">
+            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalAmount)}
+          </p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="חיפוש שם / חודש..."
+          className="flex-1 min-w-[160px] px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+        />
+        {months.length > 0 && (
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white">
+            <option value="">כל החודשים</option>
+            {months.map(m => <option key={m} value={m}>{fmtMY(m)}</option>)}
+          </select>
+        )}
+        {(search || monthFilter) && (
+          <button onClick={() => { setSearch(''); setMonthFilter('') }}
+            className="px-3 py-2 text-sm text-gray-400 hover:text-gray-700 underline">נקה</button>
+        )}
+      </div>
+
+      {/* Collection Fee List */}
+      {tabLoading ? (
+        <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-400">אין מגביות</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 text-right">
+                <th className="px-4 py-2.5">שם</th>
+                <th className="px-4 py-2.5">חודש</th>
+                <th className="px-4 py-2.5 text-left">סכום</th>
+                <th className="px-4 py-2.5">תאריך</th>
+                <th className="px-2 py-2.5 w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map(r => (
+                <tr key={r.id} className="hover:bg-blue-50/40 transition-colors">
+                  <td className="px-4 py-2.5 font-medium text-gray-800">{r.name || '—'}</td>
+                  <td className="px-4 py-2.5 text-gray-600">
+                    <div>{r.monthYear}</div>
+                    {r.monthYear && <div className="text-[10px] text-gray-400">{HEBREW_MONTH[r.monthYear.split('/')[0]] || ''}</div>}
+                  </td>
+                  <td className="px-4 py-2.5 text-left tabular-nums text-gray-700">
+                    ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(r.amount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600 text-sm">
+                    {r.date ? new Intl.DateTimeFormat('he-IL').format(new Date(r.date)) : '—'}
+                  </td>
+                  <td className="px-2 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => deletePP(r.id)}
+                      disabled={deleting === r.id}
+                      className="p-1.5 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 text-base"
+                      title="מחק מגבית"
+                    >
+                      {deleting === r.id ? '...' : '🗑'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Collection Fee Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col overflow-hidden" dir="rtl">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <button onClick={() => setShowCollectionFeeModal(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">✕</button>
-              <h2 className="text-lg font-bold text-gray-900">הוסף מגבית PP</h2>
+              <button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">✕</button>
+              <h2 className="text-lg font-bold text-gray-900">הוסף מגבית</h2>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {collectionFeeError && <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm">{collectionFeeError}</div>}
+              {error && <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm">{error}</div>}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">סכום ₪ *</label>
                 <input
                   type="number"
-                  value={collectionFeeAmount}
-                  onChange={e => setCollectionFeeAmount(e.target.value)}
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
                   placeholder="1500"
                   min="1"
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
@@ -521,8 +709,8 @@ export default function TuitionPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">תאריך</label>
                   <input
                     type="date"
-                    value={collectionFeeDate}
-                    onChange={e => setCollectionFeeDate(e.target.value)}
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
                   />
                 </div>
@@ -531,8 +719,8 @@ export default function TuitionPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">הערות</label>
                 <textarea
-                  value={collectionFeeNotes}
-                  onChange={e => setCollectionFeeNotes(e.target.value)}
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
                   placeholder="הערות על ההוצאה..."
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 resize-none"
                   rows={2}
@@ -541,17 +729,17 @@ export default function TuitionPage() {
             </div>
 
             <div className="p-4 border-t border-gray-100 flex gap-3">
-              <button onClick={() => setShowCollectionFeeModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              <button onClick={() => setShowModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
                 ביטול
               </button>
               <button
                 onClick={async () => {
-                  const amtNum = Number(collectionFeeAmount)
-                  if (!collectionFeeAmount || isNaN(amtNum) || amtNum <= 0) { setCollectionFeeError('יש להזין סכום חיובי'); return }
-                  if (!collectionFeeDate) { setCollectionFeeError('יש להזין תאריך'); return }
+                  const amtNum = Number(amount)
+                  if (!amount || isNaN(amtNum) || amtNum <= 0) { setError('יש להזין סכום חיובי'); return }
+                  if (!date) { setError('יש להזין תאריך'); return }
 
-                  setCollectionFeeLoading(true)
-                  setCollectionFeeError('')
+                  setLoading(true)
+                  setError('')
                   try {
                     const res = await fetch('/api/planned-payments', {
                       method: 'POST',
@@ -559,22 +747,23 @@ export default function TuitionPage() {
                       body: JSON.stringify({
                         amount: amtNum,
                         name: 'מגבית',
-                        date: collectionFeeDate,
-                        monthYear: collectionFeeDate.slice(5, 7) + '/' + collectionFeeDate.slice(0, 4),
+                        date,
+                        monthYear: date.slice(5, 7) + '/' + date.slice(0, 4),
                         parentIds: [],
                         ppType: 'donation',
                       }),
                     })
                     const data = await res.json()
-                    if (data.error) { setCollectionFeeError(data.error); return }
-                    setShowCollectionFeeModal(false)
-                  } catch { setCollectionFeeError('שגיאה בשמירה') }
-                  finally { setCollectionFeeLoading(false) }
+                    if (data.error) { setError(data.error); return }
+                    setShowModal(false)
+                    load()  // Reload collection fees
+                  } catch { setError('שגיאה בשמירה') }
+                  finally { setLoading(false) }
                 }}
-                disabled={collectionFeeLoading}
+                disabled={loading}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
               >
-                {collectionFeeLoading ? 'שומר...' : 'שמור'}
+                {loading ? 'שומר...' : 'שמור'}
               </button>
             </div>
           </div>
@@ -582,13 +771,6 @@ export default function TuitionPage() {
       )}
     </div>
   )
-}
-
-function hebrewDate(iso: string): string {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('he-IL', { dateStyle: 'long' }).format(new Date(iso))
-  } catch { return iso }
 }
 
 /* ─── PlannedPaymentsTab ─────────────────────────────── */
