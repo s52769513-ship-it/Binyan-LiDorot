@@ -25,11 +25,21 @@ function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today = new Date()
   const year = today.getFullYear()
   const month = String(today.getMonth() + 1).padStart(2, '0')
-  const currentMonthDate = `${year}-${month}-01`
+  const day = String(today.getDate()).padStart(2, '0')
+  // Use today's actual date for cutoff, not just month 1st
+  const currentDateStr = `${year}-${month}-${day}`
 
-  // Include current month and all future months (must use >= not >)
+  // Include current month and all future months (compare with actual date)
   const allMonths = getFullHebrewYearMonths()
-  return allMonths.filter(m => m.date >= currentMonthDate)
+  return allMonths.filter(m => {
+    // m.date is "YYYY-MM-01", so we need to check if the month is current or future
+    // If month > current month, include it
+    // If month == current month, include it (current month)
+    // If month < current month, exclude it (past month)
+    const monthOnly = m.date.substring(0, 7)  // "YYYY-MM"
+    const currentMonthOnly = currentDateStr.substring(0, 7)  // "YYYY-MM"
+    return monthOnly >= currentMonthOnly
+  })
 }
 
 /** GET — preview: returns what would be created without committing */
