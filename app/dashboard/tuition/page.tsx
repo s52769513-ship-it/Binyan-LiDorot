@@ -577,7 +577,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
 
   const load = () => {
     setLoading(true)
-    fetch('/api/planned-payments?withParentNames=true&limit=500')
+    fetch('/api/planned-payments?withParentNames=true&ppType=tuition&limit=500')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setRows(d) })
       .catch(() => {})
