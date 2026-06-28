@@ -80,6 +80,14 @@ export default function TuitionPage() {
   const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
 
+  // Add collection fee PP state
+  const [showCollectionFeeModal, setShowCollectionFeeModal] = useState(false)
+  const [collectionFeeAmount, setCollectionFeeAmount] = useState('')
+  const [collectionFeeDate, setCollectionFeeDate] = useState('')
+  const [collectionFeeNotes, setCollectionFeeNotes] = useState('')
+  const [collectionFeeError, setCollectionFeeError] = useState('')
+  const [collectionFeeLoading, setCollectionFeeLoading] = useState(false)
+
   const loadPreview = async (future = futureOnly) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
     try {
@@ -175,6 +183,20 @@ export default function TuitionPage() {
           >
             {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
           </button>
+          {/* Add collection fee button */}
+          <button
+            onClick={() => {
+              setShowCollectionFeeModal(true)
+              setCollectionFeeAmount('')
+              setCollectionFeeDate('')
+              setCollectionFeeNotes('')
+              setCollectionFeeError('')
+            }}
+            className="px-3 py-2 text-sm font-semibold rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
+          >
+            ➕ הוסף מגבית PP
+          </button>
+
           {/* Reset button */}
           {!resetConfirm ? (
             <button
@@ -464,6 +486,96 @@ export default function TuitionPage() {
                   {genExecuting ? 'יוצר...' : `✓ אשר ויצור ${genPreview.totalToCreate} תשלומים`}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collection Fee PP Modal */}
+      {showCollectionFeeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowCollectionFeeModal(false) }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col overflow-hidden" dir="rtl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <button onClick={() => setShowCollectionFeeModal(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">✕</button>
+              <h2 className="text-lg font-bold text-gray-900">הוסף מגבית PP</h2>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {collectionFeeError && <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm">{collectionFeeError}</div>}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">סכום ₪ *</label>
+                <input
+                  type="number"
+                  value={collectionFeeAmount}
+                  onChange={e => setCollectionFeeAmount(e.target.value)}
+                  placeholder="1500"
+                  min="1"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">תאריך</label>
+                  <input
+                    type="date"
+                    value={collectionFeeDate}
+                    onChange={e => setCollectionFeeDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">הערות</label>
+                <textarea
+                  value={collectionFeeNotes}
+                  onChange={e => setCollectionFeeNotes(e.target.value)}
+                  placeholder="הערות על ההוצאה..."
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 resize-none"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowCollectionFeeModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ביטול
+              </button>
+              <button
+                onClick={async () => {
+                  const amtNum = Number(collectionFeeAmount)
+                  if (!collectionFeeAmount || isNaN(amtNum) || amtNum <= 0) { setCollectionFeeError('יש להזין סכום חיובי'); return }
+                  if (!collectionFeeDate) { setCollectionFeeError('יש להזין תאריך'); return }
+
+                  setCollectionFeeLoading(true)
+                  setCollectionFeeError('')
+                  try {
+                    const res = await fetch('/api/planned-payments', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        amount: amtNum,
+                        name: 'מגבית',
+                        date: collectionFeeDate,
+                        monthYear: collectionFeeDate.slice(5, 7) + '/' + collectionFeeDate.slice(0, 4),
+                        parentIds: [],
+                        ppType: 'donation',
+                      }),
+                    })
+                    const data = await res.json()
+                    if (data.error) { setCollectionFeeError(data.error); return }
+                    setShowCollectionFeeModal(false)
+                  } catch { setCollectionFeeError('שגיאה בשמירה') }
+                  finally { setCollectionFeeLoading(false) }
+                }}
+                disabled={collectionFeeLoading}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              >
+                {collectionFeeLoading ? 'שומר...' : 'שמור'}
+              </button>
             </div>
           </div>
         </div>
