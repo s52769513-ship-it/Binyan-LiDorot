@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { nameSimilarity } from '@/lib/nameUtils'
 
+export const maxDuration = 60 // extend Vercel function timeout to 60s
+
 interface RawRow {
   parentName: string
   type: string
@@ -216,10 +218,13 @@ export async function POST(req: NextRequest) {
     }
     const createdPayments = paymentRecords.length
 
-    // ── Phase 4: Batch update PP balances in parallel ──
-    await Promise.all([...balanceUpdates.entries()].map(([id, balance]) =>
-      supabaseAdmin.from('planned_payments').update({ balance }).eq('id', id)
-    ))
+    // ── Phase 4: Batch update PP balances in groups of 50 ──
+    const balanceEntries = [...balanceUpdates.entries()]
+    for (let i = 0; i < balanceEntries.length; i += 50) {
+      await Promise.all(balanceEntries.slice(i, i + 50).map(([id, balance]) =>
+        supabaseAdmin.from('planned_payments').update({ balance }).eq('id', id)
+      ))
+    }
 
     const skipped = skippedCharges.count + skippedPayments
     return NextResponse.json({ createdPPs, createdPayments, skipped, errors })
