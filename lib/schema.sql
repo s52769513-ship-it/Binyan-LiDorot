@@ -61,6 +61,11 @@ CREATE TABLE IF NOT EXISTS transactions (
 -- ALTER TABLE transactions ADD COLUMN IF NOT EXISTS planned_payment_id TEXT;
 -- ALTER TABLE parents      ADD COLUMN IF NOT EXISTS pp_credit          NUMERIC DEFAULT 0;
 
+-- Old-debts import (run once before importing legacy debts):
+-- ALTER TABLE planned_payments ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false;
+-- ALTER TABLE transactions     ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false;
+-- ALTER TABLE planned_payments ADD COLUMN IF NOT EXISTS pp_type   TEXT;
+
 -- 4. חובות
 CREATE TABLE IF NOT EXISTS debts (
   id           TEXT PRIMARY KEY,

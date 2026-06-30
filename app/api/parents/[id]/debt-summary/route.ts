@@ -25,9 +25,35 @@ interface TxRow {
 // Postgres "undefined column" error code — column doesn't exist yet
 const UNDEFINED_COLUMN = '42703'
 
+// "MM/YYYY" → comparable integer (year*12 + month). null if unparseable.
+function monthKeyFromMonthYear(monthYear: string | null | undefined): number | null {
+  if (!monthYear) return null
+  const m = /^(\d{1,2})\/(\d{4})$/.exec(String(monthYear).trim())
+  if (!m) return null
+  return Number(m[2]) * 12 + Number(m[1])
+}
+
+// "YYYY-MM-DD" → the same month key. null if unparseable.
+function monthKeyFromDate(date: string | null | undefined): number | null {
+  if (!date) return null
+  const m = /^(\d{4})-(\d{1,2})/.exec(String(date).trim())
+  if (!m) return null
+  return Number(m[1]) * 12 + Number(m[2])
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: parentId } = await params
+
+    // A row is a real debt only if its month is the current month or earlier
+    // (overdue / current). Future-dated rows are not a debt yet, so they are
+    // excluded from both the lists and the totals.
+    const now = new Date()
+    const currentMonthKey = now.getFullYear() * 12 + (now.getMonth() + 1)
+    const isFuture = (monthYear: string | null | undefined, date: string | null | undefined): boolean => {
+      const key = monthKeyFromMonthYear(monthYear) ?? monthKeyFromDate(date)
+      return key !== null && key > currentMonthKey
+    }
 
     // Fetch planned payments. The is_legacy column may not exist yet (added by the
     // import migration); if so, fall back to a query without it and treat all rows as new.
@@ -83,9 +109,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const tuitionLegacy = { total: 0, balance: 0, items: [] as object[] }
     const collection    = { total: 0, balance: 0, items: [] as object[] }
     const legacyDebts   = { total: 0, items: [] as object[] }
+    let futureCount = 0   // rows hidden because their month hasn't arrived yet
 
     // Process planned payments
     for (const pp of ppsData) {
+      // Future-dated payments are not a debt yet — skip them entirely.
+      if (isFuture(pp.month_year, pp.date)) { futureCount++; continue }
+
       const item = {
         id: pp.id,
         name: pp.name,
@@ -111,6 +141,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // Skip internal credit rows (notes starting with "זיכוי").
     for (const tx of txsData) {
       if (tx.is_legacy && !(tx.notes ?? '').startsWith('זיכוי')) {
+        if (isFuture(tx.month_year, tx.date)) { futureCount++; continue }
         const amount = Math.abs(Number(tx.amount) || 0)
         legacyDebts.total += amount
         legacyDebts.items.push({
@@ -134,6 +165,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       legacyDebts,
       grandTotal,
       grandBalance,
+      futureCount,
     })
   } catch (err) {
     return NextResponse.json(

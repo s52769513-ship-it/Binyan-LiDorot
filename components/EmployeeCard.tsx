@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ParentDetail, PlannedPaymentItem, StandingOrderItem, TransactionItem, WomanDetail } from '@/lib/types'
 import { TransactionRow, TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
@@ -235,25 +235,50 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [donationPPs, setDonationPPs]         = useState<{ id: string; name: string; amount: number; balance: number; monthYear: string }[]>([])
   const [loadingPPs, setLoadingPPs]           = useState(true)
   const [donationSOs, setDonationSOs]         = useState<{ id: string; type: string; amount: number; status: string }[]>([])
+  const [expandedPP, setExpandedPP]           = useState<string | null>(null)
+  const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean }[]>>({})
+  const [loadingTx, setLoadingTx]             = useState<string | null>(null)
+  const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
+
+  const loadPPs = useCallback(async () => {
+    setLoadingPPs(true)
+    try {
+      const r = await fetch(`/api/planned-payments?parentId=${parent.id}&ppType=donation`)
+      if (r.ok) {
+        const data = await r.json()
+        setDonationPPs(Array.isArray(data) ? data : [])
+      }
+    } catch {} finally { setLoadingPPs(false) }
+  }, [parent.id])
+
+  // Load the transactions linked to one donation PP (for the expanded row).
+  const loadPpTxs = useCallback(async (ppId: string) => {
+    setLoadingTx(ppId)
+    try {
+      const r = await fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(ppId)}`)
+      const data = await r.json()
+      setPpTxs(prev => ({ ...prev, [ppId]: Array.isArray(data) ? data : [] }))
+    } catch {
+      setPpTxs(prev => ({ ...prev, [ppId]: [] }))
+    } finally { setLoadingTx(null) }
+  }, [])
+
+  const toggleExpand = (ppId: string) => {
+    setExpandedPP(prev => {
+      const next = prev === ppId ? null : ppId
+      if (next && !ppTxs[ppId]) loadPpTxs(ppId)
+      return next
+    })
+  }
 
   useEffect(() => {
     setAmountDraft(String(parent.monthlyDonation || ''))
   }, [parent.monthlyDonation])
 
   useEffect(() => {
-    const loadPPs = async () => {
-      setLoadingPPs(true)
-      try {
-        const r = await fetch(`/api/planned-payments?parentId=${parent.id}&ppType=donation`)
-        if (r.ok) {
-          const data = await r.json()
-          setDonationPPs(Array.isArray(data) ? data : [])
-        }
-      } catch {} finally { setLoadingPPs(false) }
-    }
     loadPPs()
 
     if (parent.standingOrders) {
@@ -268,7 +293,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           }))
       )
     }
-  }, [parent.id, parent.standingOrders])
+  }, [parent.id, parent.standingOrders, loadPPs])
 
   const saveAmount = async () => {
     const val = Number(amountDraft) || 0
@@ -439,9 +464,16 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                 {donationPPs.map(pp => {
                   const paid    = pp.balance <= 0
                   const partial = !paid && pp.balance < pp.amount
+                  const isOpen  = expandedPP === pp.id
+                  const txs     = ppTxs[pp.id]
                   return (
-                    <tr key={pp.id}>
-                      <td className="px-3 py-2 font-medium text-gray-700">{pp.monthYear}</td>
+                    <Fragment key={pp.id}>
+                    <tr onClick={() => toggleExpand(pp.id)}
+                      className="cursor-pointer hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2 font-medium text-gray-700">
+                        <span className={`inline-block text-gray-400 ml-1 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                        {pp.monthYear}
+                      </td>
                       <td className="px-3 py-2 text-left tabular-nums">{fmt2(pp.amount)}</td>
                       <td className="px-3 py-2 text-left tabular-nums text-gray-500">{fmt2(pp.balance)}</td>
                       <td className="px-3 py-2 text-center">
@@ -454,6 +486,35 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                         )}
                       </td>
                     </tr>
+                    {isOpen && (
+                      <tr className="bg-gray-50/60">
+                        <td colSpan={4} className="px-3 py-2">
+                          {loadingTx === pp.id ? (
+                            <div className="text-[11px] text-gray-400">טוען תשלומים...</div>
+                          ) : txs && txs.length > 0 ? (
+                            <div className="space-y-1 mb-2">
+                              <div className="text-[10px] font-semibold text-gray-500">תשלומים מקושרים</div>
+                              {txs.map(t => (
+                                <div key={t.id} className="flex justify-between bg-white rounded px-2 py-1 border border-gray-100">
+                                  <span className="text-gray-500">
+                                    {t.date || t.monthYear}{t.type ? ` • ${t.type}` : ''}{t.isCredit ? ' • זיכוי' : ''}
+                                  </span>
+                                  <span className="font-medium tabular-nums">{fmt2(Math.abs(t.amount))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-gray-400 mb-2">אין תשלומים מקושרים עדיין</div>
+                          )}
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); setAddPaymentPP({ id: pp.id, name: pp.name, balance: pp.balance, monthYear: pp.monthYear }) }}
+                            className="w-full px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+                            + הוסף תשלום לרשומה זו
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -461,6 +522,24 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           </div>
         )}
       </div>
+
+      {addPaymentPP && (
+        <AddTransactionModal
+          parentId={parent.id}
+          parentName={parent.name}
+          plannedPaymentId={addPaymentPP.id}
+          prefilledAmount={addPaymentPP.balance}
+          preselectedProject="דמי מגבית"
+          sourceLabel={addPaymentPP.name || `מגבית ${addPaymentPP.monthYear}`}
+          onClose={() => setAddPaymentPP(null)}
+          onSuccess={() => {
+            const ppId = addPaymentPP.id
+            setAddPaymentPP(null)
+            loadPPs()
+            loadPpTxs(ppId)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -2307,7 +2386,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
       {/* ── Debt modal ── */}
       {showDebtModal && (
-        <DebtModal parentId={parentId} isOpen={showDebtModal} onClose={() => setShowDebtModal(false)} />
+        <DebtModal parentId={parentId} parentName={parent?.name} isOpen={showDebtModal} onClose={() => setShowDebtModal(false)} />
       )}
 
       {showAddSalaryPP && parent && (() => {
