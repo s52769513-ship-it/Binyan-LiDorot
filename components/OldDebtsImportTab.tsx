@@ -196,15 +196,35 @@ export default function OldDebtsImportTab() {
             <Stat label="הורים זוהו" value={`${preview.matched}/${preview.total}`} />
           </div>
           {preview.unknown > 0 && <p className="text-xs text-amber-600">{preview.unknown} שורות עם סוג לא מזוהה (לא ייובאו)</p>}
-          {preview.unmatched.length > 0 && (
-            <div className="text-xs text-red-600">
-              <p className="font-semibold">הורים שלא זוהו ({preview.unmatched.length}):</p>
+          {(() => {
+            const stillUnmatched = preview.unmatched.filter(name => !manualMappings[name])
+            if (stillUnmatched.length === 0) return null
+            return (
+              <div className="text-xs text-red-600">
+                <p className="font-semibold">הורים שלא זוהו ({stillUnmatched.length}) – לחץ לקישור ידני:</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {stillUnmatched.slice(0, 30).map((name) => (
+                    <button key={name} onClick={() => setParentSelectorOpen(name)}
+                      className="px-2 py-1 bg-red-100 rounded hover:bg-red-200 text-red-700 transition">
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+          {Object.keys(manualMappings).length > 0 && (
+            <div className="text-xs text-emerald-600">
+              <p className="font-semibold">קישורים ידניים ({Object.keys(manualMappings).length}):</p>
               <div className="flex flex-wrap gap-1 mt-1">
-                {preview.unmatched.slice(0, 30).map((name) => (
-                  <button key={name} onClick={() => setParentSelectorOpen(name)}
-                    className="px-2 py-1 bg-red-100 rounded hover:bg-red-200 text-red-700 transition">
-                    {name}
-                  </button>
+                {Object.entries(manualMappings).map(([from, to]) => (
+                  <span key={from} className="flex items-center gap-1 px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
+                    <span className="text-gray-500">{from}</span>
+                    <span>→</span>
+                    <span className="text-emerald-700 font-medium">{to}</span>
+                    <button onClick={() => setManualMappings(m => { const n = {...m}; delete n[from]; return n })}
+                      className="mr-1 text-gray-400 hover:text-red-500 font-bold leading-none">×</button>
+                  </span>
                 ))}
               </div>
             </div>
