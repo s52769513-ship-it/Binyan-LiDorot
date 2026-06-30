@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
     }
 
     const errors: string[] = []
+    const skippedRows: object[] = [] // rows that were skipped with reason
 
     // ── Phase 1: Batch insert all charges ──
     const chargeRecords: object[] = []
@@ -133,9 +134,18 @@ export async function POST(req: NextRequest) {
     for (const row of rows) {
       if (classify(row.type) !== 'charge') continue
       const amount = toNumber(row.amount)
-      if (!amount) { skippedCharges.count++; continue }
+      if (!amount) {
+        skippedCharges.count++
+        skippedRows.push({ ...row, סיבה: 'סכום ריק / אפס' })
+        continue
+      }
       const parent = matchParent(row.parentName)
-      if (!parent) { skippedCharges.count++; errors.push(`לא זוהה הורה: "${row.parentName}"`); continue }
+      if (!parent) {
+        skippedCharges.count++
+        errors.push(`לא זוהה הורה: "${row.parentName}"`)
+        skippedRows.push({ ...row, סיבה: `הורה לא זוהה: "${row.parentName}"` })
+        continue
+      }
       const monthYear = monthYearOf(row)
       chargeRecords.push({
         id: crypto.randomUUID(),
@@ -183,9 +193,18 @@ export async function POST(req: NextRequest) {
     for (const row of rows) {
       if (classify(row.type) !== 'payment') continue
       const amount = toNumber(row.amount)
-      if (!amount) { skippedPayments++; continue }
+      if (!amount) {
+        skippedPayments++
+        skippedRows.push({ ...row, סיבה: 'סכום ריק / אפס' })
+        continue
+      }
       const parent = matchParent(row.parentName)
-      if (!parent) { skippedPayments++; errors.push(`לא זוהה הורה: "${row.parentName}"`); continue }
+      if (!parent) {
+        skippedPayments++
+        errors.push(`לא זוהה הורה: "${row.parentName}"`)
+        skippedRows.push({ ...row, סיבה: `הורה לא זוהה: "${row.parentName}"` })
+        continue
+      }
       const monthYear = monthYearOf(row)
 
       const parentPPs = (ppByParent.get(parent.id) ?? []).filter(p => p.balance > 0)
@@ -228,7 +247,7 @@ export async function POST(req: NextRequest) {
     }
 
     const skipped = skippedCharges.count + skippedPayments
-    return NextResponse.json({ createdPPs, createdPayments, skipped, errors })
+    return NextResponse.json({ createdPPs, createdPayments, skipped, errors, skippedRows })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
   }

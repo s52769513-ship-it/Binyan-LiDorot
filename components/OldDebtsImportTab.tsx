@@ -22,7 +22,7 @@ interface DryRunResult {
   matched: number; unmatched: string[]; preview: PreviewRow[]
   summary: { matchedCharges: number; matchedPayments: number; chargeAmount: number; paymentAmount: number }
 }
-interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; errors?: string[]; error?: string }
+interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; errors?: string[]; error?: string; skippedRows?: object[] }
 
 function pad(n: number) { return String(n).padStart(2, '0') }
 function fmtISO(y: number, m: number, d: number) { return `${y}-${pad(m)}-${pad(d)}` }
@@ -110,6 +110,13 @@ export default function OldDebtsImportTab() {
     })).filter(x => x.parentName || x.type || x.amount)
 
   const missingRequired = FIELDS.filter(f => f.required && map[f.key] < 0).map(f => f.label)
+
+  const downloadSkipped = (skippedRows: object[]) => {
+    const ws = XLSX.utils.json_to_sheet(skippedRows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'דולגו')
+    XLSX.writeFile(wb, 'skipped_rows.xlsx')
+  }
 
   const send = async (dryRun: boolean) => {
     if (missingRequired.length > 0) return
@@ -302,6 +309,14 @@ export default function OldDebtsImportTab() {
                   <p className="font-semibold mb-1">הערות ({result.errors.length}):</p>
                   {result.errors.slice(0, 50).map((e, i) => <p key={i}>{e}</p>)}
                 </div>
+              )}
+              {result.skippedRows && result.skippedRows.length > 0 && (
+                <button
+                  onClick={() => downloadSkipped(result.skippedRows!)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  ⬇ הורד Excel של {result.skippedRows.length} שורות שדולגו
+                </button>
               )}
             </>
           )}
