@@ -74,11 +74,16 @@ export default function TuitionPage() {
   const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
   const [genError, setGenError]       = useState('')
   const [futureOnly, setFutureOnly]   = useState(false)
+  const [genMode, setGenMode]         = useState<'future' | 'month'>('future')
+  const [selectedGenMonth, setSelectedGenMonth] = useState('')
 
   // Reset-tuition-all state
   const [resetLoading, setResetLoading] = useState(false)
   const [resetResult, setResetResult]   = useState<{ deleted: number; created: number } | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
+
+  // Gen confirm state
+  const [genConfirm, setGenConfirm] = useState(false)
 
   const loadPreview = async (future = futureOnly) => {
     setGenLoading(true); setGenError(''); setGenPreview(null); setGenResult(null)
@@ -167,14 +172,34 @@ export default function TuitionPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => loadPreview()}
-            disabled={genLoading}
-            className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
-          >
-            {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים לכל ההורים'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGenMode(genMode === 'future' ? 'month' : 'future')}
+              className="px-3 py-2 text-sm font-semibold rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+            >
+              {genMode === 'future' ? '📅 בחר חודש' : '🚀 חודשים עתידיים'}
+            </button>
+            {genMode === 'month' && data?.months && (
+              <select
+                value={selectedGenMonth}
+                onChange={e => setSelectedGenMonth(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 bg-white"
+              >
+                <option value="">בחר חודש...</option>
+                {data.months.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setGenConfirm(true)}
+              disabled={genLoading || (genMode === 'month' && !selectedGenMonth)}
+              className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
+            >
+              {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים'}
+            </button>
+          </div>
           {/* Reset button */}
           {!resetConfirm ? (
             <button
@@ -382,7 +407,13 @@ export default function TuitionPage() {
       )}
 
       {selectedParent && (
-        <EmployeeCard parentId={selectedParent} onClose={() => setSelectedParent(null)} />
+        <EmployeeCard
+          parentId={selectedParent}
+          onClose={() => {
+            setSelectedParent(null)
+            load()  // Reload PP list in case parent details were updated
+          }}
+        />
       )}
       </>}
 
@@ -417,7 +448,7 @@ export default function TuitionPage() {
                   onChange={e => { setFutureOnly(e.target.checked); loadPreview(e.target.checked) }}
                   className="w-4 h-4 rounded accent-[#1a3a7a]"
                 />
-                <span className="text-sm text-gray-700">רק חודשים עתידיים (בלי עבר)</span>
+                <span className="text-sm text-gray-700">רק חודשים עתידיים (כולל נוכחי)</span>
               </label>
             </div>
 
@@ -458,6 +489,34 @@ export default function TuitionPage() {
                   {genExecuting ? 'יוצר...' : `✓ אשר ויצור ${genPreview.totalToCreate} תשלומים`}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gen confirm modal */}
+      {genConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-bold mb-4">אישור יצירת תשלומים</h2>
+            <p className="text-gray-600 mb-6">
+              {genMode === 'future'
+                ? 'יוצרים תשלומים מתוכננים לחודשים הנוכחיים והעתידיים?'
+                : `יוצרים תשלומים מתוכננים לחודש ${selectedGenMonth}?`}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setGenConfirm(false)}
+                className="flex-1 px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => { setGenConfirm(false); executeGen() }}
+                className="flex-1 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+              >
+                כן, צור
+              </button>
             </div>
           </div>
         </div>
@@ -538,7 +597,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
 
   const load = () => {
     setLoading(true)
-    fetch('/api/planned-payments?withParentNames=true&limit=500')
+    fetch('/api/planned-payments?withParentNames=true&ppType=tuition&limit=500')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setRows(d) })
       .catch(() => {})
@@ -552,15 +611,17 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
     return by !== ay ? by - ay : bm - am
   })
 
-  const filtered = rows.filter(r => {
-    if (r.ppType === 'salary') return false
-    if (monthFilter && r.monthYear !== monthFilter) return false
-    if (search.trim()) {
-      const q = search.trim()
-      return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
-    }
-    return true
-  })
+  const filtered = rows
+    .filter(r => {
+      if (r.ppType !== 'tuition') return false  // Only show tuition PP, exclude salary and other types
+      if (monthFilter && r.monthYear !== monthFilter) return false
+      if (search.trim()) {
+        const q = search.trim()
+        return r.parentName?.includes(q) || r.monthYear?.includes(q) || r.name?.includes(q)
+      }
+      return true
+    })
+    .sort((a, b) => (a.parentName || '').localeCompare(b.parentName || '', 'he'))
 
   const deletePP = async (id: string) => {
     if (!confirm('למחוק תשלום מתוכנן זה? גם תנועות המשויכות אליו יימחקו.')) return
@@ -576,6 +637,29 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
 
   const totalBalance = filtered.reduce((s, r) => s + Math.max(0, r.balance), 0)
   const totalAmount  = filtered.reduce((s, r) => s + r.amount, 0)
+
+  // Detect gaps for each parent
+  const getParentGaps = (parentName: string): string[] => {
+    const parentRows = rows.filter(r => r.parentName === parentName && r.ppType === 'tuition')
+    if (parentRows.length < 2) return []
+
+    const months = parentRows.map(r => {
+      const [m, y] = r.monthYear.split('/').map(Number)
+      return y * 12 + m
+    }).sort((a, b) => a - b)
+
+    const gaps: string[] = []
+    for (let i = 0; i < months.length - 1; i++) {
+      if (months[i + 1] - months[i] > 1) {
+        for (let gap = months[i] + 1; gap < months[i + 1]; gap++) {
+          const y = Math.floor(gap / 12)
+          const m = gap % 12 || 12
+          gaps.push(`${String(m).padStart(2, '0')}/${y}`)
+        }
+      }
+    }
+    return gaps
+  }
 
   return (
     <div className="space-y-4">
@@ -812,11 +896,21 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
               {filtered.map(r => {
                 const isOverdue = r.balance > 0 && !!r.date && new Date(r.date) < today
                 const isPaid    = r.balance <= 0
+                const gaps = getParentGaps(r.parentName || '')
                 return (
                   <tr key={r.id}
                     onClick={() => setSelectedPP(r)}
                     className={`cursor-pointer hover:bg-blue-50/40 transition-colors ${isOverdue ? 'bg-red-50/30' : ''}`}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.parentName || '—'}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">
+                      <div className="flex items-center gap-2">
+                        <span>{r.parentName || '—'}</span>
+                        {gaps.length > 0 && (
+                          <span title={`חודשים חסרים: ${gaps.join(', ')}`} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                            🔴 {gaps.length} בור{gaps.length > 1 ? 'ים' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-gray-600">
                       <div>{r.monthYear}</div>
                       {r.monthYear && <div className="text-[10px] text-gray-400">{HEBREW_MONTH[r.monthYear.split('/')[0]] || ''}</div>}

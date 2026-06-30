@@ -20,18 +20,42 @@ function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   return months
 }
 
-/** Returns only current-month and future months from the Hebrew year */
+/** Returns current-month and all future months from the Hebrew year */
 function getFutureHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today = new Date()
-  const currentMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-  return getFullHebrewYearMonths().filter(m => m.date >= currentMonthDate)
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  // Use today's actual date for cutoff, not just month 1st
+  const currentDateStr = `${year}-${month}-${day}`
+
+  // Include current month and all future months (compare with actual date)
+  const allMonths = getFullHebrewYearMonths()
+  return allMonths.filter(m => {
+    // m.date is "YYYY-MM-01", so we need to check if the month is current or future
+    // If month > current month, include it
+    // If month == current month, include it (current month)
+    // If month < current month, exclude it (past month)
+    const monthOnly = m.date.substring(0, 7)  // "YYYY-MM"
+    const currentMonthOnly = currentDateStr.substring(0, 7)  // "YYYY-MM"
+    return monthOnly >= currentMonthOnly
+  })
 }
 
 /** GET — preview: returns what would be created without committing */
 export async function GET(req: NextRequest) {
   try {
     const futureOnly = req.nextUrl.searchParams.get('futureOnly') === '1'
-    const months    = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    const singleMonth = req.nextUrl.searchParams.get('month')
+
+    let months: { monthYear: string; date: string }[]
+    if (singleMonth) {
+      const [m, y] = singleMonth.split('/').map(Number)
+      const mm = String(m).padStart(2, '0')
+      months = [{ monthYear: `${mm}/${y}`, date: `${y}-${mm}-01` }]
+    } else {
+      months = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    }
     const monthYears = months.map(m => m.monthYear)
 
     // Get all parents that have tuition (i.e. active children)

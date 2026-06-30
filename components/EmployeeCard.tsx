@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ParentDetail, PlannedPaymentItem, StandingOrderItem, TransactionItem, WomanDetail } from '@/lib/types'
 import { TransactionRow, TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
@@ -10,6 +10,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
+import { DebtModal }         from './DebtModal'
 
 /* ─── helpers ──────────────────────────────────────── */
 const fmt = (n: number) =>
@@ -234,25 +235,50 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [donationPPs, setDonationPPs]         = useState<{ id: string; name: string; amount: number; balance: number; monthYear: string }[]>([])
   const [loadingPPs, setLoadingPPs]           = useState(true)
   const [donationSOs, setDonationSOs]         = useState<{ id: string; type: string; amount: number; status: string }[]>([])
+  const [expandedPP, setExpandedPP]           = useState<string | null>(null)
+  const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean }[]>>({})
+  const [loadingTx, setLoadingTx]             = useState<string | null>(null)
+  const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
+
+  const loadPPs = useCallback(async () => {
+    setLoadingPPs(true)
+    try {
+      const r = await fetch(`/api/planned-payments?parentId=${parent.id}&ppType=donation`)
+      if (r.ok) {
+        const data = await r.json()
+        setDonationPPs(Array.isArray(data) ? data : [])
+      }
+    } catch {} finally { setLoadingPPs(false) }
+  }, [parent.id])
+
+  // Load the transactions linked to one donation PP (for the expanded row).
+  const loadPpTxs = useCallback(async (ppId: string) => {
+    setLoadingTx(ppId)
+    try {
+      const r = await fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(ppId)}`)
+      const data = await r.json()
+      setPpTxs(prev => ({ ...prev, [ppId]: Array.isArray(data) ? data : [] }))
+    } catch {
+      setPpTxs(prev => ({ ...prev, [ppId]: [] }))
+    } finally { setLoadingTx(null) }
+  }, [])
+
+  const toggleExpand = (ppId: string) => {
+    setExpandedPP(prev => {
+      const next = prev === ppId ? null : ppId
+      if (next && !ppTxs[ppId]) loadPpTxs(ppId)
+      return next
+    })
+  }
 
   useEffect(() => {
     setAmountDraft(String(parent.monthlyDonation || ''))
   }, [parent.monthlyDonation])
 
   useEffect(() => {
-    const loadPPs = async () => {
-      setLoadingPPs(true)
-      try {
-        const r = await fetch(`/api/planned-payments?parentId=${parent.id}&ppType=donation`)
-        if (r.ok) {
-          const data = await r.json()
-          setDonationPPs(Array.isArray(data) ? data : [])
-        }
-      } catch {} finally { setLoadingPPs(false) }
-    }
     loadPPs()
 
     if (parent.standingOrders) {
@@ -267,7 +293,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           }))
       )
     }
-  }, [parent.id, parent.standingOrders])
+  }, [parent.id, parent.standingOrders, loadPPs])
 
   const saveAmount = async () => {
     const val = Number(amountDraft) || 0
@@ -438,9 +464,16 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                 {donationPPs.map(pp => {
                   const paid    = pp.balance <= 0
                   const partial = !paid && pp.balance < pp.amount
+                  const isOpen  = expandedPP === pp.id
+                  const txs     = ppTxs[pp.id]
                   return (
-                    <tr key={pp.id}>
-                      <td className="px-3 py-2 font-medium text-gray-700">{pp.monthYear}</td>
+                    <Fragment key={pp.id}>
+                    <tr onClick={() => toggleExpand(pp.id)}
+                      className="cursor-pointer hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2 font-medium text-gray-700">
+                        <span className={`inline-block text-gray-400 ml-1 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                        {pp.monthYear}
+                      </td>
                       <td className="px-3 py-2 text-left tabular-nums">{fmt2(pp.amount)}</td>
                       <td className="px-3 py-2 text-left tabular-nums text-gray-500">{fmt2(pp.balance)}</td>
                       <td className="px-3 py-2 text-center">
@@ -453,6 +486,35 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                         )}
                       </td>
                     </tr>
+                    {isOpen && (
+                      <tr className="bg-gray-50/60">
+                        <td colSpan={4} className="px-3 py-2">
+                          {loadingTx === pp.id ? (
+                            <div className="text-[11px] text-gray-400">טוען תשלומים...</div>
+                          ) : txs && txs.length > 0 ? (
+                            <div className="space-y-1 mb-2">
+                              <div className="text-[10px] font-semibold text-gray-500">תשלומים מקושרים</div>
+                              {txs.map(t => (
+                                <div key={t.id} className="flex justify-between bg-white rounded px-2 py-1 border border-gray-100">
+                                  <span className="text-gray-500">
+                                    {t.date || t.monthYear}{t.type ? ` • ${t.type}` : ''}{t.isCredit ? ' • זיכוי' : ''}
+                                  </span>
+                                  <span className="font-medium tabular-nums">{fmt2(Math.abs(t.amount))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-gray-400 mb-2">אין תשלומים מקושרים עדיין</div>
+                          )}
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); setAddPaymentPP({ id: pp.id, name: pp.name, balance: pp.balance, monthYear: pp.monthYear }) }}
+                            className="w-full px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+                            + הוסף תשלום לרשומה זו
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -460,6 +522,24 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           </div>
         )}
       </div>
+
+      {addPaymentPP && (
+        <AddTransactionModal
+          parentId={parent.id}
+          parentName={parent.name}
+          plannedPaymentId={addPaymentPP.id}
+          prefilledAmount={addPaymentPP.balance}
+          preselectedProject="דמי מגבית"
+          sourceLabel={addPaymentPP.name || `מגבית ${addPaymentPP.monthYear}`}
+          onClose={() => setAddPaymentPP(null)}
+          onSuccess={() => {
+            const ppId = addPaymentPP.id
+            setAddPaymentPP(null)
+            loadPPs()
+            loadPpTxs(ppId)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -526,6 +606,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [deleteInfo, setDeleteInfo]             = useState<{ txCount: number; ppCount: number; soCount: number; studentCount: number } | null>(null)
   const [deleteChecks, setDeleteChecks]         = useState({ deleteTransactions: true, deletePlannedPayments: true, deleteStandingOrders: true })
   const [deleting, setDeleting]                 = useState(false)
+
+  // Debt modal
+  const [showDebtModal, setShowDebtModal]       = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -718,6 +801,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Planned payment helpers
   const today = new Date(); today.setHours(0,0,0,0)
+  // isOverdue for display/color — all PPs past due date shown as red
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
 
   // Tuition PPs only (for payments tab)
@@ -725,7 +809,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
-  const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
+  // Summary totals count only from 04/2026 onwards
+  const minSummaryDate = new Date('2026-04-01')
+  const overdueTotal = overduePPs
+    .filter(pp => new Date(pp.date) >= minSummaryDate)
+    .reduce((s, pp) => s + pp.balance, 0)
 
   // Salary PPs (for salary tab)
   const salaryPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'salary')
@@ -1123,6 +1211,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <SummaryNum label="נותר לחודש"     value={fmt(remainThisMonth)} color="text-amber-600"   bg="bg-amber-50" />
               </div>
 
+              {/* Debt summary button */}
+              <button
+                onClick={() => setShowDebtModal(true)}
+                className="w-full px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 hover:from-indigo-100 hover:to-purple-100 transition-colors text-sm font-medium text-indigo-700"
+              >
+                📊 סיכום חובות מלא
+              </button>
+
               {/* Overdue banner */}
               {overdueTotal > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4">
@@ -1155,26 +1251,45 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {[...overduePPs, ...pendingPPs].map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                        <div key={pp.id} className={`w-full rounded-xl p-3 border group transition-all ${
                             isOverdue(pp)
                               ? 'bg-red-50 border-red-200 hover:border-red-400'
                               : 'bg-white border-gray-200 hover:border-indigo-300'
                           }`}>
-                          <div className="flex justify-between items-center">
-                            <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
-                              {fmt(pp.balance)}
-                            </span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                                  {fmt(pp.balance)}
+                                </span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                              {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                          {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1186,19 +1301,38 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {paidPPs.map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                        <div key={pp.id} className="w-full rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all group">
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -2291,6 +2425,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
       {showReport && parent && (
         <ReportModal parent={parent} onClose={() => setShowReport(false)} />
+      )}
+
+      {/* ── Debt modal ── */}
+      {showDebtModal && (
+        <DebtModal parentId={parentId} parentName={parent?.name} isOpen={showDebtModal} onClose={() => setShowDebtModal(false)} />
       )}
 
       {showAddSalaryPP && parent && (() => {

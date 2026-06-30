@@ -121,11 +121,24 @@ async function fetchParentData(id: string): Promise<ParentData> {
 
 /* ─── Main component ─────────────────────────────────────────────── */
 export default function MergeParentsTab({ onOpenParent }: { onOpenParent?: (id: string) => void }) {
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto')
+
+  // Auto mode
   const [searchBy, setSearchBy] = useState<SearchMode>('tz')
   const [query, setQuery]       = useState('')
   const [groups, setGroups]     = useState<{ id: string; name: string; id_number?: string; father_phone?: string }[][]>([])
   const [loading, setLoading]   = useState(false)
   const [searchError, setSearchError] = useState('')
+
+  // Manual mode
+  const [manualSearch1, setManualSearch1] = useState('')
+  const [manualSearch2, setManualSearch2] = useState('')
+  const [manualSelected1, setManualSelected1] = useState<{ id: string; name: string } | null>(null)
+  const [manualSelected2, setManualSelected2] = useState<{ id: string; name: string } | null>(null)
+  const [manualResults1, setManualResults1] = useState<{ id: string; name: string }[]>([])
+  const [manualResults2, setManualResults2] = useState<{ id: string; name: string }[]>([])
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualError, setManualError] = useState('')
 
   const [allData, setAllData]       = useState<ParentData[]>([])
   const [dataLoading, setDataLoading] = useState(false)
@@ -154,6 +167,35 @@ export default function MergeParentsTab({ onOpenParent }: { onOpenParent?: (id: 
       setGroups(d.groups ?? [])
     } catch { setSearchError('שגיאת רשת') }
     finally { setLoading(false) }
+  }
+
+  /* Manual search by name */
+  const manualSearch = async (searchStr: string, setter: (results: { id: string; name: string }[]) => void) => {
+    if (!searchStr.trim()) { setter([]); return }
+    setManualLoading(true); setManualError('')
+    try {
+      const r = await fetch(`/api/parents?search=${encodeURIComponent(searchStr)}&limit=50`)
+      const d = await r.json()
+      if (d.error) { setManualError(d.error); setter([]); return }
+      setter((d.data ?? []).map((p: Record<string,unknown>) => ({ id: String(p.id), name: String(p.name) })))
+    } catch { setManualError('שגיאה בחיפוש'); setter([]) }
+    finally { setManualLoading(false) }
+  }
+
+  /* Manual merge - open 2 specific parents */
+  const openManualMerge = async (id1: string, id2: string) => {
+    setActiveGroupIds([id1, id2])
+    setDataLoading(true); setMergeError(''); setDone(false); setAllData([])
+    try {
+      const results = await Promise.all([fetchParentData(id1), fetchParentData(id2)])
+      setAllData(results)
+      const pid = id1
+      setPrimaryId(pid)
+      const sel: Record<string, string> = {}
+      for (const { key } of SCALAR_FIELDS) sel[key] = pid
+      setSelections(sel)
+    } catch { setMergeError('שגיאה בטעינת נתונים') }
+    finally { setDataLoading(false) }
   }
 
   /* Open group */
@@ -233,7 +275,24 @@ export default function MergeParentsTab({ onOpenParent }: { onOpenParent?: (id: 
   return (
     <div className="space-y-5" dir="rtl">
 
-      {/* Search */}
+      {/* Mode tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button onClick={() => setMode('auto')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+            mode === 'auto' ? 'border-[#1a3a7a] text-[#1a3a7a]' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}>
+          חיפוש אוטומטי (כפולים)
+        </button>
+        <button onClick={() => setMode('manual')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+            mode === 'manual' ? 'border-[#1a3a7a] text-[#1a3a7a]' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}>
+          ידני (בחר 2 שמות)
+        </button>
+      </div>
+
+      {/* Auto mode - Search */}
+      {mode === 'auto' && (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">חיפוש כרטיסים לאיחוד</h3>
         <div className="flex gap-2 flex-wrap items-center">
@@ -261,6 +320,77 @@ export default function MergeParentsTab({ onOpenParent }: { onOpenParent?: (id: 
         {searchError && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{searchError}</div>}
         {done && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium">✓ האיחוד הושלם בהצלחה!</div>}
       </div>
+      )}
+
+      {/* Manual mode - Select 2 parents by name */}
+      {mode === 'manual' && (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">בחר 2 הורים לאיחוד</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">הורה ראשון</label>
+            {!manualSelected1 ? (
+              <>
+                <input value={manualSearch1} onChange={e => { setManualSearch1(e.target.value); manualSearch(e.target.value, setManualResults1) }}
+                  placeholder="חפש שם..."
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right mb-2" />
+                {manualResults1.length > 0 && (
+                  <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-100 rounded-lg">
+                    {manualResults1.map(p => (
+                      <button key={p.id} onClick={() => { setManualSelected1(p); setManualSearch1(''); setManualResults1([]) }}
+                        className="w-full text-right px-3 py-1.5 text-sm hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-b-0 text-gray-700">
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {manualSearch1 && manualResults1.length === 0 && !manualLoading && <div className="text-xs text-gray-400 text-center py-2">לא נמצאו תוצאות</div>}
+              </>
+            ) : (
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center justify-between">
+                <button onClick={() => setManualSelected1(null)} className="text-xs text-blue-600 hover:text-blue-800 font-semibold">שנה</button>
+                <span className="text-sm font-medium text-gray-800">{manualSelected1.name}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">הורה שני</label>
+            {!manualSelected2 ? (
+              <>
+                <input value={manualSearch2} onChange={e => { setManualSearch2(e.target.value); manualSearch(e.target.value, setManualResults2) }}
+                  placeholder="חפש שם..."
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30 text-right mb-2" />
+                {manualResults2.length > 0 && (
+                  <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-100 rounded-lg">
+                    {manualResults2.map(p => (
+                      <button key={p.id} onClick={() => { setManualSelected2(p); setManualSearch2(''); setManualResults2([]) }}
+                        className="w-full text-right px-3 py-1.5 text-sm hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-b-0 text-gray-700">
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {manualSearch2 && manualResults2.length === 0 && !manualLoading && <div className="text-xs text-gray-400 text-center py-2">לא נמצאו תוצאות</div>}
+              </>
+            ) : (
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center justify-between">
+                <button onClick={() => setManualSelected2(null)} className="text-xs text-blue-600 hover:text-blue-800 font-semibold">שנה</button>
+                <span className="text-sm font-medium text-gray-800">{manualSelected2.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        {manualSelected1 && manualSelected2 && (
+          <button onClick={() => openManualMerge(manualSelected1.id, manualSelected2.id)} disabled={dataLoading}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+            {dataLoading ? 'טוען...' : `פתח לאיחוד → ${manualSelected1.name} + ${manualSelected2.name}`}
+          </button>
+        )}
+        {manualError && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{manualError}</div>}
+        {done && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium">✓ האיחוד הושלם בהצלחה!</div>}
+      </div>
+      )}
 
       {/* Groups list */}
       {groups.length > 0 && !activeGroupIds && (
