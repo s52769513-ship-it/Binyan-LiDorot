@@ -15,11 +15,12 @@ import { nameSimilarity } from '@/lib/nameUtils'
 
 interface RawRow {
   parentName: string
-  type: string
+  type: string             // classification source (התחייב / תשלום)
   amount: number | string
-  date?: string        // YYYY-MM-DD
-  monthYear?: string   // MM/YYYY
+  date?: string            // YYYY-MM-DD
+  monthYear?: string       // MM/YYYY
   notes?: string
+  paymentMethod?: string   // actual payment method for payment rows (העברה/מזומן/הו"ק/אשראי...)
 }
 
 const UNDEFINED_COLUMN = '42703'
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
             id: crypto.randomUUID(),
             parent_ids: [parent.id],
             amount: Math.abs(amount),
-            type: row.type?.trim() || 'תשלום',
+            type: row.paymentMethod?.trim() || 'תשלום',
             date: row.date || null,
             month_year: monthYear,
             notes: row.notes || '',

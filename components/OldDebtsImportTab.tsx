@@ -8,6 +8,7 @@ const FIELDS = [
   { key: 'parentName', label: 'שם הורה', required: true,  guess: /הורה|שם מלא|אב|משפח|שם/ },
   { key: 'type',       label: 'סוג (התחייב/תשלום)', required: true, guess: /סוג|פעולה|תיאור פעולה|status/i },
   { key: 'amount',     label: 'סכום', required: true,  guess: /סכום|חוב|זכות|amount|₪/i },
+  { key: 'paymentMethod', label: 'אמצעי תשלום', required: false, guess: /אמצעי|אופן תשלום|שיטת תשלום|method/i },
   { key: 'date',       label: 'תאריך', required: false, guess: /תאריך|date/i },
   { key: 'monthYear',  label: 'חודש/שנה (MM/YYYY)', required: false, guess: /חודש|month/i },
   { key: 'notes',      label: 'הערות', required: false, guess: /הער|תיאור|פירוט|notes/i },
@@ -49,7 +50,7 @@ export default function OldDebtsImportTab() {
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState<string[]>([])
   const [dataRows, setDataRows] = useState<unknown[][]>([])
-  const [map, setMap] = useState<Record<FieldKey, number>>({ parentName: -1, type: -1, amount: -1, date: -1, monthYear: -1, notes: -1 })
+  const [map, setMap] = useState<Record<FieldKey, number>>({ parentName: -1, type: -1, amount: -1, paymentMethod: -1, date: -1, monthYear: -1, notes: -1 })
   const [preview, setPreview] = useState<DryRunResult | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -67,7 +68,7 @@ export default function OldDebtsImportTab() {
     setDataRows(rows)
 
     // Auto-guess column mapping by header name.
-    const guessed: Record<FieldKey, number> = { parentName: -1, type: -1, amount: -1, date: -1, monthYear: -1, notes: -1 }
+    const guessed: Record<FieldKey, number> = { parentName: -1, type: -1, amount: -1, paymentMethod: -1, date: -1, monthYear: -1, notes: -1 }
     const used = new Set<number>()
     for (const f of FIELDS) {
       const idx = hdrs.findIndex((h, i) => !used.has(i) && f.guess.test(h))
@@ -81,6 +82,7 @@ export default function OldDebtsImportTab() {
       parentName: map.parentName >= 0 ? String(r[map.parentName] ?? '').trim() : '',
       type:       map.type       >= 0 ? String(r[map.type] ?? '').trim() : '',
       amount:     map.amount     >= 0 ? (r[map.amount] as number | string) : 0,
+      paymentMethod: map.paymentMethod >= 0 ? String(r[map.paymentMethod] ?? '').trim() : '',
       date:       map.date       >= 0 ? toISODate(r[map.date]) : '',
       monthYear:  map.monthYear  >= 0 ? String(r[map.monthYear] ?? '').trim() : '',
       notes:      map.notes      >= 0 ? String(r[map.notes] ?? '').trim() : '',
