@@ -11,25 +11,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'חסר מזהה' }, { status: 400 })
     }
 
-    // Get PP details before deletion to clean up related transactions
-    const { data: pp, error: fetchErr } = await supabaseAdmin
-      .from('planned_payments')
-      .select('id, parent_ids, planned_payment_id')
-      .eq('id', id)
-      .single()
-
-    if (fetchErr || !pp) {
-      return NextResponse.json({ error: 'לא נמצא תשלום מתוכנן' }, { status: 404 })
-    }
-
-    // Delete all transactions linked to this PP
-    const { error: txErr } = await supabaseAdmin
-      .from('transactions')
-      .delete()
-      .eq('planned_payment_id', id)
-
-    if (txErr) throw txErr
-
     // Delete the PP itself
     const { error } = await supabaseAdmin
       .from('planned_payments')
