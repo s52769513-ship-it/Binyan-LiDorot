@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
         .eq('pp_type', 'tuition')
         .gt('balance', 0)
         .lt('date', todayStr)
+        .gte('date', '2026-04-01')
         .overlaps('parent_ids', parentIds)
       const parentIdSet = new Set(parentIds)
       for (const pp of overduePPs ?? []) {
