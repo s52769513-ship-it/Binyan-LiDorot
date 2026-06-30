@@ -123,7 +123,11 @@ export default function OldDebtsImportTab() {
           parentMappings: Object.keys(manualMappings).length > 0 ? manualMappings : undefined
         }),
       })
-      const data = await res.json()
+      const text = await res.text()
+      let data: any
+      try { data = JSON.parse(text) }
+      catch { setResult({ error: `שגיאת שרת (${res.status}): ${text.slice(0, 200)}` }); return }
+      if (!res.ok) { setResult({ error: data?.error || `שגיאה ${res.status}` }); return }
       if (dryRun) { setPreview(data); setResult(null) }
       else { setResult(data); setPreview(null) }
     } catch (e) {

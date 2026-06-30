@@ -136,7 +136,7 @@ export function DebtModal({ isOpen, onClose, parentId, parentName }: DebtModalPr
   const [data, setData] = useState<DebtSummaryData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'tuition' | 'collection' | 'legacy'>('tuition')
+  const [activeTab, setActiveTab] = useState<'tuition' | 'collection'>('tuition')
   const [refreshKey, setRefreshKey] = useState(0)
   const [addPaymentFor, setAddPaymentFor] = useState<DebtItem | null>(null)
 
@@ -227,16 +227,6 @@ export function DebtModal({ isOpen, onClose, parentId, parentName }: DebtModalPr
           >
             מגבית ({data.collection.items.length})
           </button>
-          <button
-            onClick={() => setActiveTab('legacy')}
-            className={`px-3 py-2 font-semibold text-sm ${
-              activeTab === 'legacy'
-                ? 'text-orange-600 border-b-2 border-orange-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            חובות ישנים ({data.legacyDebts.items.length})
-          </button>
         </div>
 
         {/* Tab content */}
@@ -289,27 +279,6 @@ export function DebtModal({ isOpen, onClose, parentId, parentName }: DebtModalPr
             </>
           )}
 
-          {activeTab === 'legacy' && (
-            <>
-              {data.legacyDebts.items.length > 0 ? (
-                <div className="space-y-2">
-                  {data.legacyDebts.items.map((item) => (
-                    <div key={item.id} className="bg-red-50 p-3 rounded text-sm border border-red-200">
-                      <div className="flex justify-between">
-                        <span>{item.type}</span>
-                        <span className="font-semibold">{fmt(item.amount)}</span>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {item.monthYear} {item.notes && `• ${item.notes}`}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-4">אין חובות היסטוריים</p>
-              )}
-            </>
-          )}
         </div>
         </>
         )}

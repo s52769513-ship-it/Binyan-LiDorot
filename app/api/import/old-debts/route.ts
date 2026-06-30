@@ -42,12 +42,24 @@ function toNumber(v: number | string | undefined): number {
   return isNaN(n) ? 0 : n
 }
 
-// Derive MM/YYYY from a YYYY-MM-DD date when monthYear is absent.
+// Derive MM/YYYY from date field or row.monthYear.
+// Also handles short-year format: "03/26" → "03/2026"
 function monthYearOf(row: RawRow): string {
-  if (row.monthYear && /^\d{1,2}\/\d{4}$/.test(row.monthYear.trim())) return row.monthYear.trim()
+  const my = (row.monthYear ?? '').trim()
+  // "MM/YY" short year → "MM/YYYY"
+  const short = /^(\d{1,2})\/(\d{2})$/.exec(my)
+  if (short) return `${short[1].padStart(2, '0')}/${2000 + Number(short[2])}`
+  if (/^\d{1,2}\/\d{4}$/.test(my)) return my
   const m = /^(\d{4})-(\d{1,2})/.exec((row.date ?? '').trim())
   if (m) return `${m[2].padStart(2, '0')}/${m[1]}`
   return ''
+}
+
+// Convert MM/YYYY → first day of that month as YYYY-MM-DD
+function firstOfMonth(monthYear: string): string {
+  const m = /^(\d{1,2})\/(\d{4})$/.exec(monthYear.trim())
+  if (!m) return ''
+  return `${m[2]}-${m[1].padStart(2, '0')}-01`
 }
 
 export async function POST(req: NextRequest) {
@@ -145,13 +157,15 @@ export async function POST(req: NextRequest) {
 
         if (kind === 'charge') {
           const id = crypto.randomUUID()
+          // Derive date: explicit date > first day of monthYear > null
+          const derivedDate = row.date || (monthYear ? firstOfMonth(monthYear) : null)
           const { error } = await supabaseAdmin.from('planned_payments').insert({
             id,
             parent_ids: [parent.id],
             name: row.notes?.trim() || (monthYear ? `שכ"ל ${monthYear}` : 'שכ"ל — חוב ישן'),
             amount: Math.abs(amount),
             balance: Math.abs(amount),
-            date: row.date || null,
+            date: derivedDate || null,
             month_year: monthYear,
             pp_type: 'tuition',
             is_legacy: true,
@@ -171,12 +185,13 @@ export async function POST(req: NextRequest) {
           const open = (pps ?? []).filter(p => Number(p.balance) > 0)
           const target = open.find(p => p.month_year === monthYear) ?? open[0] ?? null
 
+          const derivedPaymentDate = row.date || (monthYear ? firstOfMonth(monthYear) : null)
           const { error } = await supabaseAdmin.from('transactions').insert({
             id: crypto.randomUUID(),
             parent_ids: [parent.id],
             amount: Math.abs(amount),
             type: row.paymentMethod?.trim() || 'תשלום',
-            date: row.date || null,
+            date: derivedPaymentDate || null,
             month_year: monthYear,
             notes: row.notes || '',
             project_names: ['בנין לדורות'],
