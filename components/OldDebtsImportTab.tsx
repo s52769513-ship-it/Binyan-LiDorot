@@ -10,7 +10,7 @@ const FIELDS = [
   { key: 'amount',     label: 'סכום', required: true,  guess: /סכום|חוב|זכות|amount|₪/i },
   { key: 'paymentMethod', label: 'אמצעי תשלום', required: false, guess: /אמצעי|אופן תשלום|שיטת תשלום|method/i },
   { key: 'date',       label: 'תאריך', required: false, guess: /תאריך|date/i },
-  { key: 'monthYear',  label: 'חודש/שנה (MM/YYYY)', required: false, guess: /חודש|month/i },
+  { key: 'monthYear',  label: 'חודש/שנה (MM/YYYY)', required: false, guess: /חודש|month|MM|mm|YYYY|YY|\d{1,2}[/-]\d{2,4}/i },
   { key: 'notes',      label: 'הערות', required: false, guess: /הער|תיאור|פירוט|notes/i },
 ] as const
 
