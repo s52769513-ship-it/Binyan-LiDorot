@@ -96,20 +96,26 @@ export async function POST(req: NextRequest) {
     // ── DRY RUN: preview matching & classification, write nothing ──
     if (dryRun) {
       let charges = 0, payments = 0, matched = 0
+      let matchedCharges = 0, matchedPayments = 0
+      let chargeAmount = 0, paymentAmount = 0
       const unmatched: string[] = []
       const preview: object[] = []
       for (const row of rows) {
         const kind = classify(row.type)
+        const amount = toNumber(row.amount)
         if (kind === 'charge') charges++
         else if (kind === 'payment') payments++
         const parent = matchParent(row.parentName)
-        if (parent) matched++
-        else if (row.parentName?.trim()) unmatched.push(row.parentName.trim())
+        if (parent) {
+          matched++
+          if (kind === 'charge') { matchedCharges++; chargeAmount += Math.abs(amount) }
+          else if (kind === 'payment') { matchedPayments++; paymentAmount += Math.abs(amount) }
+        } else if (row.parentName?.trim()) unmatched.push(row.parentName.trim())
         preview.push({
           parentName: row.parentName,
           matchedParent: parent?.name ?? null,
           kind,
-          amount: toNumber(row.amount),
+          amount,
           monthYear: monthYearOf(row),
         })
       }
@@ -122,6 +128,7 @@ export async function POST(req: NextRequest) {
         matched,
         unmatched: [...new Set(unmatched)],
         preview: preview.slice(0, 50),
+        summary: { matchedCharges, matchedPayments, chargeAmount, paymentAmount },
       })
     }
 

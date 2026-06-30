@@ -20,6 +20,7 @@ interface PreviewRow { parentName: string; matchedParent: string | null; kind: s
 interface DryRunResult {
   dryRun: true; total: number; charges: number; payments: number; unknown: number
   matched: number; unmatched: string[]; preview: PreviewRow[]
+  summary: { matchedCharges: number; matchedPayments: number; chargeAmount: number; paymentAmount: number }
 }
 interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; errors?: string[]; error?: string }
 
@@ -258,11 +259,7 @@ export default function OldDebtsImportTab() {
           </div>
           <p className="text-[11px] text-gray-400">מוצגות עד 50 שורות ראשונות. לחיצה על &quot;ייבא&quot; תשמור הכל.</p>
 
-          <ImportSummary
-            preview={preview}
-            allRows={buildRows()}
-            manualMappings={manualMappings}
-          />
+          <ImportSummary preview={preview} />
 
           <div className="flex gap-3 pt-2">
             <button onClick={() => send(true)} disabled={busy}
@@ -323,42 +320,19 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-function ImportSummary({ preview, allRows, manualMappings }: {
-  preview: DryRunResult
-  allRows: Array<{ parentName: string; type: string; amount: number | string; [key: string]: any }>
-  manualMappings: Record<string, string>
-}) {
-  // Calculate from ALL rows, not just preview
-  const chargeRows = allRows.filter(r => {
-    const matched = preview.preview.some(p => p.parentName === r.parentName && (p.matchedParent || manualMappings[p.parentName]))
-    return r.type?.toLowerCase().includes('התחייב') && (r.parentName ? matched : false)
-  })
-  const paymentRows = allRows.filter(r => {
-    const matched = preview.preview.some(p => p.parentName === r.parentName && (p.matchedParent || manualMappings[p.parentName]))
-    return r.type?.toLowerCase().includes('תשלום') && (r.parentName ? matched : false)
-  })
-
-  const toNumber = (v: number | string | undefined): number => {
-    if (typeof v === 'number') return v
-    if (!v) return 0
-    const n = Number(String(v).replace(/[₪,\s]/g, ''))
-    return isNaN(n) ? 0 : n
-  }
-
-  const chargeTotal = chargeRows.reduce((sum, r) => sum + toNumber(r.amount), 0)
-  const paymentTotal = paymentRows.reduce((sum, r) => sum + toNumber(r.amount), 0)
-
+function ImportSummary({ preview }: { preview: DryRunResult }) {
+  const { matchedCharges, matchedPayments, chargeAmount, paymentAmount } = preview.summary ?? {}
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2 text-sm">
-      <p className="font-semibold text-blue-900">סיכום היצירה (לפני ייבוא) - כולל את כל השורות:</p>
+      <p className="font-semibold text-blue-900">סיכום היצירה (כולל כל השורות):</p>
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="bg-white rounded p-2">
-          <div className="text-blue-600 font-medium">{chargeRows.length} שורות PP</div>
-          <div className="text-gray-600">סה"כ סכום: {chargeTotal.toLocaleString('he-IL')}</div>
+          <div className="text-blue-600 font-medium">{matchedCharges ?? 0} שורות PP</div>
+          <div className="text-gray-600">סה"כ סכום: {(chargeAmount ?? 0).toLocaleString('he-IL')}</div>
         </div>
         <div className="bg-white rounded p-2">
-          <div className="text-green-600 font-medium">{paymentRows.length} שורות תשלום</div>
-          <div className="text-gray-600">סה"כ סכום: {paymentTotal.toLocaleString('he-IL')}</div>
+          <div className="text-green-600 font-medium">{matchedPayments ?? 0} שורות תשלום</div>
+          <div className="text-gray-600">סה"כ סכום: {(paymentAmount ?? 0).toLocaleString('he-IL')}</div>
         </div>
       </div>
     </div>
