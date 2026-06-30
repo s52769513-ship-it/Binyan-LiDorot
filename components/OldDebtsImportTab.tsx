@@ -58,7 +58,7 @@ export default function OldDebtsImportTab() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [allParents, setAllParents] = useState<ParentOption[]>([])
-  const [manualMappings, setManualMappings] = useState<Record<string, string>>({})
+  const [manualMappings, setManualMappings] = useState<Record<string, { id: string; name: string }>>({})
   const [parentSelectorOpen, setParentSelectorOpen] = useState<string | null>(null)
 
   useEffect(() => {
@@ -128,7 +128,9 @@ export default function OldDebtsImportTab() {
         body: JSON.stringify({
           rows: buildRows(),
           dryRun,
-          parentMappings: Object.keys(manualMappings).length > 0 ? manualMappings : undefined
+          parentMappings: Object.keys(manualMappings).length > 0
+            ? Object.fromEntries(Object.entries(manualMappings).map(([k, v]) => [k, v.id]))
+            : undefined
         }),
       })
       const text = await res.text()
@@ -233,7 +235,7 @@ export default function OldDebtsImportTab() {
                   <span key={from} className="flex items-center gap-1 px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
                     <span className="text-gray-500">{from}</span>
                     <span>→</span>
-                    <span className="text-emerald-700 font-medium">{to}</span>
+                    <span className="text-emerald-700 font-medium">{to.name}</span>
                     <button onClick={() => setManualMappings(m => { const n = {...m}; delete n[from]; return n })}
                       className="mr-1 text-gray-400 hover:text-red-500 font-bold leading-none">×</button>
                   </span>
@@ -248,7 +250,7 @@ export default function OldDebtsImportTab() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {preview.preview.map((r, i) => {
-                  const matched = r.matchedParent || manualMappings[r.parentName]
+                  const matched = r.matchedParent || manualMappings[r.parentName]?.name
                   return (
                     <tr key={i} className={matched ? '' : 'bg-red-50'}>
                       <td className="px-2 py-1">{r.parentName}</td>
@@ -287,7 +289,7 @@ export default function OldDebtsImportTab() {
           unmatchedName={parentSelectorOpen}
           allParents={allParents}
           onSelect={(parentId, parentName) => {
-            setManualMappings(m => ({ ...m, [parentSelectorOpen]: parentName }))
+            setManualMappings(m => ({ ...m, [parentSelectorOpen]: { id: parentId, name: parentName } }))
             setParentSelectorOpen(null)
           }}
           onClose={() => setParentSelectorOpen(null)}

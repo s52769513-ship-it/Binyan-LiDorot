@@ -67,8 +67,9 @@ export async function POST(req: NextRequest) {
       if (matchCache.has(rawName)) return matchCache.get(rawName)!
       let result: { id: string; name: string } | null = null
       if (parentMappings[rawName]) {
-        const mapped = parentList.find(p => p.name === parentMappings[rawName])
-        if (mapped) result = { id: mapped.id, name: mapped.name ?? '' }
+        // parentMappings values are parent IDs (not names) — look up by ID
+        const mapped = parentList.find(p => p.id === parentMappings[rawName])
+        if (mapped) result = { id: mapped.id, name: mapped.name ?? `${mapped.first_name ?? ''} ${mapped.last_name ?? ''}`.trim() }
       }
       if (!result) {
         let best: { id: string; name: string } | null = null
