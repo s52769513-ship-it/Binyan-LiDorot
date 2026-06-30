@@ -58,8 +58,14 @@ export default function OldDebtsImportTab() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [allParents, setAllParents] = useState<ParentOption[]>([])
-  const [manualMappings, setManualMappings] = useState<Record<string, { id: string; name: string }>>({})
+  const [manualMappings, setManualMappings] = useState<Record<string, { id: string; name: string }>>(() => {
+    try { return JSON.parse(localStorage.getItem('oldDebtsManualMappings') ?? 'null') ?? {} } catch { return {} }
+  })
   const [parentSelectorOpen, setParentSelectorOpen] = useState<string | null>(null)
+
+  useEffect(() => {
+    try { localStorage.setItem('oldDebtsManualMappings', JSON.stringify(manualMappings)) } catch {}
+  }, [manualMappings])
 
   useEffect(() => {
     const fetchParents = async () => {
