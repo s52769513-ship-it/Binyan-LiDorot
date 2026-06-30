@@ -63,11 +63,10 @@ export default function OldDebtsImportTab() {
   useEffect(() => {
     const fetchParents = async () => {
       try {
-        const res = await fetch('/api/parents')
+        const res = await fetch('/api/parents-simple')
         if (res.ok) {
-          const json = await res.json()
-          const parents = Array.isArray(json) ? json : json.data || []
-          setAllParents(parents.map((p: any) => ({ id: p.id, name: p.name })))
+          const parents = await res.json()
+          setAllParents(Array.isArray(parents) ? parents : [])
         }
       } catch (e) {
         console.error('Failed to fetch parents:', e)
@@ -235,7 +234,11 @@ export default function OldDebtsImportTab() {
           </div>
           <p className="text-[11px] text-gray-400">מוצגות עד 50 שורות ראשונות. לחיצה על &quot;ייבא&quot; תשמור הכל.</p>
 
-          <ImportSummary preview={preview} manualMappings={manualMappings} />
+          <ImportSummary
+            preview={preview}
+            allRows={buildRows()}
+            manualMappings={manualMappings}
+          />
 
           <div className="flex gap-3 pt-2">
             <button onClick={() => send(true)} disabled={busy}
@@ -296,17 +299,34 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-function ImportSummary({ preview, manualMappings }: { preview: DryRunResult; manualMappings: Record<string, string> }) {
-  const matched = preview.preview.filter(r => r.matchedParent || manualMappings[r.parentName])
-  const chargeRows = matched.filter(r => r.kind === 'charge')
-  const paymentRows = matched.filter(r => r.kind === 'payment')
+function ImportSummary({ preview, allRows, manualMappings }: {
+  preview: DryRunResult
+  allRows: Array<{ parentName: string; type: string; amount: number | string; [key: string]: any }>
+  manualMappings: Record<string, string>
+}) {
+  // Calculate from ALL rows, not just preview
+  const chargeRows = allRows.filter(r => {
+    const matched = preview.preview.some(p => p.parentName === r.parentName && (p.matchedParent || manualMappings[p.parentName]))
+    return r.type?.toLowerCase().includes('התחייב') && (r.parentName ? matched : false)
+  })
+  const paymentRows = allRows.filter(r => {
+    const matched = preview.preview.some(p => p.parentName === r.parentName && (p.matchedParent || manualMappings[p.parentName]))
+    return r.type?.toLowerCase().includes('תשלום') && (r.parentName ? matched : false)
+  })
 
-  const chargeTotal = chargeRows.reduce((sum, r) => sum + r.amount, 0)
-  const paymentTotal = paymentRows.reduce((sum, r) => sum + r.amount, 0)
+  const toNumber = (v: number | string | undefined): number => {
+    if (typeof v === 'number') return v
+    if (!v) return 0
+    const n = Number(String(v).replace(/[₪,\s]/g, ''))
+    return isNaN(n) ? 0 : n
+  }
+
+  const chargeTotal = chargeRows.reduce((sum, r) => sum + toNumber(r.amount), 0)
+  const paymentTotal = paymentRows.reduce((sum, r) => sum + toNumber(r.amount), 0)
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2 text-sm">
-      <p className="font-semibold text-blue-900">סיכום היצירה (לפני ייבוא):</p>
+      <p className="font-semibold text-blue-900">סיכום היצירה (לפני ייבוא) - כולל את כל השורות:</p>
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="bg-white rounded p-2">
           <div className="text-blue-600 font-medium">{chargeRows.length} שורות PP</div>
