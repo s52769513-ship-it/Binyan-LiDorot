@@ -52,7 +52,7 @@ function monthYearOf(row: RawRow): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { rows, dryRun = false }: { rows: RawRow[]; dryRun?: boolean } = await req.json()
+    const { rows, dryRun = false, parentMappings = {} }: { rows: RawRow[]; dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
     if (!Array.isArray(rows)) return NextResponse.json({ error: 'rows required' }, { status: 400 })
 
     // Load all parents once for name matching.
@@ -64,6 +64,12 @@ export async function POST(req: NextRequest) {
 
     const matchParent = (rawName: string): { id: string; name: string } | null => {
       if (!rawName?.trim()) return null
+      // Check manual mapping first
+      if (parentMappings[rawName]) {
+        const mapped = parentList.find(p => p.name === parentMappings[rawName])
+        if (mapped) return { id: mapped.id, name: mapped.name ?? '' }
+      }
+      // Fall back to similarity matching
       let best: { id: string; name: string } | null = null
       let bestScore = 0
       for (const p of parentList) {

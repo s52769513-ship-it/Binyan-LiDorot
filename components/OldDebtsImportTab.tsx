@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 
 /* Logical fields we need to map the file's columns onto. */
@@ -45,6 +45,8 @@ function toISODate(v: unknown): string {
   return ''
 }
 
+interface ParentOption { id: string; name: string }
+
 export default function OldDebtsImportTab() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState('')
@@ -54,6 +56,25 @@ export default function OldDebtsImportTab() {
   const [preview, setPreview] = useState<DryRunResult | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [busy, setBusy] = useState(false)
+  const [allParents, setAllParents] = useState<ParentOption[]>([])
+  const [manualMappings, setManualMappings] = useState<Record<string, string>>({})
+  const [parentSelectorOpen, setParentSelectorOpen] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchParents = async () => {
+      try {
+        const res = await fetch('/api/parents')
+        if (res.ok) {
+          const json = await res.json()
+          const parents = Array.isArray(json) ? json : json.data || []
+          setAllParents(parents.map((p: any) => ({ id: p.id, name: p.name })))
+        }
+      } catch (e) {
+        console.error('Failed to fetch parents:', e)
+      }
+    }
+    fetchParents()
+  }, [])
 
   const onFile = async (file: File) => {
     setFileName(file.name); setPreview(null); setResult(null)
@@ -97,7 +118,11 @@ export default function OldDebtsImportTab() {
       const res = await fetch('/api/import/old-debts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: buildRows(), dryRun }),
+        body: JSON.stringify({
+          rows: buildRows(),
+          dryRun,
+          parentMappings: Object.keys(manualMappings).length > 0 ? manualMappings : undefined
+        }),
       })
       const data = await res.json()
       if (dryRun) { setPreview(data); setResult(null) }
@@ -175,7 +200,14 @@ export default function OldDebtsImportTab() {
           {preview.unmatched.length > 0 && (
             <div className="text-xs text-red-600">
               <p className="font-semibold">הורים שלא זוהו ({preview.unmatched.length}):</p>
-              <p className="text-gray-500">{preview.unmatched.slice(0, 30).join(' · ')}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {preview.unmatched.slice(0, 30).map((name) => (
+                  <button key={name} onClick={() => setParentSelectorOpen(name)}
+                    className="px-2 py-1 bg-red-100 rounded hover:bg-red-200 text-red-700 transition">
+                    {name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
@@ -184,20 +216,51 @@ export default function OldDebtsImportTab() {
                 <tr><th className="px-2 py-1">שם בקובץ</th><th className="px-2 py-1">זוהה</th><th className="px-2 py-1">סוג</th><th className="px-2 py-1 text-left">סכום</th><th className="px-2 py-1">חודש</th></tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {preview.preview.map((r, i) => (
-                  <tr key={i} className={r.matchedParent ? '' : 'bg-red-50'}>
-                    <td className="px-2 py-1">{r.parentName}</td>
-                    <td className="px-2 py-1">{r.matchedParent ?? <span className="text-red-500">—</span>}</td>
-                    <td className="px-2 py-1">{r.kind === 'charge' ? 'התחייב' : r.kind === 'payment' ? 'תשלום' : '?'}</td>
-                    <td className="px-2 py-1 text-left tabular-nums">{r.amount.toLocaleString('he-IL')}</td>
-                    <td className="px-2 py-1">{r.monthYear}</td>
-                  </tr>
-                ))}
+                {preview.preview.map((r, i) => {
+                  const matched = r.matchedParent || manualMappings[r.parentName]
+                  return (
+                    <tr key={i} className={matched ? '' : 'bg-red-50'}>
+                      <td className="px-2 py-1">{r.parentName}</td>
+                      <td className="px-2 py-1">
+                        {matched ? matched : <button onClick={() => setParentSelectorOpen(r.parentName)} className="text-red-500 hover:underline">—</button>}
+                      </td>
+                      <td className="px-2 py-1">{r.kind === 'charge' ? 'התחייב' : r.kind === 'payment' ? 'תשלום' : '?'}</td>
+                      <td className="px-2 py-1 text-left tabular-nums">{r.amount.toLocaleString('he-IL')}</td>
+                      <td className="px-2 py-1">{r.monthYear}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
           <p className="text-[11px] text-gray-400">מוצגות עד 50 שורות ראשונות. לחיצה על &quot;ייבא&quot; תשמור הכל.</p>
+
+          <ImportSummary preview={preview} manualMappings={manualMappings} />
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => send(true)} disabled={busy}
+              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {busy ? 'מעבד…' : 'רענן תצוגה'}
+            </button>
+            <button onClick={() => send(false)} disabled={busy}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}>
+              {busy ? 'מייבא…' : 'ייבא עכשיו'}
+            </button>
+          </div>
         </div>
+      )}
+
+      {parentSelectorOpen && (
+        <ParentSelector
+          unmatchedName={parentSelectorOpen}
+          allParents={allParents}
+          onSelect={(parentId, parentName) => {
+            setManualMappings(m => ({ ...m, [parentSelectorOpen]: parentName }))
+            setParentSelectorOpen(null)
+          }}
+          onClose={() => setParentSelectorOpen(null)}
+        />
       )}
 
       {result && (
@@ -229,6 +292,79 @@ function Stat({ label, value }: { label: string; value: number | string }) {
     <div className="bg-gray-50 rounded-lg py-2">
       <div className="text-lg font-bold text-gray-800">{value}</div>
       <div className="text-[11px] text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+function ImportSummary({ preview, manualMappings }: { preview: DryRunResult; manualMappings: Record<string, string> }) {
+  const matched = preview.preview.filter(r => r.matchedParent || manualMappings[r.parentName])
+  const chargeRows = matched.filter(r => r.kind === 'charge')
+  const paymentRows = matched.filter(r => r.kind === 'payment')
+
+  const chargeTotal = chargeRows.reduce((sum, r) => sum + r.amount, 0)
+  const paymentTotal = paymentRows.reduce((sum, r) => sum + r.amount, 0)
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2 text-sm">
+      <p className="font-semibold text-blue-900">סיכום היצירה (לפני ייבוא):</p>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="bg-white rounded p-2">
+          <div className="text-blue-600 font-medium">{chargeRows.length} שורות PP</div>
+          <div className="text-gray-600">סה"כ סכום: {chargeTotal.toLocaleString('he-IL')}</div>
+        </div>
+        <div className="bg-white rounded p-2">
+          <div className="text-green-600 font-medium">{paymentRows.length} שורות תשלום</div>
+          <div className="text-gray-600">סה"כ סכום: {paymentTotal.toLocaleString('he-IL')}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ParentSelector({ unmatchedName, allParents, onSelect, onClose }:
+  { unmatchedName: string; allParents: ParentOption[]; onSelect: (id: string, name: string) => void; onClose: () => void }) {
+  const [search, setSearch] = useState('')
+  const filtered = allParents.filter(p => p.name.includes(search))
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-96 flex flex-col">
+        <div className="p-4 border-b">
+          <p className="text-sm font-semibold text-gray-700 mb-3">בחר הורה עבור: <span className="text-blue-600">{unmatchedName}</span></p>
+          <input
+            type="text"
+            placeholder="חפש הורה…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            autoFocus
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {filtered.map(p => (
+            <button
+              key={p.id}
+              onClick={() => onSelect(p.id, p.name)}
+              className="w-full text-right px-4 py-2 hover:bg-blue-50 border-b text-sm text-gray-800 transition"
+            >
+              {p.name}
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="p-4 text-center text-xs text-gray-500">
+              לא נמצאו הורים התואמים
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t">
+          <button
+            onClick={onClose}
+            className="w-full px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition"
+          >
+            ביטול
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
