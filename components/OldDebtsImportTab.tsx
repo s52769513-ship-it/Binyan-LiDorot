@@ -104,9 +104,11 @@ export default function OldDebtsImportTab() {
     setMap(guessed)
   }
 
+  const stripInvisible = (s: string) => s.replace(/[​-‏‪-‮﻿­]/g, '').trim()
+
   const buildRows = () =>
     dataRows.map(r => ({
-      parentName: map.parentName >= 0 ? String(r[map.parentName] ?? '').trim() : '',
+      parentName: map.parentName >= 0 ? stripInvisible(String(r[map.parentName] ?? '')) : '',
       type:       map.type       >= 0 ? String(r[map.type] ?? '').trim() : '',
       amount:     map.amount     >= 0 ? (r[map.amount] as number | string) : 0,
       paymentMethod: map.paymentMethod >= 0 ? String(r[map.paymentMethod] ?? '').trim() : '',

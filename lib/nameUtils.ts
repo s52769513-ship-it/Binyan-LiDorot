@@ -1,5 +1,6 @@
 export function normName(s: string): string {
   return (s ?? '')
+    .replace(/[​-‏‪-‮﻿­]/g, '') // strip invisible/directional chars Excel adds
     .replace(/["'`״׳]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
