@@ -830,28 +830,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   async function reconcileBalances() {
     if (!parent) return
+    if (!confirm('פעולה זו תאפס את כל יתרות ה-PP ותחשב מחדש לפי סדר התנועות המקושרות. להמשיך?')) return
     setReconciling(true)
     setReconcileResult(null)
     try {
-      const pps = (parent.plannedPayments ?? []).filter(pp => pp.ppType !== 'salary')
-      let fixed = 0
-      for (const pp of pps) {
-        const r = await fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(pp.id)}`)
-        const txs = await r.json()
-        if (!Array.isArray(txs)) continue
-        const paid = txs.reduce((s: number, t: { amount: number }) => s + Math.abs(t.amount), 0)
-        const expectedBalance = Math.max(0, pp.amount - paid)
-        if (Math.abs(expectedBalance - pp.balance) > 0.01) {
-          await fetch('/api/planned-payments', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: pp.id, balance: expectedBalance }),
-          })
-          fixed++
-        }
-      }
-      setReconcileResult({ fixed, checked: pps.length })
-      if (fixed > 0) load()
+      const res = await fetch(`/api/parents/${parentId}/relink`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setReconcileResult({ fixed: data.txsProcessed, checked: data.ppsReset })
+      load()
     } finally {
       setReconciling(false)
     }
