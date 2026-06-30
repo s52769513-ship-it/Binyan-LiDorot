@@ -7,6 +7,7 @@ export async function GET(_req: NextRequest) {
       .from('parents')
       .select('id, name')
       .order('name', { ascending: true })
+      .limit(10000)
 
     if (error) throw error
     return NextResponse.json(data || [])

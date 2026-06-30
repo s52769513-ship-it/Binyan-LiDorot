@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
     const { data: parents, error: pErr } = await supabaseAdmin
       .from('parents')
       .select('id, name, first_name, last_name')
+      .limit(10000)
     if (pErr) throw pErr
     const parentList = (parents ?? []) as { id: string; name: string | null; first_name: string | null; last_name: string | null }[]
 
