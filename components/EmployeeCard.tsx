@@ -601,6 +601,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [yearGenResult, setYearGenResult]       = useState<{ created: string[]; skipped: string[] } | null>(null)
   const [showReport, setShowReport]             = useState(false)
 
+  // Reconcile PP balances
+  const [reconciling, setReconciling]           = useState(false)
+  const [reconcileResult, setReconcileResult]   = useState<{ fixed: number; checked: number } | null>(null)
+
   // Delete parent
   const [showDeleteModal, setShowDeleteModal]   = useState(false)
   const [deleteInfo, setDeleteInfo]             = useState<{ txCount: number; ppCount: number; soCount: number; studentCount: number } | null>(null)
@@ -824,6 +828,35 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
   const totalDebt       = tuitionPPs_all.reduce((s, p) => s + Math.max(0, p.balance), 0)
 
+  async function reconcileBalances() {
+    if (!parent) return
+    setReconciling(true)
+    setReconcileResult(null)
+    try {
+      const pps = (parent.plannedPayments ?? []).filter(pp => pp.ppType !== 'salary')
+      let fixed = 0
+      for (const pp of pps) {
+        const r = await fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(pp.id)}`)
+        const txs = await r.json()
+        if (!Array.isArray(txs)) continue
+        const paid = txs.reduce((s: number, t: { amount: number }) => s + Math.abs(t.amount), 0)
+        const expectedBalance = Math.max(0, pp.amount - paid)
+        if (Math.abs(expectedBalance - pp.balance) > 0.01) {
+          await fetch('/api/planned-payments', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: pp.id, balance: expectedBalance }),
+          })
+          fixed++
+        }
+      }
+      setReconcileResult({ fixed, checked: pps.length })
+      if (fixed > 0) load()
+    } finally {
+      setReconciling(false)
+    }
+  }
+
   async function openDeleteModal() {
     const [txRes, ppRes, soRes, stuRes] = await Promise.all([
       fetch(`/api/transactions?parentId=${parentId}&limit=1000`),
@@ -1016,6 +1049,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 }}
                 className="px-2.5 py-1 text-xs rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white font-medium transition-colors whitespace-nowrap disabled:opacity-40"
               >{generatingYear ? '...' : '⚡ שנה'}</button>
+              <button
+                disabled={reconciling || !parent}
+                onClick={reconcileBalances}
+                title="חשב מחדש יתרות PP לפי תנועות מקושרות"
+                className="px-2.5 py-1 text-xs rounded-lg bg-sky-600/80 hover:bg-sky-500 text-white font-medium transition-colors whitespace-nowrap disabled:opacity-40"
+              >{reconciling ? '...' : '🔄 ריענון'}</button>
             </div>
           </div>
         </div>
@@ -1236,6 +1275,20 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     <p className="text-xs text-emerald-500">זיכוי שמור</p>
                     <p className="text-sm font-bold text-emerald-700">{fmt(parent.ppCredit)} יוחלו על התשלום הבא</p>
                   </div>
+                </div>
+              )}
+
+              {/* Reconcile result */}
+              {reconcileResult && (
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                  reconcileResult.fixed > 0 ? 'bg-sky-50 border border-sky-200 text-sky-700' : 'bg-gray-50 border border-gray-200 text-gray-500'
+                }`}>
+                  <span>
+                    {reconcileResult.fixed > 0
+                      ? `תוקנו ${reconcileResult.fixed} יתרות מתוך ${reconcileResult.checked} PP`
+                      : `כל ${reconcileResult.checked} יתרות תקינות ✓`}
+                  </span>
+                  <button onClick={() => setReconcileResult(null)} className="text-gray-400 hover:text-gray-600 text-sm leading-none">✕</button>
                 </div>
               )}
 
