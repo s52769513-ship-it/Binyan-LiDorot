@@ -1246,26 +1246,45 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {[...overduePPs, ...pendingPPs].map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                        <div key={pp.id} className={`w-full rounded-xl p-3 border group transition-all ${
                             isOverdue(pp)
                               ? 'bg-red-50 border-red-200 hover:border-red-400'
                               : 'bg-white border-gray-200 hover:border-indigo-300'
                           }`}>
-                          <div className="flex justify-between items-center">
-                            <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
-                              {fmt(pp.balance)}
-                            </span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                                  {fmt(pp.balance)}
+                                </span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                              {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                          {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1277,19 +1296,38 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {paidPPs.map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                        <div key={pp.id} className="w-full rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all group">
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
