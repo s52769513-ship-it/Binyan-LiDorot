@@ -801,7 +801,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Planned payment helpers
   const today = new Date(); today.setHours(0,0,0,0)
-  const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
+  // Filter cutoff: only show debts from 04/2026 onwards
+  const minOverdueDate = new Date('2026-04-01')
+  const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today && new Date(pp.date) >= minOverdueDate
 
   // Tuition PPs only (for payments tab)
   const tuitionPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'tuition')
