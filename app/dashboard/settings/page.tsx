@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 import OldDebtsImportTab from '@/components/OldDebtsImportTab'
-import NedarimTransactionsPullTab from '@/components/NedarimTransactionsPullTab'
+import AirtableTransactionsPullTab from '@/components/AirtableTransactionsPullTab'
 
-type SettingsTab = 'general' | 'automations' | 'merge' | 'import' | 'debts' | 'nedarim-pull'
+type SettingsTab = 'general' | 'automations' | 'merge' | 'import' | 'debts' | 'airtable-pull'
 
 interface Settings {
   institution_name?: string
@@ -538,8 +538,8 @@ export default function SettingsPage() {
           { key: 'automations', label: '🤖 אוטומציות' },
           { key: 'merge',       label: '🔗 איחוד כרטיסים' },
           { key: 'import',      label: '📤 ייבוא תלמידים' },
-          { key: 'debts',        label: '💰 ייבוא חובות ישנים' },
-          { key: 'nedarim-pull', label: '🏦 משיכת תנועות נדרים' },
+          { key: 'debts',         label: '💰 ייבוא חובות ישנים' },
+          { key: 'airtable-pull', label: '📥 משיכת תנועות מ-Airtable' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -552,11 +552,11 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {settingsTab === 'automations'  && <AutomationsTab />}
-      {settingsTab === 'merge'        && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
-      {settingsTab === 'import'       && <ImportTab />}
-      {settingsTab === 'debts'        && <OldDebtsImportTab />}
-      {settingsTab === 'nedarim-pull' && <NedarimTransactionsPullTab />}
+      {settingsTab === 'automations'   && <AutomationsTab />}
+      {settingsTab === 'merge'         && <MergeParentsTab onOpenParent={id => router.push(`/dashboard?parent=${id}`)} />}
+      {settingsTab === 'import'        && <ImportTab />}
+      {settingsTab === 'debts'         && <OldDebtsImportTab />}
+      {settingsTab === 'airtable-pull' && <AirtableTransactionsPullTab />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
