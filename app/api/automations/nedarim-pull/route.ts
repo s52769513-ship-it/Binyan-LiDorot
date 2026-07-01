@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
+import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -216,16 +216,18 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Successful payment — apply to open tuition PPs (shared cascade logic)
+          // Successful payment — apply to open PPs of the matching debt type
+          // (project דמי מגבית → donation PP, otherwise tuition PP)
           let linkedPPId: string | null = null
           const ppParentId = billingParentId ?? payerParentId
+          const targetPPType = ppTypeForProject(projectName)
 
           if (dryRun) {
-            if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear)).ppId
+            if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear, targetPPType)).ppId
           } else {
             if (ppParentId) {
               linkedPPId = (await applyPaymentToParentPPs({
-                parentId: ppParentId, amount, preferredMonthYear: monthYear,
+                parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
               })).ppId
             }
 

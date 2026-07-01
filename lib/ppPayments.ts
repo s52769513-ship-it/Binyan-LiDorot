@@ -11,9 +11,21 @@ import { sortByMonth } from '@/lib/months'
  * הקובץ הזה הוא המסלול היחיד: כל יצירת תשלום אוטומטית עוברת דרכו.
  *
  * בחירת יעד: PP של החודש המבוקש קודם, אחרת הפתוח הוותיק ביותר (כרונולוגית,
- * לא אלפביתית). רק pp_type='tuition' — PP שמקורם ב-Airtable (pp_type ריק)
- * מנוהלים ע"י הסנכרון שדורס להם balance, ולכן אסור לגעת בהם.
+ * לא אלפביתית).
+ *
+ * שני סוגי חוב נפרדים: תשלום שכ"ל יורד רק מ-PP שכ"ל (pp_type='tuition'),
+ * ותשלום מגבית רק מ-PP מגבית (pp_type='donation') — לעולם לא מערבבים.
+ * הסוג נקבע לפי הפרויקט של התשלום (ppTypeForProject). PP של משכורת
+ * (pp_type='salary') לעולם לא יעד לתשלום, ו-PP שמקורם ב-Airtable
+ * (pp_type ריק) מנוהלים ע"י הסנכרון שדורס להם balance — אסור לגעת בהם.
  */
+
+export type PayablePPType = 'tuition' | 'donation'
+
+/** קובע לאיזה סוג חוב תשלום שייך, לפי שם הפרויקט/קטגוריה שלו. */
+export function ppTypeForProject(projectName: string | null | undefined): PayablePPType {
+  return (projectName ?? '').includes('מגבית') ? 'donation' : 'tuition'
+}
 
 interface OpenPP { id: string; balance: number; month_year: string | null }
 
@@ -33,12 +45,12 @@ export interface ApplyResult extends PaymentTarget {
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-async function fetchOpenTuitionPPs(parentId: string): Promise<OpenPP[]> {
+async function fetchOpenPPs(parentId: string, ppType: PayablePPType): Promise<OpenPP[]> {
   const { data } = await supabaseAdmin
     .from('planned_payments')
     .select('id, balance, month_year')
     .contains('parent_ids', [parentId])
-    .eq('pp_type', 'tuition')
+    .eq('pp_type', ppType)
     .gt('balance', 0)
   return (data ?? []).map(p => ({
     id: p.id as string,
@@ -64,8 +76,9 @@ function orderTargets(pps: OpenPP[], preferredMonthYear?: string | null): OpenPP
 export async function findPaymentTarget(
   parentId: string,
   preferredMonthYear?: string | null,
+  ppType: PayablePPType = 'tuition',
 ): Promise<PaymentTarget> {
-  const targets = orderTargets(await fetchOpenTuitionPPs(parentId), preferredMonthYear)
+  const targets = orderTargets(await fetchOpenPPs(parentId, ppType), preferredMonthYear)
   const first = targets[0] ?? null
   return {
     ppId: first?.id ?? null,
@@ -83,9 +96,11 @@ export async function applyPaymentToParentPPs(opts: {
   parentId: string
   amount: number
   preferredMonthYear?: string | null
+  /** סוג החוב שהתשלום יורד ממנו — נקבע לפי הפרויקט של התשלום */
+  ppType?: PayablePPType
 }): Promise<ApplyResult> {
   const amount = Math.abs(Number(opts.amount)) || 0
-  const targets = orderTargets(await fetchOpenTuitionPPs(opts.parentId), opts.preferredMonthYear)
+  const targets = orderTargets(await fetchOpenPPs(opts.parentId, opts.ppType ?? 'tuition'), opts.preferredMonthYear)
   const first = targets[0] ?? null
 
   let remaining = amount

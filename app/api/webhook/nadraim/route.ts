@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
+import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 
 // Nadraim currency codes: 1 = ILS, 2 = USD
 async function convertToILS(amount: number, currency: string): Promise<{ amount: number; currencyNote: string }> {
@@ -190,17 +190,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // The payment's project decides which debt type it pays:
+    // דמי מגבית → donation PP, anything else → tuition PP.
+    const projectName  = String(Groupe ?? '').trim() || 'בנין לדורות'
+    const targetPPType = ppTypeForProject(projectName)
+
     // dry run — find PP via the exact same selection logic as the real run
     if (dryRun) {
       const ppParentId = billingParentId ?? parentId
-      const dryPP = ppParentId ? await findPaymentTarget(ppParentId, monthYear) : null
+      const dryPP = ppParentId ? await findPaymentTarget(ppParentId, monthYear, targetPPType) : null
       return NextResponse.json({
         dryRun: true,
         zeout, parentFound, parentCreated, parentId,
         hokId: hokIdStr || null, standingOrderDbId, billingParentId,
         amount, currencyNote, date, monthYear,
         txType:      String(TransactionType ?? '').trim() || 'נדרים',
-        projectName: String(Groupe ?? '').trim() || 'בנין לדורות',
+        projectName,
+        ppType:      targetPPType,
         clientName:  String(ClientName ?? ''),
         linkedPP: dryPP?.ppId ? { id: dryPP.ppId, monthYear: dryPP.ppMonthYear, balance: dryPP.ppBalance } : null,
       })
@@ -215,23 +221,22 @@ export async function POST(req: NextRequest) {
       Comments       ? String(Comments)       : null,
     ].filter(Boolean).join(' · ')
 
-    // 5. Apply payment to open tuition PPs (shared cascade logic:
-    //    current month first → oldest open → overflow cascades onwards,
+    // 5. Apply payment to open PPs of the matching debt type (shared cascade
+    //    logic: current month first → oldest open → overflow cascades onwards,
     //    leftover → credit_balance, parents.tuition_balance recalculated).
     // Uses billingParentId (may differ from parentId if הו"ק is paying for someone else)
     let linkedPPId: string | null = null
     const ppParentId = billingParentId ?? parentId
     if (ppParentId) {
       const applied = await applyPaymentToParentPPs({
-        parentId: ppParentId, amount, preferredMonthYear: monthYear,
+        parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
       })
       linkedPPId = applied.ppId
     }
 
     // 6. Create transaction
-    const txId        = crypto.randomUUID()
-    const txType      = String(TransactionType ?? '').trim() || 'נדרים'
-    const projectName = String(Groupe ?? '').trim() || 'בנין לדורות'
+    const txId   = crypto.randomUUID()
+    const txType = String(TransactionType ?? '').trim() || 'נדרים'
 
     // Include both the payer (parentId) and the billed person (billingParentId) in parent_ids
     const txParentIds = Array.from(new Set([

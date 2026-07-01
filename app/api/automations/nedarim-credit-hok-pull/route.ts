@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
+import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 
 const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
 const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
@@ -138,15 +138,17 @@ export async function POST(req: NextRequest) {
               }
               if (status !== '1' || !amount || !dateStr) { totalSkipped++; continue }
 
-              // Apply to open tuition PPs (shared cascade logic)
+              // Apply to open PPs of the matching debt type (shared cascade
+              // logic; project דמי מגבית → donation PP, otherwise tuition PP)
               const ppParentId = billingParentId ?? payerParentId
+              const targetPPType = ppTypeForProject(projectName)
               let linkedPPId: string | null = null
 
               if (dryRun) {
-                if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear)).ppId
+                if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear, targetPPType)).ppId
               } else if (ppParentId) {
                 linkedPPId = (await applyPaymentToParentPPs({
-                  parentId: ppParentId, amount, preferredMonthYear: monthYear,
+                  parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
                 })).ppId
               }
 

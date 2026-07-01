@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, T, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
-import { recalcParentTuitionBalance } from '@/lib/ppPayments'
+import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
@@ -219,23 +219,26 @@ export async function POST(req: NextRequest) {
     let skipped = 0
     let totalAmount = 0
 
-    // Load open PPs indexed by parent.
-    // pp_type='tuition' only — PP שמקורם ב-Airtable (pp_type ריק) מנוהלים ע"י
-    // הסנכרון שדורס להם balance בכל ריצה, ולכן עדכון יתרה שלהם היה מתבטל.
+    // Load open PPs indexed by parent+debt-type.
+    // Two separate debt pools: tuition payments only reduce tuition PPs,
+    // מגבית payments only reduce donation PPs — never mixed. PP שמקורם
+    // ב-Airtable (pp_type ריק) מנוהלים ע"י הסנכרון שדורס להם balance בכל
+    // ריצה, ולכן עדכון יתרה שלהם היה מתבטל — לא נוגעים בהם.
     const { data: openPPs } = await supabaseAdmin
       .from('planned_payments')
-      .select('id, parent_ids, balance, month_year')
-      .eq('pp_type', 'tuition')
+      .select('id, parent_ids, balance, month_year, pp_type')
+      .in('pp_type', ['tuition', 'donation'])
       .gt('balance', 0)
     const ppByParent = new Map<string, Array<{ id: string; balance: number; month_year: string }>>()
     for (const pp of openPPs ?? []) {
       for (const pid of (pp.parent_ids as string[]) ?? []) {
-        if (!ppByParent.has(pid)) ppByParent.set(pid, [])
-        ppByParent.get(pid)!.push({ id: pp.id, balance: Number(pp.balance), month_year: pp.month_year ?? '' })
+        const key = `${pid}|${pp.pp_type}`
+        if (!ppByParent.has(key)) ppByParent.set(key, [])
+        ppByParent.get(key)!.push({ id: pp.id, balance: Number(pp.balance), month_year: pp.month_year ?? '' })
       }
     }
     // Chronological order (not text order) — oldest debt gets paid first
-    for (const [pid, list] of ppByParent) ppByParent.set(pid, sortByMonth(list, true))
+    for (const [key, list] of ppByParent) ppByParent.set(key, sortByMonth(list, true))
 
     const balanceUpdates = new Map<string, number>()
     const creditUpdates = new Map<string, number>()  // parentId → extra credit
@@ -253,8 +256,10 @@ export async function POST(req: NextRequest) {
       }
 
       // Same selection as the shared cascade: preferred month first, then oldest.
+      // Debt type follows the transaction's project (דמי מגבית → donation PP).
       // Only income applies to PPs — expenses are recorded but not linked.
-      const parentPPs = (ppByParent.get(parent.id) ?? []).filter(p => p.balance > 0)
+      const rowPPType = ppTypeForProject(c.projectNames.join(' '))
+      const parentPPs = (ppByParent.get(`${parent.id}|${rowPPType}`) ?? []).filter(p => p.balance > 0)
       const monthMatch = parentPPs.find(p => p.month_year === c.monthYear)
       const ordered = monthMatch ? [monthMatch, ...parentPPs.filter(p => p !== monthMatch)] : parentPPs
       const target = c.amount > 0 ? (ordered[0] ?? null) : null
