@@ -198,6 +198,12 @@ CREATE POLICY "service_role_all" ON salary_offsets
   },
 ]
 
+/* Automations that run on the schedule but are configured/run from another
+   screen (so they have no AutomationCard here — only a schedule row). */
+const SCHEDULE_EXTRAS = [
+  { id: 'airtable-transactions-pull', icon: '📥', name: 'משיכת תנועות מ-Airtable' },
+]
+
 /* ─── FlowDiagram ─────────────────────────────────────────────────────── */
 function FlowDiagram({ steps, activeStep }: { steps: FlowStep[]; activeStep: number }) {
   return (
@@ -1070,12 +1076,16 @@ function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) 
 }
 
 /* ─── ScheduleTableRow ────────────────────────────────────────────────── */
-function ScheduleTableRow({ def, enabled }: { def: AutoDef; enabled: boolean }) {
+interface ScheduleRowDef { id: string; icon: string; name: string }
+
+function ScheduleTableRow({ def, enabled }: { def: ScheduleRowDef; enabled: boolean }) {
   const key = (f: string) => `${def.id.replace(/-/g, '_')}_${f}`
   const [day,  setDay]  = useState(1)
   const [time, setTime] = useState('08:00')
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testMsg, setTestMsg] = useState('')
 
   useEffect(() => {
     fetch('/api/settings')
@@ -1106,6 +1116,28 @@ function ScheduleTableRow({ def, enabled }: { def: AutoDef; enabled: boolean }) 
     }
   }
 
+  // Fire this automation right now via the real scheduled path (no waiting for
+  // the cron tick, and without consuming the once-a-month guard).
+  const testNow = async () => {
+    if (!confirm(`להריץ עכשיו את "${def.name}" באמת (לא בדיקה)? זהו הנתיב המתוזמן המלא.`)) return
+    setTesting(true); setTestMsg('')
+    try {
+      const r = await fetch('/api/cron/monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: def.id }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) { setTestMsg(`❌ ${d.error ?? r.status}`); return }
+      setTestMsg('✓ רץ')
+      setTimeout(() => setTestMsg(''), 4000)
+    } catch (err) {
+      setTestMsg(`❌ ${String(err)}`)
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <tr className={!enabled ? 'opacity-50 bg-gray-50' : ''}>
       <td className="px-4 py-2 font-medium text-sm">{def.icon} {def.name}</td>
@@ -1128,10 +1160,17 @@ function ScheduleTableRow({ def, enabled }: { def: AutoDef; enabled: boolean }) 
         {enabled ? `${nextRunLabel(day)} ${time}` : '—'}
       </td>
       <td className="px-4 py-2">
-        <button onClick={save} disabled={saving || !enabled}
-          className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
-          {saving ? '...' : saved ? '✓' : 'שמור'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={save} disabled={saving || !enabled}
+            className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
+            {saving ? '...' : saved ? '✓' : 'שמור'}
+          </button>
+          <button onClick={testNow} disabled={testing}
+            title="הרץ עכשיו דרך נתיב התזמון (לבדיקה)"
+            className="px-2.5 py-0.5 rounded text-xs font-bold disabled:opacity-40 transition-all bg-amber-100 text-amber-700 hover:bg-amber-200">
+            {testing ? '...' : testMsg || '⏱ בדוק'}
+          </button>
+        </div>
       </td>
     </tr>
   )
@@ -1149,6 +1188,26 @@ export default function AutomationsTab() {
       return raw ? JSON.parse(raw) : Object.fromEntries(DEFS.map(d => [d.id, true]))
     } catch { return Object.fromEntries(DEFS.map(d => [d.id, true])) }
   })
+
+  // The cron reads enabled-state from the DB, so the DB is the source of truth.
+  // Load it on mount and reconcile with localStorage to avoid the UI showing
+  // "on" while the cron sees "off" (which silently skips the automation).
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(d => {
+        setEnabled(prev => {
+          const next = { ...prev }
+          for (const def of DEFS) {
+            const v = d[`${def.id.replace(/-/g, '_')}_enabled`]
+            if (v != null) next[def.id] = v !== false
+          }
+          try { localStorage.setItem('automation_enabled', JSON.stringify(next)) } catch {}
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [])
 
   const setAutomationEnabled = (id: string, val: boolean) => {
     const next = { ...enabled, [id]: val }
@@ -1171,6 +1230,9 @@ export default function AutomationsTab() {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
           <h3 className="font-bold text-gray-800">🕐 תזמון אוטומטי לכל האוטומציות</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            כל אוטומציה רצה ביום ובשעה שנבחרו (שעון ישראל), פעם בחודש. לחיצה על <b>⏱ בדוק</b> מריצה עכשיו דרך נתיב התזמון המלא — כדי לוודא שהכול עובד בלי להמתין.
+          </p>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -1185,6 +1247,10 @@ export default function AutomationsTab() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {DEFS.map(def => (
+              <ScheduleTableRow key={def.id} def={def} enabled={enabled[def.id] ?? true} />
+            ))}
+            {/* Automations that are scheduled but have their own UI elsewhere */}
+            {SCHEDULE_EXTRAS.map(def => (
               <ScheduleTableRow key={def.id} def={def} enabled={enabled[def.id] ?? true} />
             ))}
           </tbody>

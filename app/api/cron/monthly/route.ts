@@ -1,112 +1,143 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import {
+  SCHEDULABLE, getSchedulable, israelClock, readConfig, isDue,
+  monthYearOf, type SchedulableAutomation, type ScheduleClock,
+} from '@/lib/automationSchedule'
 
 declare const process: { env: Record<string, string | undefined> }
 
+export const maxDuration = 300 // scheduled automations can take a while
+
+// Guard rows are logged under this automation_id so they don't mix with the
+// automations' own logs. One row per (automation, Israel-month) = ran already.
+const GUARD_ID = 'cron-guard'
+
+/** Drain a streaming (NDJSON) response, returning the last `complete`/`done` event. */
+async function drainStream(res: Response): Promise<Record<string, unknown> | null> {
+  if (!res.body) { await res.text().catch(() => {}); return null }
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  let last: Record<string, unknown> | null = null
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const ev = JSON.parse(line) as Record<string, unknown>
+        if (ev.type === 'complete' || ev.type === 'done') last = ev
+      } catch { /* ignore partial/non-json lines */ }
+    }
+  }
+  return last
+}
+
+/** Actually invoke one automation's endpoint with its scheduled payload. */
+async function runAutomation(
+  base: string, a: SchedulableAutomation, clock: ScheduleClock,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${base}${a.endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(a.payload(clock)),
+  })
+  if (a.mode === 'stream') {
+    const done = await drainStream(res)
+    return done ?? { ok: res.ok, status: res.status }
+  }
+  const json = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, ...json }
+}
+
+async function alreadyRanThisMonth(automationId: string, monthKey: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('automation_logs')
+    .select('id')
+    .eq('automation_id', GUARD_ID)
+    .filter('details->>automation', 'eq', automationId)
+    .filter('details->>month', 'eq', monthKey)
+    .limit(1)
+  return (data?.length ?? 0) > 0
+}
+
+async function writeGuard(automationId: string, monthKey: string, clock: ScheduleClock, result: unknown) {
+  try {
+    await supabaseAdmin.from('automation_logs').insert({
+      id: crypto.randomUUID(),
+      automation_id: GUARD_ID,
+      run_at: new Date().toISOString(),
+      dry_run: false,
+      status: 'success',
+      summary: `⏰ תזמון: ${automationId} — ${monthKey} (יום ${clock.day} ${String(clock.hour).padStart(2, '0')}:00)`,
+      details: { automation: automationId, month: monthKey, scheduled: true, result },
+    })
+  } catch { /* best-effort */ }
+}
+
+// ── GET — the periodic cron tick (Vercel) ─────────────────────────────────────
 export async function GET(req: NextRequest) {
   const secret = req.headers.get('authorization')
   if (process.env.CRON_SECRET && secret !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: s } = await supabaseAdmin
-    .from('institution_settings')
-    .select('tuition_offset_day, tuition_offset_hour, tuition_offset_time, tuition_offset_enabled, salary_pp_day, salary_pp_hour, salary_pp_time, salary_pp_enabled, credit_offset_day, credit_offset_hour, credit_offset_time, credit_offset_enabled')
-    .limit(1)
-    .single()
+  const base = new URL(req.url).origin
+  const clock = israelClock()
+  const monthKey = monthYearOf(clock)
 
-  const today     = new Date()
-  const todayDate = today.getDate()
-  const todayHour = today.getUTCHours()
-  const todayMin  = today.getUTCMinutes()
-  const base      = new URL(req.url).origin
+  const { data: settings } = await supabaseAdmin
+    .from('institution_settings')
+    .select('*')
+    .limit(1)
+    .maybeSingle()
+
   const results: Record<string, unknown> = {}
 
-  const currentMY = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
-  const prev      = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-  const prevMY    = `${String(prev.getMonth() + 1).padStart(2, '0')}/${prev.getFullYear()}`
-
-  // The Vercel cron fires once per day (vercel.json: "0 6 * * *" → 06:00 UTC),
-  // so the configured hour cannot be honored — we gate on day-of-month only.
-  // The automations are idempotent, so a single run on the matching day is safe.
-
-  // קיזוז שכ"ל — רץ לפי ההגדרות של האוטומציה הזו
-  const toDay  = Number(s?.tuition_offset_day  ?? 1)
-  const toOn   = s?.tuition_offset_enabled !== false
-
-  if (toOn && todayDate === toDay) {
+  for (const a of SCHEDULABLE) {
+    const cfg = readConfig(settings, a)
+    if (!isDue(cfg, clock)) {
+      results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : `not due (day ${cfg.day} ${String(cfg.hour).padStart(2, '0')}:00, now ${clock.day} ${String(clock.hour).padStart(2, '0')}:00)` }
+      continue
+    }
+    if (await alreadyRanThisMonth(a.id, monthKey)) {
+      results[a.id] = { skipped: true, reason: 'already ran this month' }
+      continue
+    }
     try {
-      const r    = await fetch(`${base}/api/automations/tuition-offset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false, monthYear: currentMY }),
-      })
-      const text = await r.text()
-      const done = text.trim().split('\n')
-        .map(l => { try { return JSON.parse(l) } catch { return null } })
-        .find((l: { type?: string } | null) => l?.type === 'complete')
-      results.tuitionOffset = done ?? { raw: text.slice(0, 200) }
-    } catch (err) { results.tuitionOffset = { error: String(err) } }
-  } else {
-    results.tuitionOffset = { skipped: true, reason: !toOn ? 'disabled' : `day ${toDay} ≠ ${todayDate}` }
+      const result = await runAutomation(base, a, clock)
+      await writeGuard(a.id, monthKey, clock, result)
+      results[a.id] = { ran: true, result }
+    } catch (err) {
+      results[a.id] = { error: String((err as { message?: string })?.message ?? err) }
+    }
   }
 
-  // PP משכורת — רץ לפי ההגדרות של האוטומציה הזו
-  const spDay = Number(s?.salary_pp_day ?? 1)
-  const spOn  = s?.salary_pp_enabled !== false
+  return NextResponse.json({ success: true, clock, monthKey, results })
+}
 
-  if (spOn && todayDate === spDay) {
-    try {
-      const r    = await fetch(`${base}/api/automations/salary-pp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false, monthYear: prevMY }),
-      })
-      const text = await r.text()
-      const done = text.trim().split('\n')
-        .map(l => { try { return JSON.parse(l) } catch { return null } })
-        .find((l: { type?: string } | null) => l?.type === 'complete')
-      results.salaryPP = done ?? { raw: text.slice(0, 200) }
-    } catch (err) { results.salaryPP = { error: String(err) } }
-  } else {
-    results.salaryPP = { skipped: true, reason: !spOn ? 'disabled' : `day ${spDay} ≠ ${todayDate}` }
-  }
+// ── POST — on-demand test run (from the UI "test now" button) ──────────────────
+// Body: { force: '<automationId>' } runs that automation immediately via the
+// exact scheduled path, ignoring day/hour/enabled and WITHOUT writing the
+// monthly guard (so it won't block the real monthly run).
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}))
+  const forceId: string | undefined = body?.force
+  if (!forceId) return NextResponse.json({ error: 'missing "force" automation id' }, { status: 400 })
 
-  // קיזוז זיכויי אשראי
-  const coDay = Number(s?.credit_offset_day ?? 2)
-  const coOn  = s?.credit_offset_enabled !== false
+  const a = getSchedulable(forceId)
+  if (!a) return NextResponse.json({ error: `unknown automation: ${forceId}` }, { status: 400 })
 
-  if (coOn && todayDate === coDay) {
-    try {
-      const r    = await fetch(`${base}/api/automations/credit-offset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false, monthYear: currentMY }),
-      })
-      const text = await r.text()
-      const done = text.trim().split('\n')
-        .map(l => { try { return JSON.parse(l) } catch { return null } })
-        .find((l: { type?: string } | null) => l?.type === 'complete')
-      results.creditOffset = done ?? { raw: text.slice(0, 200) }
-    } catch (err) { results.creditOffset = { error: String(err) } }
-  } else {
-    results.creditOffset = { skipped: true, reason: !coOn ? 'disabled' : `day ${coDay} ≠ ${todayDate}` }
-  }
-
+  const base = new URL(req.url).origin
+  const clock = israelClock()
   try {
-    await supabaseAdmin.from('automation_logs').insert({
-      id:            crypto.randomUUID(),
-      automation_id: 'cron-monthly',
-      run_at:        new Date().toISOString(),
-      dry_run:       false,
-      parent_id:     null,
-      parent_name:   null,
-      actions_count: 0,
-      status:        'success',
-      summary:       `Cron יומי — קיזוז ${currentMY} (יום ${toDay}) · משכורת ${prevMY} (יום ${spDay}) · אשראי (יום ${coDay})`,
-      details:       { todayDate, todayHour, todayMin, ...results },
-    })
-  } catch { /* best effort */ }
-
-  return NextResponse.json({ success: true, todayDate, todayHour, todayMin, currentMY, prevMY, ...results })
+    const result = await runAutomation(base, a, clock)
+    return NextResponse.json({ success: true, forced: forceId, clock, result })
+  } catch (err) {
+    return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
+  }
 }

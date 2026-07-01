@@ -26,6 +26,7 @@ export async function PATCH(req: NextRequest) {
       'nedarim_credit_hok_pull_day', 'nedarim_credit_hok_pull_hour', 'nedarim_credit_hok_pull_time', 'nedarim_credit_hok_pull_enabled',
       'donation_pp_day', 'donation_pp_hour', 'donation_pp_time', 'donation_pp_enabled',
       'donation_offset_day', 'donation_offset_hour', 'donation_offset_time', 'donation_offset_enabled',
+      'airtable_transactions_pull_day', 'airtable_transactions_pull_hour', 'airtable_transactions_pull_time', 'airtable_transactions_pull_enabled',
     ]
     const update: Record<string, unknown> = {}
     for (const key of allowed) {
