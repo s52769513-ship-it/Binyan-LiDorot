@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
   for (const a of SCHEDULABLE) {
     const cfg = readConfig(settings, a)
     if (!isDue(cfg, clock)) {
-      results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : `not due (day ${cfg.day} ${String(cfg.hour).padStart(2, '0')}:00, now ${clock.day} ${String(clock.hour).padStart(2, '0')}:00)` }
+      results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : `not due (day ${cfg.day}, today is day ${clock.day})` }
       continue
     }
     if (await alreadyRanThisMonth(a.id, monthKey)) {

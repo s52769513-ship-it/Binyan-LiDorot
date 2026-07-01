@@ -133,16 +133,21 @@ export interface ScheduleConfig { day: number; hour: number; enabled: boolean }
 
 /**
  * Decide whether an automation is due at the given Israel clock.
- * Runs on its configured day-of-month, at or after its configured hour
- * (so a missed hourly tick is caught later the same day). The caller must
- * additionally enforce once-per-month via an idempotency guard.
+ *
+ * Matches on day-of-month only. The configured hour is intentionally NOT
+ * enforced here: on Vercel's Hobby plan the cron ticks once a day at a fixed
+ * time, so gating on "clock.hour >= cfg.hour" would mean any hour later than
+ * that single tick can never be satisfied — the automation would silently be
+ * skipped for the entire month, every month. The hour is still stored (and
+ * shown in the UI) so it's ready to be enforced once an hourly tick is
+ * available (Vercel Pro). The caller must additionally enforce
+ * once-per-month via an idempotency guard.
  */
 export function isDue(cfg: ScheduleConfig, clock: ScheduleClock): boolean {
   if (!cfg.enabled) return false
   // Clamp the target day to the month length (e.g. day 31 in a 30-day month).
   const targetDay = Math.min(cfg.day, daysInMonth(clock.year, clock.month))
-  if (clock.day !== targetDay) return false
-  return clock.hour >= cfg.hour
+  return clock.day === targetDay
 }
 
 /** Read a ScheduleConfig from a flat settings object for one automation. */
