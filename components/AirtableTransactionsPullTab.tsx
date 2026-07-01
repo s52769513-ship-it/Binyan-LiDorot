@@ -16,6 +16,7 @@ interface PreviewRow {
   date:             string | null
   monthYear:        string
   paymentMethod:    string
+  category:         string
   notes:            string
   status:           'new' | 'link' | 'already-linked'
 }
@@ -24,6 +25,8 @@ interface DryRunResult {
   dryRun:      true
   total:       number
   excluded:    number
+  excludedPaymentMethod: number
+  excludedCategory: number
   alreadyLinked: number
   toProcess:   number
   matched:     number
@@ -38,6 +41,8 @@ interface ImportResult {
   linked?:      number
   skipped?:     number
   excluded?:    number
+  excludedPaymentMethod?: number
+  excludedCategory?: number
   totalAmount?: number
   errors?:      string[]
   error?:       string
@@ -213,7 +218,7 @@ export default function AirtableTransactionsPullTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">משיכת תנועות כספיות מ-Airtable</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            מושך תנועות מטבלת התנועות ב-Airtable (לא הו&quot;ק ולא אשראי — אלה מטופלים באוטומציות ייעודיות), ומקשר אותן לתשלום מתוכנן פתוח של ההורה המתאים.
+            מושך תנועות מטבלת התנועות ב-Airtable — לא הו&quot;ק ולא אשראי (אלה מטופלים באוטומציות ייעודיות) ולא תנועות בקטגוריית &quot;בנין לדורות&quot; (יש להן זרימה נפרדת) — ומקשר אותן לתשלום מתוכנן פתוח של ההורה המתאים.
           </p>
           {lastRun.lastRun && (
             <p className="text-xs text-gray-400 mt-1">
@@ -245,9 +250,10 @@ export default function AirtableTransactionsPullTab() {
           <h3 className="text-sm font-semibold text-gray-700">תצוגה מקדימה</h3>
 
           {/* Stats */}
-          <div className="grid grid-cols-6 gap-2">
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
             <Stat label="סה״כ ב-Airtable" value={preview.total}          />
-            <Stat label="סונן (הו״ק/אשראי)" value={preview.excluded}    color="amber" />
+            <Stat label="סונן (הו״ק/אשראי)" value={preview.excludedPaymentMethod} color="amber" />
+            <Stat label="סונן (בנין לדורות)" value={preview.excludedCategory}     color="amber" />
             <Stat label="כבר מקושרות" value={preview.alreadyLinked}     color="gray"  />
             <Stat label="לטיפול"      value={preview.toProcess}         color="blue"  />
             <Stat label="זוהו הורים"  value={preview.matched}           color="green" />
@@ -330,13 +336,14 @@ export default function AirtableTransactionsPullTab() {
                   <th className="px-3 py-2">חודש</th>
                   <th className="px-3 py-2 text-left">סכום</th>
                   <th className="px-3 py-2">אמצעי</th>
+                  <th className="px-3 py-2">קטגוריה</th>
                   <th className="px-3 py-2">סטטוס</th>
                   <th className="px-3 py-2">הערות</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filteredPreview.length === 0 && (
-                  <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">אין תוצאות</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">אין תוצאות</td></tr>
                 )}
                 {filteredPreview.map((r, i) => {
                   const manual   = r.airtableParentId ? manualMappings[r.airtableParentId] : undefined
@@ -360,6 +367,7 @@ export default function AirtableTransactionsPullTab() {
                       <td className="px-3 py-1.5 text-gray-500">{r.monthYear}</td>
                       <td className="px-3 py-1.5 text-left tabular-nums font-medium">₪{r.amount.toLocaleString('he-IL')}</td>
                       <td className="px-3 py-1.5 text-gray-500">{r.paymentMethod || '—'}</td>
+                      <td className="px-3 py-1.5 text-gray-500">{r.category || '—'}</td>
                       <td className="px-3 py-1.5 text-gray-500">{STATUS_LABEL[r.status]}</td>
                       <td className="px-3 py-1.5 text-gray-400 truncate max-w-[10rem]" title={r.notes}>{r.notes || '—'}</td>
                     </tr>

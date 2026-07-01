@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, T, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normName } from '@/lib/nameUtils'
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
 const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
+// Only transactions NOT categorized under this project are relevant here —
+// "בנין לדורות" (the building fund) has its own dedicated flows.
+const EXCLUDED_CATEGORY = 'בנין לדורות'
 
 // Airtable single-select comes back as {id, name, color} or a plain string
 function selectName(v: unknown): string {
@@ -28,16 +32,29 @@ interface Candidate {
 }
 
 async function loadCandidates() {
+  // Projects live only in Airtable (no Supabase table) — need names up front
+  // to filter by category before building candidates.
+  const rawProjects = await fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] })
+  const projectNameMap = new Map(rawProjects.map(r => [r.id, String(r.fields[PROJ.NAME] || '')]))
+
   const rawTx = await fetchAirtableRecords(TABLES.TRANSACTIONS, {
     fields: [T.AMOUNT, T.TYPE, T.DATE, T.MONTH_YEAR, T.NOTES, T.PARENT, T.PROJECT, T.BANK_CLASSIFICATION, T.PAYMENT_METHOD],
   })
 
   const total = rawTx.length
+  let excludedPaymentMethod = 0
+  let excludedCategory = 0
+
   const filtered = rawTx.filter(r => {
     const method = selectName(r.fields[T.PAYMENT_METHOD])
-    return !EXCLUDED_PAYMENT_METHODS.some(m => method.includes(m))
+    if (EXCLUDED_PAYMENT_METHODS.some(m => method.includes(m))) { excludedPaymentMethod++; return false }
+
+    const projectIds = (r.fields[T.PROJECT] as string[]) || []
+    const projectNames = projectIds.map(pid => projectNameMap.get(pid)).filter(Boolean) as string[]
+    if (projectNames.some(n => normName(n) === normName(EXCLUDED_CATEGORY))) { excludedCategory++; return false }
+
+    return true
   })
-  const excluded = total - filtered.length
 
   // Check which of these already exist in Supabase (regular /api/sync may have inserted them)
   const ids = filtered.map(r => r.id)
@@ -69,14 +86,14 @@ async function loadCandidates() {
       notes:            String(r.fields[T.NOTES] || ''),
       paymentMethod:    selectName(r.fields[T.PAYMENT_METHOD]),
       projectIds,
-      projectNames:     [], // filled in below
+      projectNames:     projectIds.map(pid => projectNameMap.get(pid)).filter(Boolean) as string[],
       bankClassification: selectName(r.fields[T.BANK_CLASSIFICATION]),
       status:           !existing ? 'new' : existing.planned_payment_id ? 'already-linked' : 'link',
       existingPPId:     existing?.planned_payment_id ?? null,
     }
   })
 
-  return { candidates, total, excluded }
+  return { candidates, total, excludedPaymentMethod, excludedCategory }
 }
 
 // ── GET — last run info ──────────────────────────────────────────────────────
@@ -107,7 +124,7 @@ export async function POST(req: NextRequest) {
       parentMappings = {},
     }: { dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
 
-    const { candidates, total, excluded } = await loadCandidates()
+    const { candidates, total, excludedPaymentMethod, excludedCategory } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
     // Load Supabase parents for direct-ID matching + name resolution
@@ -118,11 +135,6 @@ export async function POST(req: NextRequest) {
     if (pErr) throw pErr
     const parentIdSet = new Set((parents ?? []).map(p => p.id))
     const parentNameMap = new Map((parents ?? []).map(p => [p.id, p.name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim()]))
-
-    // Resolve project names (projects live only in Airtable, no Supabase table)
-    const rawProjects = await fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] })
-    const projectNameMap = new Map(rawProjects.map(r => [r.id, String(r.fields[PROJ.NAME] || '')]))
-    for (const c of toProcess) c.projectNames = c.projectIds.map(pid => projectNameMap.get(pid)).filter(Boolean) as string[]
 
     // Resolve parent for each candidate
     const unmatchedAirtableIds = new Set<string>()
@@ -162,6 +174,7 @@ export async function POST(req: NextRequest) {
         date:             c.date,
         monthYear:        c.monthYear,
         paymentMethod:    c.paymentMethod,
+        category:         c.projectNames.join(', '),
         notes:            c.notes,
         status:           c.status,
       }))
@@ -183,7 +196,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true,
         total,
-        excluded,
+        excludedPaymentMethod,
+        excludedCategory,
+        excluded: excludedPaymentMethod + excludedCategory,
         alreadyLinked,
         toProcess: toProcess.length,
         matched,
@@ -290,7 +305,11 @@ export async function POST(req: NextRequest) {
       })
     } catch { /* best-effort */ }
 
-    return NextResponse.json({ created, linked, skipped, excluded, errors, totalAmount })
+    return NextResponse.json({
+      created, linked, skipped, errors, totalAmount,
+      excluded: excludedPaymentMethod + excludedCategory,
+      excludedPaymentMethod, excludedCategory,
+    })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
   }
