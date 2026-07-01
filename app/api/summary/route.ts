@@ -76,12 +76,13 @@ export async function GET() {
         .or('pp_type.eq.tuition,pp_type.is.null'),
       supabase.from('transactions').select('parent_ids, amount, type, project_names').eq('month_year', currentMonthYear).gt('amount', 0),
 
-      // Debt: only non-past open tuition PPs (date >= today)
+      // Debt: overdue tuition PPs from 04/2026+ (date < today and >= 2026-04-01)
       supabase.from('planned_payments')
         .select('parent_ids, balance')
         .eq('pp_type', 'tuition')
         .gt('balance', 0)
-        .gte('date', todayStr),
+        .lt('date', todayStr)
+        .gte('date', '2026-04-01'),
 
       // New: salary debt
       supabase

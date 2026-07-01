@@ -601,6 +601,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [yearGenResult, setYearGenResult]       = useState<{ created: string[]; skipped: string[] } | null>(null)
   const [showReport, setShowReport]             = useState(false)
 
+  // Reconcile PP balances
+  const [reconciling, setReconciling]           = useState(false)
+  const [reconcileResult, setReconcileResult]   = useState<{ fixed: number; checked: number } | null>(null)
+
   // Delete parent
   const [showDeleteModal, setShowDeleteModal]   = useState(false)
   const [deleteInfo, setDeleteInfo]             = useState<{ txCount: number; ppCount: number; soCount: number; studentCount: number } | null>(null)
@@ -801,6 +805,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Planned payment helpers
   const today = new Date(); today.setHours(0,0,0,0)
+  // isOverdue for display/color — all PPs past due date shown as red
   const isOverdue = (pp: PlannedPaymentItem) => pp.balance > 0 && !!pp.date && new Date(pp.date) < today
 
   // Tuition PPs only (for payments tab)
@@ -808,7 +813,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
-  const overdueTotal = overduePPs.reduce((s, pp) => s + pp.balance, 0)
+  // Summary totals count only from 04/2026 onwards
+  const minSummaryDate = new Date('2026-04-01')
+  const overdueTotal = overduePPs
+    .filter(pp => new Date(pp.date) >= minSummaryDate)
+    .reduce((s, pp) => s + pp.balance, 0)
 
   // Salary PPs (for salary tab)
   const salaryPPs_all = (parent?.plannedPayments ?? []).filter(pp => pp.ppType === 'salary')
@@ -818,6 +827,22 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const paidThisMonth   = thisMonthPP.reduce((s, p) => s + Math.max(0, p.amount - p.balance), 0)
   const remainThisMonth = thisMonthPP.reduce((s, p) => s + Math.max(0, p.balance), 0)
   const totalDebt       = tuitionPPs_all.reduce((s, p) => s + Math.max(0, p.balance), 0)
+
+  async function reconcileBalances() {
+    if (!parent) return
+    if (!confirm('פעולה זו תאפס את כל יתרות ה-PP ותחשב מחדש לפי סדר התנועות המקושרות. להמשיך?')) return
+    setReconciling(true)
+    setReconcileResult(null)
+    try {
+      const res = await fetch(`/api/parents/${parentId}/relink`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setReconcileResult({ fixed: data.txsProcessed, checked: data.ppsReset })
+      load()
+    } finally {
+      setReconciling(false)
+    }
+  }
 
   async function openDeleteModal() {
     const [txRes, ppRes, soRes, stuRes] = await Promise.all([
@@ -1011,6 +1036,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 }}
                 className="px-2.5 py-1 text-xs rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white font-medium transition-colors whitespace-nowrap disabled:opacity-40"
               >{generatingYear ? '...' : '⚡ שנה'}</button>
+              <button
+                disabled={reconciling || !parent}
+                onClick={reconcileBalances}
+                title="חשב מחדש יתרות PP לפי תנועות מקושרות"
+                className="px-2.5 py-1 text-xs rounded-lg bg-sky-600/80 hover:bg-sky-500 text-white font-medium transition-colors whitespace-nowrap disabled:opacity-40"
+              >{reconciling ? '...' : '🔄 ריענון'}</button>
             </div>
           </div>
         </div>
@@ -1234,6 +1265,20 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </div>
               )}
 
+              {/* Reconcile result */}
+              {reconcileResult && (
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                  reconcileResult.fixed > 0 ? 'bg-sky-50 border border-sky-200 text-sky-700' : 'bg-gray-50 border border-gray-200 text-gray-500'
+                }`}>
+                  <span>
+                    {reconcileResult.fixed > 0
+                      ? `תוקנו ${reconcileResult.fixed} יתרות מתוך ${reconcileResult.checked} PP`
+                      : `כל ${reconcileResult.checked} יתרות תקינות ✓`}
+                  </span>
+                  <button onClick={() => setReconcileResult(null)} className="text-gray-400 hover:text-gray-600 text-sm leading-none">✕</button>
+                </div>
+              )}
+
               {/* Two-panel: pending | paid */}
               {tuitionPPs_all.length === 0 ? (
                 <p className="text-center text-gray-400 text-sm py-6">אין תשלומים מתוכננים</p>
@@ -1246,26 +1291,45 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {[...overduePPs, ...pendingPPs].map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className={`w-full text-right rounded-xl p-3 border transition-all hover:shadow-sm active:scale-95 ${
+                        <div key={pp.id} className={`w-full rounded-xl p-3 border group transition-all ${
                             isOverdue(pp)
                               ? 'bg-red-50 border-red-200 hover:border-red-400'
                               : 'bg-white border-gray-200 hover:border-indigo-300'
                           }`}>
-                          <div className="flex justify-between items-center">
-                            <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
-                              {fmt(pp.balance)}
-                            </span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className={`text-sm font-bold ${isOverdue(pp) ? 'text-red-600' : 'text-amber-600'}`}>
+                                  {fmt(pp.balance)}
+                                </span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                              {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                          {isOverdue(pp) && <p className="text-xs text-red-400 mt-0.5">⚠ באיחור</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1277,19 +1341,38 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </h4>
                     <div className="space-y-1.5">
                       {paidPPs.map(pp => (
-                        <button key={pp.id} onClick={() => setSelectedPP(pp)}
-                          className="w-full text-right rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all hover:shadow-sm active:scale-95">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
-                              {pp.monthYear && hebrewMonth(pp.monthYear) && (
-                                <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
-                              )}
-                            </div>
+                        <div key={pp.id} className="w-full rounded-xl p-3 border border-emerald-100 bg-emerald-50 hover:border-emerald-300 transition-all group">
+                          <div className="flex items-start gap-2">
+                            <button
+                              onClick={() => {
+                                if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                  .then(r => r.json())
+                                  .then(d => {
+                                    if (d.error) alert('שגיאה: ' + d.error)
+                                    else load()
+                                  })
+                              }}
+                              className="p-1 text-gray-300 hover:text-red-500 text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-all"
+                              title="מחיקה"
+                            >🗑</button>
+                            <button
+                              onClick={() => setSelectedPP(pp)}
+                              className="flex-1 text-right hover:opacity-80 transition-opacity"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-emerald-600">✓ {fmt(pp.amount)}</span>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{pp.monthYear || pp.date}</p>
+                                  {pp.monthYear && hebrewMonth(pp.monthYear) && (
+                                    <p className="text-[10px] text-gray-400">{hebrewMonth(pp.monthYear)}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
+                            </button>
                           </div>
-                          {pp.name && <p className="text-xs text-gray-400 mt-0.5 truncate">{pp.name}</p>}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>

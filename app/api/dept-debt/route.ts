@@ -29,47 +29,50 @@ export async function GET(req: NextRequest) {
       .filter(([, fw]) => framework === 'אחר' ? fw === 'אחר' : fw === framework)
       .map(([id]) => id)
 
-    // Parents in debt + all parents (for names)
-    const [debtParentsRes, allParentsRes] = await Promise.all([
-      supabase
-        .from('parents')
-        .select('id, name, tuition_balance, children_count')
-        .gt('tuition_balance', 0)
-        .order('tuition_balance', { ascending: false }),
-      allFwParentIds.length > 0
-        ? supabase.from('parents').select('id, name').in('id', allFwParentIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
-    ])
+    // Fetch all parents in this framework (for names + income tab)
+    const allParentsRes = allFwParentIds.length > 0
+      ? await supabase.from('parents').select('id, name, children_count').in('id', allFwParentIds)
+      : { data: [] as Array<{ id: string; name: string; children_count: number }> }
 
-    const debtParents = (debtParentsRes.data ?? []).filter(p => {
-      const fw = parentFrameworkMap[p.id as string] ?? 'אחר'
-      return framework === 'אחר' ? fw === 'אחר' : fw === framework
-    })
-    const debtParentIds = debtParents.map(p => p.id as string)
-
-    // Open planned payments for parents in debt
-    const ppRes = debtParentIds.length > 0
+    // Fetch open PPs (04/2026+) for all parents in this framework
+    const todayStr = new Date().toISOString().split('T')[0]
+    const ppRes = allFwParentIds.length > 0
       ? await supabase
           .from('planned_payments')
-          .select('id, parent_ids, name, amount, balance, month_year')
+          .select('id, parent_ids, name, amount, balance, month_year, date')
           .gt('balance', 0)
-      : { data: [] as Array<{ id: string; parent_ids: string[]; name: string; amount: number; balance: number; month_year: string }> }
+          .lt('date', todayStr)
+          .gte('date', '2026-04-01')
+          .overlaps('parent_ids', allFwParentIds)
+      : { data: [] as Array<{ id: string; parent_ids: string[]; name: string; amount: number; balance: number; month_year: string; date: string }> }
 
+    // Build per-parent PP list and balance sum
     const ppByParent: Record<string, { id: string; name: string; amount: number; balance: number; monthYear: string }[]> = {}
+    const balanceByParent: Record<string, number> = {}
     for (const pp of ppRes.data ?? []) {
       for (const pid of (pp.parent_ids as string[]) ?? []) {
-        if (debtParentIds.includes(pid)) {
-          if (!ppByParent[pid]) ppByParent[pid] = []
-          ppByParent[pid].push({
-            id: pp.id as string,
-            name: pp.name as string,
-            amount: Number(pp.amount) || 0,
-            balance: Number(pp.balance) || 0,
-            monthYear: pp.month_year as string,
-          })
-        }
+        if (!allFwParentIds.includes(pid)) continue
+        if (!ppByParent[pid]) ppByParent[pid] = []
+        ppByParent[pid].push({
+          id: pp.id as string,
+          name: pp.name as string,
+          amount: Number(pp.amount) || 0,
+          balance: Number(pp.balance) || 0,
+          monthYear: pp.month_year as string,
+        })
+        balanceByParent[pid] = (balanceByParent[pid] ?? 0) + (Number(pp.balance) || 0)
       }
     }
+
+    // Only parents who have actual open PPs (from 04/2026+)
+    const allParentsMap = Object.fromEntries(
+      (allParentsRes.data ?? []).map(p => [p.id, p])
+    )
+    const debtParentIds = Object.keys(balanceByParent).filter(pid => balanceByParent[pid] > 0)
+    const debtParents = debtParentIds
+      .map(pid => allParentsMap[pid])
+      .filter(Boolean)
+      .sort((a, b) => (balanceByParent[b.id] ?? 0) - (balanceByParent[a.id] ?? 0))
 
     // Recent income transactions for all parents in this framework (last 3 months)
     const now = new Date()
@@ -121,7 +124,7 @@ export async function GET(req: NextRequest) {
       parents: debtParents.map(p => ({
         id: p.id as string,
         name: p.name as string,
-        balance: Number(p.tuition_balance) || 0,
+        balance: Math.round(balanceByParent[p.id] ?? 0),
         childrenCount: Number(p.children_count) || 0,
         openPayments: ppByParent[p.id as string] ?? [],
       })),
