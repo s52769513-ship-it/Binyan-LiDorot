@@ -119,36 +119,8 @@ export const SCHEDULABLE: SchedulableAutomation[] = [
     defaultDay: 3, defaultHour: 8,
     payload: c => ({ dryRun: false, monthYear: monthYearOf(c) }),
   },
-  {
-    id: 'nedarim-bank-hok-enrich', label: 'סינק הו"ק בנקאי',
-    endpoint: '/api/automations/nedarim-bank-hok-enrich', mode: 'stream',
-    defaultDay: 1, defaultHour: 7,
-    payload: () => ({ dryRun: false }),
-  },
-  {
-    id: 'nedarim-credit-hok-sync', label: 'סינק הו"ק אשראי מנדרים',
-    endpoint: '/api/automations/nedarim-credit-hok-sync', mode: 'stream',
-    defaultDay: 1, defaultHour: 7,
-    payload: () => ({ dryRun: false }),
-  },
-  {
-    id: 'nedarim-bank-hok-pull', label: 'משיכת תנועות הו"ק בנקאי',
-    endpoint: '/api/automations/nedarim-pull', mode: 'stream',
-    defaultDay: 4, defaultHour: 7,
-    payload: c => ({ dryRun: false, from: firstOfMonthOf(c), to: isoDateOf(c) }),
-  },
-  {
-    id: 'nedarim-credit-hok-pull', label: 'משיכת תנועות הו"ק אשראי',
-    endpoint: '/api/automations/nedarim-credit-hok-pull', mode: 'stream',
-    defaultDay: 4, defaultHour: 7,
-    payload: () => ({ dryRun: false }),
-  },
-  {
-    id: 'airtable-transactions-pull', label: 'משיכת תנועות מ-Airtable',
-    endpoint: '/api/automations/airtable-transactions-pull', mode: 'json',
-    defaultDay: 5, defaultHour: 8,
-    payload: () => ({ dryRun: false }),
-  },
+  // Nedarim sync/pull automations and the Airtable transactions pull are
+  // intentionally manual-only (run from the UI) — not part of the schedule.
 ]
 
 export function getSchedulable(id: string): SchedulableAutomation | undefined {

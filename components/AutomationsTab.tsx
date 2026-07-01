@@ -198,11 +198,13 @@ CREATE POLICY "service_role_all" ON salary_offsets
   },
 ]
 
-/* Automations that run on the schedule but are configured/run from another
-   screen (so they have no AutomationCard here — only a schedule row). */
-const SCHEDULE_EXTRAS = [
-  { id: 'airtable-transactions-pull', icon: '📥', name: 'משיכת תנועות מ-Airtable' },
-]
+/* Nedarim sync/pull automations are manual-only by design (triggered from
+   the UI when needed) — excluded from the schedule table and the per-card
+   schedule bar. Must match lib/automationSchedule.ts's SCHEDULABLE list. */
+const MANUAL_ONLY_IDS = new Set([
+  'nedarim-bank-hok-enrich', 'nedarim-credit-hok-sync',
+  'nedarim-bank-hok-pull', 'nedarim-credit-hok-pull',
+])
 
 /* ─── FlowDiagram ─────────────────────────────────────────────────────── */
 function FlowDiagram({ steps, activeStep }: { steps: FlowStep[]; activeStep: number }) {
@@ -778,8 +780,8 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
         </button>
       </div>
 
-      {/* ── Schedule bar ── */}
-      <ScheduleBar autoId={def.id} enabled={enabled} />
+      {/* ── Schedule bar (not shown for manual-only automations) ── */}
+      {!MANUAL_ONLY_IDS.has(def.id) && <ScheduleBar autoId={def.id} enabled={enabled} />}
 
       {/* ── Flow diagram (always visible) ── */}
       <div className={`px-6 py-5 border-b border-gray-100 overflow-x-auto ${!enabled ? 'opacity-40' : ''}`} dir="ltr">
@@ -1246,11 +1248,7 @@ export default function AutomationsTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {DEFS.map(def => (
-              <ScheduleTableRow key={def.id} def={def} enabled={enabled[def.id] ?? true} />
-            ))}
-            {/* Automations that are scheduled but have their own UI elsewhere */}
-            {SCHEDULE_EXTRAS.map(def => (
+            {DEFS.filter(def => !MANUAL_ONLY_IDS.has(def.id)).map(def => (
               <ScheduleTableRow key={def.id} def={def} enabled={enabled[def.id] ?? true} />
             ))}
           </tbody>
