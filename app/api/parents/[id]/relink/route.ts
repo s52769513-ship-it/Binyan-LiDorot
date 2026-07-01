@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 /**
  * POST /api/parents/[id]/relink
@@ -53,18 +54,19 @@ export async function POST(
       if (!tx.planned_payment_id) continue
 
       // Snapshot of current open PPs (after previous iterations), oldest first
-      const { data: openPPs } = await supabaseAdmin
+      // (chronological sort in JS — text sort of "MM/YYYY" breaks across years)
+      const { data: openPPsRaw } = await supabaseAdmin
         .from('planned_payments')
         .select('id, balance, month_year')
         .contains('parent_ids', [parentId])
         .gt('balance', 0)
-        .order('month_year', { ascending: true })
+      const openPPs = sortByMonth(openPPsRaw ?? [], true)
 
-      const target = (openPPs ?? []).find(p => p.id === tx.planned_payment_id)
+      const target = openPPs.find(p => p.id === tx.planned_payment_id)
       // Build cascade order: target first, then remaining oldest-first
       const cascade = target
-        ? [target, ...(openPPs ?? []).filter(p => p.id !== tx.planned_payment_id)]
-        : (openPPs ?? [])
+        ? [target, ...openPPs.filter(p => p.id !== tx.planned_payment_id)]
+        : openPPs
 
       let remaining = Math.abs(Number(tx.amount))
       for (const pp of cascade) {

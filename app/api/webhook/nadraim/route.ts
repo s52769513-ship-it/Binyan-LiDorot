@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
 
 // Nadraim currency codes: 1 = ILS, 2 = USD
 async function convertToILS(amount: number, currency: string): Promise<{ amount: number; currencyNote: string }> {
@@ -189,23 +190,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // dry run — find PP too then return diagnostic info without writing
+    // dry run — find PP via the exact same selection logic as the real run
     if (dryRun) {
-      let dryPP = null
       const ppParentId = billingParentId ?? parentId
-      if (ppParentId) {
-        const { data: openPPs } = await supabaseAdmin
-          .from('planned_payments')
-          .select('id, amount, balance, month_year, name')
-          .contains('parent_ids', [ppParentId])
-          .eq('pp_type', 'tuition')
-          .gt('balance', 0)
-          .order('month_year', { ascending: false })
-        if (openPPs?.length) {
-          const curr = openPPs.find(pp => pp.month_year === monthYear)
-          dryPP = curr ?? openPPs[openPPs.length - 1]
-        }
-      }
+      const dryPP = ppParentId ? await findPaymentTarget(ppParentId, monthYear) : null
       return NextResponse.json({
         dryRun: true,
         zeout, parentFound, parentCreated, parentId,
@@ -214,7 +202,7 @@ export async function POST(req: NextRequest) {
         txType:      String(TransactionType ?? '').trim() || 'נדרים',
         projectName: String(Groupe ?? '').trim() || 'בנין לדורות',
         clientName:  String(ClientName ?? ''),
-        linkedPP: dryPP ? { id: dryPP.id, name: dryPP.name, monthYear: dryPP.month_year, balance: dryPP.balance } : null,
+        linkedPP: dryPP?.ppId ? { id: dryPP.ppId, monthYear: dryPP.ppMonthYear, balance: dryPP.ppBalance } : null,
       })
     }
 
@@ -227,28 +215,17 @@ export async function POST(req: NextRequest) {
       Comments       ? String(Comments)       : null,
     ].filter(Boolean).join(' · ')
 
-    // 5. Find open tuition PP to link (not משכורת)
-    // Priority: current month first, then oldest open
+    // 5. Apply payment to open tuition PPs (shared cascade logic:
+    //    current month first → oldest open → overflow cascades onwards,
+    //    leftover → credit_balance, parents.tuition_balance recalculated).
     // Uses billingParentId (may differ from parentId if הו"ק is paying for someone else)
     let linkedPPId: string | null = null
-    let linkedPPBalance: number | null = null
     const ppParentId = billingParentId ?? parentId
     if (ppParentId) {
-      const { data: openPPs } = await supabaseAdmin
-        .from('planned_payments')
-        .select('id, amount, balance, month_year, name')
-        .contains('parent_ids', [ppParentId])
-        .neq('name', 'משכורת')
-        .gt('balance', 0)
-        .order('month_year', { ascending: false })
-
-      if (openPPs && openPPs.length > 0) {
-        // Prefer current month, fallback to most recent open
-        const currentMonthPP = openPPs.find(pp => pp.month_year === monthYear)
-        const chosen = currentMonthPP ?? openPPs[openPPs.length - 1] // oldest = last after desc sort reversed
-        linkedPPId      = chosen.id
-        linkedPPBalance = Number(chosen.balance)
-      }
+      const applied = await applyPaymentToParentPPs({
+        parentId: ppParentId, amount, preferredMonthYear: monthYear,
+      })
+      linkedPPId = applied.ppId
     }
 
     // 6. Create transaction
@@ -278,14 +255,7 @@ export async function POST(req: NextRequest) {
     })
     if (txErr) throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
 
-    // 7. Update linked PP balance
-    if (linkedPPId && linkedPPBalance !== null) {
-      const newBalance = Math.max(0, linkedPPBalance - amount)
-      await supabaseAdmin
-        .from('planned_payments')
-        .update({ balance: newBalance })
-        .eq('id', linkedPPId)
-    }
+    // 7. (PP balances already updated by applyPaymentToParentPPs above)
 
     // 8. Automation log
     try {

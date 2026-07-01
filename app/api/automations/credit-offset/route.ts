@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 function emit(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: object) {
   controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
@@ -65,16 +66,17 @@ export async function POST(req: NextRequest) {
           }
 
           // Find open tuition PP for this parent in target month
-          const { data: pps } = await supabaseAdmin
+          // (chronological sort in JS — text sort of "MM/YYYY" breaks across years)
+          const { data: ppsRaw } = await supabaseAdmin
             .from('planned_payments')
             .select('id, amount, balance, month_year')
             .contains('parent_ids', [billingParentId])
             .eq('pp_type', 'tuition')
             .gt('balance', 0)
-            .order('month_year', { ascending: true })
+          const pps = sortByMonth(ppsRaw ?? [], true)
 
-          const currentMonthPP = (pps ?? []).find(p => p.month_year === targetMY)
-          const pp = currentMonthPP ?? pps?.[0] ?? null
+          const currentMonthPP = pps.find(p => p.month_year === targetMY)
+          const pp = currentMonthPP ?? pps[0] ?? null
 
           if (!pp) {
             e({ type: 'progress', parentName: so.external_id, skipped: true, reason: 'אין תשלום מתוכנן פתוח' })

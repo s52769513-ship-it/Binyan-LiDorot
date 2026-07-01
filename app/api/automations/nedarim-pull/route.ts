@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -215,29 +216,19 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Successful payment — find open tuition PP
-          let linkedPPId:      string | null = null
-          let linkedPPBalance: number | null = null
+          // Successful payment — apply to open tuition PPs (shared cascade logic)
+          let linkedPPId: string | null = null
           const ppParentId = billingParentId ?? payerParentId
 
-          if (ppParentId) {
-            const { data: openPPs } = await supabaseAdmin
-              .from('planned_payments')
-              .select('id, amount, balance, month_year, name')
-              .contains('parent_ids', [ppParentId])
-              .eq('pp_type', 'tuition')
-              .gt('balance', 0)
-              .order('month_year', { ascending: true })
-
-            if (openPPs && openPPs.length > 0) {
-              const currentMonthPP = openPPs.find(pp => pp.month_year === monthYear)
-              const chosen = currentMonthPP ?? openPPs[0]
-              linkedPPId      = chosen.id
-              linkedPPBalance = Number(chosen.balance)
+          if (dryRun) {
+            if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear)).ppId
+          } else {
+            if (ppParentId) {
+              linkedPPId = (await applyPaymentToParentPPs({
+                parentId: ppParentId, amount, preferredMonthYear: monthYear,
+              })).ppId
             }
-          }
 
-          if (!dryRun) {
             const txParentIds = Array.from(new Set([
               payerParentId,
               ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : []),
@@ -257,13 +248,6 @@ export async function POST(req: NextRequest) {
               standing_order_id:  standingOrderDbId,
               synced_at:          '2099-12-31T23:59:59.999Z',
             })
-
-            if (linkedPPId && linkedPPBalance !== null) {
-              await supabaseAdmin
-                .from('planned_payments')
-                .update({ balance: Math.max(0, linkedPPBalance - amount) })
-                .eq('id', linkedPPId)
-            }
           }
 
           if (rowId) newRowIds.push(rowId)

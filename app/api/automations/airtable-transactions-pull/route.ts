@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, T, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
+
+export const maxDuration = 300 // batch import + balance recalc can take a while
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
 const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
@@ -215,11 +219,13 @@ export async function POST(req: NextRequest) {
     let skipped = 0
     let totalAmount = 0
 
-    // Load open PPs indexed by parent
+    // Load open PPs indexed by parent.
+    // pp_type='tuition' only — PP שמקורם ב-Airtable (pp_type ריק) מנוהלים ע"י
+    // הסנכרון שדורס להם balance בכל ריצה, ולכן עדכון יתרה שלהם היה מתבטל.
     const { data: openPPs } = await supabaseAdmin
       .from('planned_payments')
       .select('id, parent_ids, balance, month_year')
-      .or('pp_type.eq.tuition,pp_type.is.null')
+      .eq('pp_type', 'tuition')
       .gt('balance', 0)
     const ppByParent = new Map<string, Array<{ id: string; balance: number; month_year: string }>>()
     for (const pp of openPPs ?? []) {
@@ -228,10 +234,15 @@ export async function POST(req: NextRequest) {
         ppByParent.get(pid)!.push({ id: pp.id, balance: Number(pp.balance), month_year: pp.month_year ?? '' })
       }
     }
+    // Chronological order (not text order) — oldest debt gets paid first
+    for (const [pid, list] of ppByParent) ppByParent.set(pid, sortByMonth(list, true))
 
     const balanceUpdates = new Map<string, number>()
+    const creditUpdates = new Map<string, number>()  // parentId → extra credit
+    const affectedParents = new Set<string>()
     const newRows: object[] = []
     const linkUpdates: Array<{ id: string; planned_payment_id: string }> = []
+    const round2 = (n: number) => Math.round(n * 100) / 100
 
     for (const { c, parent } of resolved) {
       if (!parent) {
@@ -241,14 +252,26 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // Same selection as the shared cascade: preferred month first, then oldest.
+      // Only income applies to PPs — expenses are recorded but not linked.
       const parentPPs = (ppByParent.get(parent.id) ?? []).filter(p => p.balance > 0)
-      const target = parentPPs.find(p => p.month_year === c.monthYear) ?? parentPPs[0] ?? null
+      const monthMatch = parentPPs.find(p => p.month_year === c.monthYear)
+      const ordered = monthMatch ? [monthMatch, ...parentPPs.filter(p => p !== monthMatch)] : parentPPs
+      const target = c.amount > 0 ? (ordered[0] ?? null) : null
 
       if (target) {
-        const currentBal = balanceUpdates.has(target.id) ? balanceUpdates.get(target.id)! : target.balance
-        const newBal = Math.max(0, currentBal - Math.abs(c.amount))
-        balanceUpdates.set(target.id, newBal)
-        target.balance = newBal
+        let remaining = c.amount
+        for (const pp of ordered) {
+          if (remaining <= 0) break
+          const apply = Math.min(remaining, pp.balance)
+          pp.balance = round2(pp.balance - apply)
+          remaining = round2(remaining - apply)
+          balanceUpdates.set(pp.id, pp.balance)
+        }
+        if (remaining > 0) {
+          creditUpdates.set(parent.id, round2((creditUpdates.get(parent.id) ?? 0) + remaining))
+        }
+        affectedParents.add(parent.id)
       }
 
       if (c.status === 'new') {
@@ -290,6 +313,21 @@ export async function POST(req: NextRequest) {
       await Promise.all(balEntries.slice(i, i + 50).map(([id, balance]) =>
         supabaseAdmin.from('planned_payments').update({ balance }).eq('id', id)
       ))
+    }
+
+    // Overpayment leftovers → parents.credit_balance
+    for (const [pid, extra] of creditUpdates) {
+      const { data: par } = await supabaseAdmin
+        .from('parents').select('credit_balance').eq('id', pid).single()
+      await supabaseAdmin.from('parents')
+        .update({ credit_balance: round2(Number(par?.credit_balance ?? 0) + extra) })
+        .eq('id', pid)
+    }
+
+    // Refresh parents.tuition_balance from actual PP balances (batched)
+    const affected = [...affectedParents]
+    for (let i = 0; i < affected.length; i += 25) {
+      await Promise.all(affected.slice(i, i + 25).map(pid => recalcParentTuitionBalance(pid)))
     }
 
     try {

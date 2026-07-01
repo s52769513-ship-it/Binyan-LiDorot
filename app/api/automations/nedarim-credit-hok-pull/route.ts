@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { applyPaymentToParentPPs, findPaymentTarget } from '@/lib/ppPayments'
 
 const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
 const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
@@ -35,9 +36,9 @@ function toMonthYear(dateStr: string): string {
 export async function GET() {
   const { data } = await supabaseAdmin
     .from('automation_logs')
-    .select('ran_at, details')
-    .eq('automation', 'nedarim-credit-hok-pull')
-    .order('ran_at', { ascending: false })
+    .select('run_at, details')
+    .eq('automation_id', 'nedarim-credit-hok-pull')
+    .order('run_at', { ascending: false })
     .limit(1)
   return NextResponse.json(data?.[0] ?? null)
 }
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
         const { data: logs } = await supabaseAdmin
           .from('automation_logs')
           .select('details')
-          .eq('automation', 'nedarim-credit-hok-pull')
+          .eq('automation_id', 'nedarim-credit-hok-pull')
         const seenTxIds = new Set<string>(
           (logs ?? []).flatMap(l => (l.details?.txIds as string[]) ?? [])
         )
@@ -137,26 +138,16 @@ export async function POST(req: NextRequest) {
               }
               if (status !== '1' || !amount || !dateStr) { totalSkipped++; continue }
 
-              // Find open tuition PP
-              let linkedPPId: string | null = null
-              let linkedPPBalance: number | null = null
+              // Apply to open tuition PPs (shared cascade logic)
               const ppParentId = billingParentId ?? payerParentId
+              let linkedPPId: string | null = null
 
-              if (ppParentId) {
-                const { data: openPPs } = await supabaseAdmin
-                  .from('planned_payments')
-                  .select('id, balance, month_year')
-                  .contains('parent_ids', [ppParentId])
-                  .eq('pp_type', 'tuition')
-                  .gt('balance', 0)
-                  .order('month_year', { ascending: true })
-
-                if (openPPs && openPPs.length > 0) {
-                  const curr = openPPs.find(p => p.month_year === monthYear)
-                  const chosen = curr ?? openPPs[0]
-                  linkedPPId      = chosen.id
-                  linkedPPBalance = Number(chosen.balance)
-                }
+              if (dryRun) {
+                if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear)).ppId
+              } else if (ppParentId) {
+                linkedPPId = (await applyPaymentToParentPPs({
+                  parentId: ppParentId, amount, preferredMonthYear: monthYear,
+                })).ppId
               }
 
               send({
@@ -184,13 +175,6 @@ export async function POST(req: NextRequest) {
                   standing_order_id:  so.id,
                   synced_at:          '2099-12-31T23:59:59.999Z',
                 })
-
-                if (linkedPPId && linkedPPBalance !== null) {
-                  await supabaseAdmin.from('planned_payments')
-                    .update({ balance: Math.max(0, linkedPPBalance - amount) })
-                    .eq('id', linkedPPId)
-                  linkedPPBalance = Math.max(0, linkedPPBalance - amount)
-                }
               }
 
               if (txId) { newTxIds.push(txId); seenTxIds.add(txId) }
@@ -205,10 +189,14 @@ export async function POST(req: NextRequest) {
 
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
-            id:         crypto.randomUUID(),
-            automation: 'nedarim-credit-hok-pull',
-            ran_at:     new Date().toISOString(),
-            details:    { txIds: newTxIds, imported: totalImported, refused: totalRefused, skipped: totalSkipped, totalAmount },
+            id:            crypto.randomUUID(),
+            automation_id: 'nedarim-credit-hok-pull',
+            run_at:        new Date().toISOString(),
+            dry_run:       false,
+            actions_count: totalImported,
+            status:        'success',
+            summary:       `הו"ק אשראי: יובאו ${totalImported} · סירובים ${totalRefused} · דולגו ${totalSkipped} · ₪${totalAmount.toLocaleString('he-IL')}`,
+            details:       { txIds: newTxIds, imported: totalImported, refused: totalRefused, skipped: totalSkipped, totalAmount },
           })
         }
 

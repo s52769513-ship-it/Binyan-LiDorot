@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 /**
  * POST /api/parents/[id]/recalc-pp
@@ -64,9 +65,9 @@ export async function recalcPPs(parentId: string) {
     .contains('parent_ids', [parentId])
     .or('pp_type.eq.tuition,pp_type.is.null')
     .gt('balance', 0)
-    .order('month_year', { ascending: true })
 
-  const openPPs = (rawPPs ?? []).map(p => ({ ...p, balance: Number(p.balance), amount: Number(p.amount) }))
+  // Chronological sort in JS — text sort of "MM/YYYY" breaks across years
+  const openPPs = sortByMonth(rawPPs ?? [], true).map(p => ({ ...p, balance: Number(p.balance), amount: Number(p.amount) }))
 
   // ── טעינת תנועות חופשיות של בנין לדורות ────────────────────────────────
   const { data: rawTxs } = await supabaseAdmin
@@ -177,14 +178,14 @@ export async function recalcPPs(parentId: string) {
 
   // ── שלב 6: בדיקת קיזוז ממשכורת ─────────────────────────────────────────
   // בדיקה אם יש תשלומי משכורת פתוחים שאמורים לכלול ניכוי שכ"ל
-  const { data: salaryPPs } = await supabaseAdmin
+  const { data: salaryPPsRaw } = await supabaseAdmin
     .from('planned_payments')
     .select('id, amount, balance, month_year')
     .contains('parent_ids', [parentId])
     .eq('pp_type', 'salary')
     .gt('balance', 0)
-    .order('month_year', { ascending: false })
-    .limit(3)
+  // Newest 3 chronologically (text sort of "MM/YYYY" breaks across years)
+  const salaryPPs = sortByMonth(salaryPPsRaw ?? [], false).slice(0, 3)
 
   const salaryOffsetMonths: string[] = []
   for (const sp of salaryPPs ?? []) {

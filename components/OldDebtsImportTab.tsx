@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
+import { ParentSelectorModal, StatChip as Stat, type ParentOption } from '@/components/ParentSelectorModal'
 
 /* Logical fields we need to map the file's columns onto. */
 const FIELDS = [
@@ -45,8 +46,6 @@ function toISODate(v: unknown): string {
   }
   return ''
 }
-
-interface ParentOption { id: string; name: string }
 
 export default function OldDebtsImportTab() {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -142,10 +141,10 @@ export default function OldDebtsImportTab() {
         }),
       })
       const text = await res.text()
-      let data: any
+      let data: (DryRunResult & ImportResult) | undefined
       try { data = JSON.parse(text) }
       catch { setResult({ error: `שגיאת שרת (${res.status}): ${text.slice(0, 200)}` }); return }
-      if (!res.ok) { setResult({ error: data?.error || `שגיאה ${res.status}` }); return }
+      if (!res.ok || !data) { setResult({ error: data?.error || `שגיאה ${res.status}` }); return }
       if (dryRun) { setPreview(data); setResult(null) }
       else { setResult(data); setPreview(null) }
     } catch (e) {
@@ -293,8 +292,8 @@ export default function OldDebtsImportTab() {
       )}
 
       {parentSelectorOpen && (
-        <ParentSelector
-          unmatchedName={parentSelectorOpen}
+        <ParentSelectorModal
+          label={parentSelectorOpen}
           allParents={allParents}
           onSelect={(parentId, parentName) => {
             setManualMappings(m => ({ ...m, [parentSelectorOpen]: { id: parentId, name: parentName } }))
@@ -336,15 +335,6 @@ export default function OldDebtsImportTab() {
   )
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="bg-gray-50 rounded-lg py-2">
-      <div className="text-lg font-bold text-gray-800">{value}</div>
-      <div className="text-[11px] text-gray-500">{label}</div>
-    </div>
-  )
-}
-
 function ImportSummary({ preview }: { preview: DryRunResult }) {
   const { matchedCharges, matchedPayments, chargeAmount, paymentAmount } = preview.summary ?? {}
   return (
@@ -353,61 +343,14 @@ function ImportSummary({ preview }: { preview: DryRunResult }) {
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="bg-white rounded p-2">
           <div className="text-blue-600 font-medium">{matchedCharges ?? 0} שורות PP</div>
-          <div className="text-gray-600">סה"כ סכום: {(chargeAmount ?? 0).toLocaleString('he-IL')}</div>
+          <div className="text-gray-600">סה&quot;כ סכום: {(chargeAmount ?? 0).toLocaleString('he-IL')}</div>
         </div>
         <div className="bg-white rounded p-2">
           <div className="text-green-600 font-medium">{matchedPayments ?? 0} שורות תשלום</div>
-          <div className="text-gray-600">סה"כ סכום: {(paymentAmount ?? 0).toLocaleString('he-IL')}</div>
+          <div className="text-gray-600">סה&quot;כ סכום: {(paymentAmount ?? 0).toLocaleString('he-IL')}</div>
         </div>
       </div>
     </div>
   )
 }
 
-function ParentSelector({ unmatchedName, allParents, onSelect, onClose }:
-  { unmatchedName: string; allParents: ParentOption[]; onSelect: (id: string, name: string) => void; onClose: () => void }) {
-  const [search, setSearch] = useState('')
-  const filtered = allParents.filter(p => p.name.includes(search))
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-96 flex flex-col">
-        <div className="p-4 border-b">
-          <p className="text-sm font-semibold text-gray-700 mb-3">בחר הורה עבור: <span className="text-blue-600">{unmatchedName}</span></p>
-          <input
-            type="text"
-            placeholder="חפש הורה…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {filtered.map(p => (
-            <button
-              key={p.id}
-              onClick={() => onSelect(p.id, p.name)}
-              className="w-full text-right px-4 py-2 hover:bg-blue-50 border-b text-sm text-gray-800 transition"
-            >
-              {p.name}
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <div className="p-4 text-center text-xs text-gray-500">
-              לא נמצאו הורים התואמים
-            </div>
-          )}
-        </div>
-        <div className="p-3 border-t">
-          <button
-            onClick={onClose}
-            className="w-full px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition"
-          >
-            ביטול
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}

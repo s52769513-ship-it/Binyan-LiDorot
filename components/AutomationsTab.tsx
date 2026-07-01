@@ -1,6 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { getSchedulable } from '@/lib/automationSchedule'
+
+/* Defaults shown before a saved setting exists — must match what the cron
+   actually uses (lib/automationSchedule registry), otherwise the UI displays
+   a different day than the one the scheduler runs on. */
+const defaultDayFor  = (id: string) => getSchedulable(id)?.defaultDay ?? 1
+const defaultTimeFor = (id: string) => `${String(getSchedulable(id)?.defaultHour ?? 8).padStart(2, '0')}:00`
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 const HM: Record<string, string> = {
@@ -1013,8 +1020,8 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
 /* ─── ScheduleBar (per-automation) ───────────────────────────────────── */
 function ScheduleBar({ autoId, enabled }: { autoId: string; enabled: boolean }) {
   const key = (f: string) => `${autoId.replace(/-/g, '_')}_${f}`
-  const [day,  setDay]  = useState(1)
-  const [time, setTime] = useState('08:00')  // HH:MM
+  const [day,  setDay]  = useState(() => defaultDayFor(autoId))
+  const [time, setTime] = useState(() => defaultTimeFor(autoId))  // HH:MM
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -1082,8 +1089,8 @@ interface ScheduleRowDef { id: string; icon: string; name: string }
 
 function ScheduleTableRow({ def, enabled }: { def: ScheduleRowDef; enabled: boolean }) {
   const key = (f: string) => `${def.id.replace(/-/g, '_')}_${f}`
-  const [day,  setDay]  = useState(1)
-  const [time, setTime] = useState('08:00')
+  const [day,  setDay]  = useState(() => defaultDayFor(def.id))
+  const [time, setTime] = useState(() => defaultTimeFor(def.id))
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [testing, setTesting] = useState(false)

@@ -132,12 +132,30 @@ export async function POST(req: NextRequest) {
               date:       ppDate,
               month_year: targetMY,
               pp_type:    'donation',
+              // Locally-created row — future synced_at protects it from the
+              // Airtable sync's prune step (which deletes stale rows).
+              synced_at:  '2099-12-31T23:59:59.999Z',
             })
           }
 
           e({ type: 'progress', parentName: donor.name, ppCreated: true, amount: donor.amount })
           actions.push({ parentName: donor.name, ppCreated: true, amount: donor.amount })
           created++
+        }
+
+        if (!dryRun) {
+          try {
+            await supabaseAdmin.from('automation_logs').insert({
+              id:            crypto.randomUUID(),
+              automation_id: 'donation-pp',
+              run_at:        new Date().toISOString(),
+              dry_run:       false,
+              actions_count: created,
+              status:        'success',
+              summary:       `PP מגבית: נוצרו ${created} · דולגו ${skipped} (${targetMY})`,
+              details:       { monthYear: targetMY, created, skipped },
+            })
+          } catch { /* best-effort */ }
         }
 
         e({ type: 'complete', applied: created, skipped, totalCreated: created, totalOffset: 0, dryRun, monthYear: targetMY, actions })

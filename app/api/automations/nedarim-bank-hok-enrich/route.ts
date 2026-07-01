@@ -25,9 +25,9 @@ function parseStatus(raw: string): string {
 export async function GET() {
   const { data } = await supabaseAdmin
     .from('automation_logs')
-    .select('ran_at, details')
-    .eq('automation', 'nedarim-bank-hok-enrich')
-    .order('ran_at', { ascending: false })
+    .select('run_at, details')
+    .eq('automation_id', 'nedarim-bank-hok-enrich')
+    .order('run_at', { ascending: false })
     .limit(1)
   return NextResponse.json(data?.[0] ?? null)
 }
@@ -185,9 +185,14 @@ export async function POST(req: NextRequest) {
 
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
-            id: crypto.randomUUID(), automation: 'nedarim-bank-hok-enrich',
-            ran_at: new Date().toISOString(),
-            details: { updated, created, parentCreated, skipped, total: records.length, rows: logRows },
+            id:            crypto.randomUUID(),
+            automation_id: 'nedarim-bank-hok-enrich',
+            run_at:        new Date().toISOString(),
+            dry_run:       false,
+            actions_count: updated + created,
+            status:        'success',
+            summary:       `סינק הו"ק בנקאי: עודכנו ${updated} · נוצרו ${created} · הורים חדשים ${parentCreated} · דולגו ${skipped}`,
+            details:       { updated, created, parentCreated, skipped, total: records.length, rows: logRows },
           })
         }
 

@@ -84,13 +84,13 @@ export async function GET() {
         .lt('date', todayStr)
         .gte('date', '2026-04-01'),
 
-      // New: salary debt
+      // New: salary debt (order by date — text sort of month_year breaks across years)
       supabase
         .from('planned_payments')
         .select('amount, balance, parent_ids, month_year')
         .eq('pp_type', 'salary')
         .gt('balance', 0)
-        .order('month_year', { ascending: false })
+        .order('date', { ascending: false })
         .limit(50),
 
       // New: overdue tuition

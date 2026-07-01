@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,15 +11,16 @@ export async function GET(req: NextRequest) {
     let ppQuery = supabaseAdmin
       .from('planned_payments')
       .select('id, parent_ids, name, amount, date, month_year, balance')
-      .order('month_year', { ascending: false })
       .order('date', { ascending: false })
 
     if (month) {
       ppQuery = ppQuery.eq('month_year', month)
     }
 
-    const { data: ppData, error: ppError } = await ppQuery
+    const { data: ppRaw, error: ppError } = await ppQuery
     if (ppError) throw ppError
+    // Chronological order, newest first (text sort of "MM/YYYY" breaks across years)
+    const ppData = sortByMonth(ppRaw ?? [], false)
 
     // Gather unique parent IDs to fetch names
     const allParentIds = Array.from(

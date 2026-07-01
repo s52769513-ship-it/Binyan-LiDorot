@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 interface PPRow {
   id: string
@@ -78,6 +79,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       } else {
         ppsData = (withLegacy.data ?? []) as PPRow[]
       }
+      // Chronological order, newest first (text sort of "MM/YYYY" breaks across years)
+      ppsData = sortByMonth(ppsData, false)
     }
 
     // Fetch transactions, same graceful is_legacy handling.
@@ -102,6 +105,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       } else {
         txsData = (withLegacy.data ?? []) as TxRow[]
       }
+      txsData = sortByMonth(txsData, false)
     }
 
     // Aggregate by type

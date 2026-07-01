@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
 
 /**
  * POST /api/transactions/[id]/link-pp
@@ -54,19 +55,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const parentId = (tx.parent_ids as string[])?.[0]
     const ppType   = targetPP.pp_type
 
-    const { data: openPPs } = await supabaseAdmin
+    const { data: openPPsRaw } = await supabaseAdmin
       .from('planned_payments')
       .select('id, amount, balance, month_year')
       .contains('parent_ids', [parentId])
       .eq('pp_type', ppType)
       .gt('balance', 0)
-      .order('month_year', { ascending: true })
+    // Chronological sort in JS — text sort of "MM/YYYY" breaks across years
+    const openPPs = sortByMonth(openPPsRaw ?? [], true)
 
     // Apply amount with cascade starting from target PP
     let remaining = Math.abs(Number(tx.amount))
     const ppsToProcess = [
       targetPP,
-      ...(openPPs ?? []).filter(p => p.id !== ppId),
+      ...openPPs.filter(p => p.id !== ppId),
     ]
 
     for (const pp of ppsToProcess) {

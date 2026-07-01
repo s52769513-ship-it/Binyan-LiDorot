@@ -27,9 +27,9 @@ function namesMatch(a: string, b: string): boolean {
 export async function GET() {
   const { data } = await supabaseAdmin
     .from('automation_logs')
-    .select('ran_at, details')
-    .eq('automation', 'nedarim-credit-hok-sync')
-    .order('ran_at', { ascending: false })
+    .select('run_at, details')
+    .eq('automation_id', 'nedarim-credit-hok-sync')
+    .order('run_at', { ascending: false })
     .limit(1)
   return NextResponse.json(data?.[0] ?? null)
 }
@@ -237,9 +237,14 @@ export async function POST(req: NextRequest) {
 
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
-            id: crypto.randomUUID(), automation: 'nedarim-credit-hok-sync',
-            ran_at: new Date().toISOString(),
-            details: { updated, created, parentCreated, skipped, total: filteredRecords.length, rows: logRows },
+            id:            crypto.randomUUID(),
+            automation_id: 'nedarim-credit-hok-sync',
+            run_at:        new Date().toISOString(),
+            dry_run:       false,
+            actions_count: updated + created,
+            status:        'success',
+            summary:       `סינק הו"ק אשראי: עודכנו ${updated} · נוצרו ${created} · הורים חדשים ${parentCreated} · דולגו ${skipped}`,
+            details:       { updated, created, parentCreated, skipped, total: filteredRecords.length, rows: logRows },
           })
         }
 

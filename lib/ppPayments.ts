@@ -1,0 +1,130 @@
+import { supabaseAdmin } from '@/lib/supabase'
+import { sortByMonth } from '@/lib/months'
+
+/**
+ * לוגיקה אחודה להחלת תשלום על תשלומים מתוכננים של הורה.
+ *
+ * עד עכשיו היו במערכת שתי התנהגויות שונות: הקישור הידני (link-pp) עשה cascade
+ * מלא (גלישה ל-PP הבא, עודף → יתרת זכות, עדכון tuition_balance), בעוד
+ * שהאוטומציות (וובהוק נדרים, משיכות הו"ק, משיכת Airtable) הורידו יתרה מ-PP
+ * אחד בלבד וזרקו עודף בשקט — מה שגרם לסחיפה בין הדשבורדים לאמת של ה-PP.
+ * הקובץ הזה הוא המסלול היחיד: כל יצירת תשלום אוטומטית עוברת דרכו.
+ *
+ * בחירת יעד: PP של החודש המבוקש קודם, אחרת הפתוח הוותיק ביותר (כרונולוגית,
+ * לא אלפביתית). רק pp_type='tuition' — PP שמקורם ב-Airtable (pp_type ריק)
+ * מנוהלים ע"י הסנכרון שדורס להם balance, ולכן אסור לגעת בהם.
+ */
+
+interface OpenPP { id: string; balance: number; month_year: string | null }
+
+export interface PaymentTarget {
+  /** ה-PP שהתשלום יקושר אליו (planned_payment_id), או null אם אין פתוח */
+  ppId: string | null
+  ppMonthYear: string | null
+  ppBalance: number | null
+}
+
+export interface ApplyResult extends PaymentTarget {
+  /** כמה מהסכום נספג ב-PPs */
+  applied: number
+  /** עודף שנזקף ליתרת זכות של ההורה */
+  leftover: number
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+async function fetchOpenTuitionPPs(parentId: string): Promise<OpenPP[]> {
+  const { data } = await supabaseAdmin
+    .from('planned_payments')
+    .select('id, balance, month_year')
+    .contains('parent_ids', [parentId])
+    .eq('pp_type', 'tuition')
+    .gt('balance', 0)
+  return (data ?? []).map(p => ({
+    id: p.id as string,
+    balance: Number(p.balance),
+    month_year: (p.month_year as string) ?? null,
+  }))
+}
+
+/** מסדר: PP של החודש המבוקש ראשון, אחריו השאר מהוותיק לחדש. */
+function orderTargets(pps: OpenPP[], preferredMonthYear?: string | null): OpenPP[] {
+  const chrono = sortByMonth(pps, true)
+  if (!preferredMonthYear) return chrono
+  const idx = chrono.findIndex(p => p.month_year === preferredMonthYear)
+  if (idx <= 0) return chrono
+  return [chrono[idx], ...chrono.slice(0, idx), ...chrono.slice(idx + 1)]
+}
+
+/**
+ * תצוגה מקדימה בלבד — מוצא לאיזה PP תשלום יקושר, בלי לכתוב כלום.
+ * חייב להשתמש באותה לוגיקת בחירה כמו applyPaymentToParentPPs, אחרת
+ * ה-dry-run מציג יעד שונה ממה שקורה בפועל.
+ */
+export async function findPaymentTarget(
+  parentId: string,
+  preferredMonthYear?: string | null,
+): Promise<PaymentTarget> {
+  const targets = orderTargets(await fetchOpenTuitionPPs(parentId), preferredMonthYear)
+  const first = targets[0] ?? null
+  return {
+    ppId: first?.id ?? null,
+    ppMonthYear: first?.month_year ?? null,
+    ppBalance: first?.balance ?? null,
+  }
+}
+
+/**
+ * מחיל תשלום על ה-PPs הפתוחים של ההורה עם cascade מלא:
+ * מוריד מה-PP היעד, גולש לבאים בתור, עודף → parents.credit_balance,
+ * ולבסוף מחשב מחדש את parents.tuition_balance מסכום היתרות בפועל.
+ */
+export async function applyPaymentToParentPPs(opts: {
+  parentId: string
+  amount: number
+  preferredMonthYear?: string | null
+}): Promise<ApplyResult> {
+  const amount = Math.abs(Number(opts.amount)) || 0
+  const targets = orderTargets(await fetchOpenTuitionPPs(opts.parentId), opts.preferredMonthYear)
+  const first = targets[0] ?? null
+
+  let remaining = amount
+  for (const pp of targets) {
+    if (remaining <= 0) break
+    const apply = Math.min(remaining, pp.balance)
+    const newBal = round2(pp.balance - apply)
+    remaining = round2(remaining - apply)
+    await supabaseAdmin.from('planned_payments').update({ balance: newBal }).eq('id', pp.id)
+  }
+
+  if (remaining > 0) {
+    const { data: parent } = await supabaseAdmin
+      .from('parents').select('credit_balance').eq('id', opts.parentId).single()
+    const newCredit = round2(Number(parent?.credit_balance ?? 0) + remaining)
+    await supabaseAdmin.from('parents').update({ credit_balance: newCredit }).eq('id', opts.parentId)
+  }
+
+  await recalcParentTuitionBalance(opts.parentId)
+
+  return {
+    ppId: first?.id ?? null,
+    ppMonthYear: first?.month_year ?? null,
+    ppBalance: first?.balance ?? null,
+    applied: round2(amount - remaining),
+    leftover: remaining,
+  }
+}
+
+/** parents.tuition_balance = סכום יתרות כל ה-PP שאינם משכורת (אמת מה-PPs). */
+export async function recalcParentTuitionBalance(parentId: string): Promise<void> {
+  const { data: allPPs } = await supabaseAdmin
+    .from('planned_payments')
+    .select('balance, pp_type')
+    .contains('parent_ids', [parentId])
+  const tuitionBalance = (allPPs ?? [])
+    .filter(p => p.pp_type !== 'salary')
+    .reduce((s, p) => s + Math.max(0, Number(p.balance ?? 0)), 0)
+  await supabaseAdmin.from('parents')
+    .update({ tuition_balance: round2(tuitionBalance) })
+    .eq('id', parentId)
+}
