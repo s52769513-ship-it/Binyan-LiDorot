@@ -16,8 +16,14 @@ interface PreviewRow {
   monthYear:        string
   paymentMethod:    string
   category:         string
+  ppType:           'tuition' | 'donation'
   notes:            string
   status:           'new' | 'link' | 'already-linked'
+}
+
+const PP_TYPE_LABEL: Record<PreviewRow['ppType'], string> = {
+  tuition:  'שכ"ל',
+  donation: 'מגבית',
 }
 
 interface DryRunResult {
@@ -264,13 +270,14 @@ export default function AirtableTransactionsPullTab() {
                   <th className="px-3 py-2 text-left">סכום</th>
                   <th className="px-3 py-2">אמצעי</th>
                   <th className="px-3 py-2">קטגוריה</th>
+                  <th className="px-3 py-2">חוב יעד</th>
                   <th className="px-3 py-2">סטטוס</th>
                   <th className="px-3 py-2">הערות</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filteredPreview.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">אין תוצאות</td></tr>
+                  <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">אין תוצאות</td></tr>
                 )}
                 {filteredPreview.map((r, i) => {
                   const manual   = r.airtableParentId ? manualMappings[r.airtableParentId] : undefined
@@ -295,6 +302,13 @@ export default function AirtableTransactionsPullTab() {
                       <td className="px-3 py-1.5 text-left tabular-nums font-medium">₪{r.amount.toLocaleString('he-IL')}</td>
                       <td className="px-3 py-1.5 text-gray-500">{r.paymentMethod || '—'}</td>
                       <td className="px-3 py-1.5 text-gray-500">{r.category || '—'}</td>
+                      <td className="px-3 py-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                          r.ppType === 'donation' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                        }`}>
+                          {PP_TYPE_LABEL[r.ppType]}
+                        </span>
+                      </td>
                       <td className="px-3 py-1.5 text-gray-500">{STATUS_LABEL[r.status]}</td>
                       <td className="px-3 py-1.5 text-gray-400 truncate max-w-[10rem]" title={r.notes}>{r.notes || '—'}</td>
                     </tr>

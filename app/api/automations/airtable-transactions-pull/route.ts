@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
         monthYear:        c.monthYear,
         paymentMethod:    c.paymentMethod,
         category:         c.projectNames.join(', '),
+        ppType:           ppTypeForProject(c.projectNames.join(' ')),
         notes:            c.notes,
         status:           c.status,
       }))
