@@ -16,12 +16,12 @@ interface PreviewRow {
   monthYear:        string
   paymentMethod:    string
   category:         string
-  ppType:           'tuition' | 'donation'
+  ppType:           'tuition' | 'donation' | null
   notes:            string
   status:           'new' | 'link' | 'already-linked'
 }
 
-const PP_TYPE_LABEL: Record<PreviewRow['ppType'], string> = {
+const PP_TYPE_LABEL: Record<'tuition' | 'donation', string> = {
   tuition:  'שכ"ל',
   donation: 'מגבית',
 }
@@ -35,6 +35,7 @@ interface DryRunResult {
   alreadyLinked: number
   toProcess:   number
   matched:     number
+  noPPCount:   number
   unmatched:   string[]
   preview:     PreviewRow[]
   totalAmount: number
@@ -151,7 +152,7 @@ export default function AirtableTransactionsPullTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">משיכת תנועות כספיות מ-Airtable</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            מושך את כל התנועות מטבלת התנועות ב-Airtable שאינן הו&quot;ק ואינן אשראי (אלה מטופלים באוטומציות ייעודיות). תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. כל תנועה מקושרת לתשלום מתוכנן פתוח של ההורה המתאים.
+            מושך את כל התנועות מטבלת התנועות ב-Airtable שאינן הו&quot;ק ואינן אשראי (אלה מטופלים באוטומציות ייעודיות). תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. <b>רק</b> תנועות בקטגוריית &quot;בנין לדורות&quot; מקושרות ל-PP שכ&quot;ל, ורק תנועות &quot;מגבית&quot; מקושרות ל-PP מגבית — כל קטגוריה אחרת (משכורות, הוצאות וכו&apos;) נכנסת בלי קישור לשום תשלום מתוכנן.
           </p>
           {lastRun.lastRun && (
             <p className="text-xs text-gray-400 mt-1">
@@ -183,12 +184,13 @@ export default function AirtableTransactionsPullTab() {
           <h3 className="text-sm font-semibold text-gray-700">תצוגה מקדימה</h3>
 
           {/* Stats */}
-          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
             <Stat label="סה״כ ב-Airtable" value={preview.total}          />
             <Stat label="סונן (הו״ק/אשראי)" value={preview.excludedPaymentMethod} color="amber" />
             <Stat label="סונן (בנין לדורות לפני 04/2026)" value={preview.excludedOldBinyan} color="amber" />
             <Stat label="כבר מקושרות" value={preview.alreadyLinked}     color="gray"  />
             <Stat label="לטיפול"      value={preview.toProcess}         color="blue"  />
+            <Stat label="ללא PP (לא שכ״ל/מגבית)" value={preview.noPPCount} color="gray" />
             <Stat label="זוהו הורים"  value={preview.matched}           color="green" />
             <Stat label="לא זוהו"     value={unmatchedByParentId.size}  color={unmatchedByParentId.size > 0 ? 'red' : 'gray'} />
           </div>
@@ -303,11 +305,17 @@ export default function AirtableTransactionsPullTab() {
                       <td className="px-3 py-1.5 text-gray-500">{r.paymentMethod || '—'}</td>
                       <td className="px-3 py-1.5 text-gray-500">{r.category || '—'}</td>
                       <td className="px-3 py-1.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                          r.ppType === 'donation' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
-                        }`}>
-                          {PP_TYPE_LABEL[r.ppType]}
-                        </span>
+                        {r.ppType ? (
+                          <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                            r.ppType === 'donation' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                          }`}>
+                            {PP_TYPE_LABEL[r.ppType]}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-500">
+                            ללא קישור
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-gray-500">{STATUS_LABEL[r.status]}</td>
                       <td className="px-3 py-1.5 text-gray-400 truncate max-w-[10rem]" title={r.notes}>{r.notes || '—'}</td>

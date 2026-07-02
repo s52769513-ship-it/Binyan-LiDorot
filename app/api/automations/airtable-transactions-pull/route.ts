@@ -195,14 +195,18 @@ export async function POST(req: NextRequest) {
       const matched = preview.filter(p => p.matchedParent).length
       const alreadyLinked = candidates.length - toProcess.length
       const newCount = toProcess.filter(c => c.status === 'new').length
-      const linkCount = toProcess.filter(c => c.status === 'link').length
+      // Only rows whose category actually maps to a debt type (שכ"ל/מגבית)
+      // will really be linked — others (משכורות, הוצאות וכו') stay unlinked.
+      const linkCount = toProcess.filter(c => c.status === 'link' && ppTypeForProject(c.projectNames.join(' '))).length
+      const noPPCount = toProcess.filter(c => !ppTypeForProject(c.projectNames.join(' '))).length
       const totalAmount = toProcess.reduce((s, c) => s + c.amount, 0)
 
       const actions = [
         newCount > 0 ? `תיצור ${newCount} תנועות חדשות בטבלת transactions` : null,
         linkCount > 0 ? `תעדכן ${linkCount} תנועות קיימות שטרם קושרו לתשלום מתוכנן` : null,
-        `תקשר כל תנועה לתשלום מתוכנן (PP) פתוח של אותו הורה לפי חודש`,
+        `תנועות בקטגוריית "בנין לדורות" יקושרו ל-PP שכ"ל, ותנועות "מגבית" ל-PP מגבית — לפי חודש`,
         `תעדכן יתרת ה-PP בהתאם לסכום`,
+        noPPCount > 0 ? `${noPPCount} תנועות בקטגוריות אחרות (משכורות / הוצאות וכו') יירשמו ללא קישור ל-PP` : null,
         `תרשום לוג ב-automation_logs`,
       ].filter(Boolean) as string[]
 
@@ -215,6 +219,7 @@ export async function POST(req: NextRequest) {
         alreadyLinked,
         toProcess: toProcess.length,
         matched,
+        noPPCount,
         unmatched: [...new Set(preview.filter(p => !p.matchedParent).map(p => p.donorName))],
         preview,
         totalAmount,
@@ -306,8 +311,8 @@ export async function POST(req: NextRequest) {
           synced_at:            new Date().toISOString(),
         })
         created++
-      } else if (c.status === 'link') {
-        linkUpdates.push({ id: c.airtableId, planned_payment_id: target?.id ?? '' })
+      } else if (c.status === 'link' && target) {
+        linkUpdates.push({ id: c.airtableId, planned_payment_id: target.id })
         linked++
       }
       totalAmount += c.amount

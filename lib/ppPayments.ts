@@ -15,16 +15,22 @@ import { sortByMonth } from '@/lib/months'
  *
  * שני סוגי חוב נפרדים: תשלום שכ"ל יורד רק מ-PP שכ"ל (pp_type='tuition'),
  * ותשלום מגבית רק מ-PP מגבית (pp_type='donation') — לעולם לא מערבבים.
- * הסוג נקבע לפי הפרויקט של התשלום (ppTypeForProject). PP של משכורת
- * (pp_type='salary') לעולם לא יעד לתשלום, ו-PP שמקורם ב-Airtable
- * (pp_type ריק) מנוהלים ע"י הסנכרון שדורס להם balance — אסור לגעת בהם.
+ * הסוג נקבע לפי הפרויקט של התשלום (ppTypeForProject) — רק פרויקט "בנין
+ * לדורות" הולך לשכ"ל, רק "מגבית" הולך למגבית; כל קטגוריה אחרת (משכורות,
+ * הוצאות חודשי וכו') מחזירה null ולא מקושרת לשום PP — היא לא חוב שניתן
+ * לקזז. PP של משכורת (pp_type='salary') לעולם לא יעד לתשלום, ו-PP שמקורם
+ * ב-Airtable (pp_type ריק) מנוהלים ע"י הסנכרון שדורס להם balance — אסור
+ * לגעת בהם.
  */
 
 export type PayablePPType = 'tuition' | 'donation'
 
-/** קובע לאיזה סוג חוב תשלום שייך, לפי שם הפרויקט/קטגוריה שלו. */
-export function ppTypeForProject(projectName: string | null | undefined): PayablePPType {
-  return (projectName ?? '').includes('מגבית') ? 'donation' : 'tuition'
+/** קובע לאיזה סוג חוב תשלום שייך, לפי שם הפרויקט/קטגוריה שלו — null אם הקטגוריה אינה חוב שכ"ל/מגבית. */
+export function ppTypeForProject(projectName: string | null | undefined): PayablePPType | null {
+  const name = projectName ?? ''
+  if (name.includes('מגבית')) return 'donation'
+  if (name.includes('בנין לדורות')) return 'tuition'
+  return null
 }
 
 interface OpenPP { id: string; balance: number; month_year: string | null }
@@ -76,8 +82,9 @@ function orderTargets(pps: OpenPP[], preferredMonthYear?: string | null): OpenPP
 export async function findPaymentTarget(
   parentId: string,
   preferredMonthYear?: string | null,
-  ppType: PayablePPType = 'tuition',
+  ppType: PayablePPType | null = 'tuition',
 ): Promise<PaymentTarget> {
+  if (!ppType) return { ppId: null, ppMonthYear: null, ppBalance: null }
   const targets = orderTargets(await fetchOpenPPs(parentId, ppType), preferredMonthYear)
   const first = targets[0] ?? null
   return {
@@ -91,16 +98,22 @@ export async function findPaymentTarget(
  * מחיל תשלום על ה-PPs הפתוחים של ההורה עם cascade מלא:
  * מוריד מה-PP היעד, גולש לבאים בתור, עודף → parents.credit_balance,
  * ולבסוף מחשב מחדש את parents.tuition_balance מסכום היתרות בפועל.
+ *
+ * ppType=null (קטגוריה שאינה שכ"ל/מגבית, כמו משכורות/הוצאות) — לא מקושר
+ * לשום PP ולא נזקף ליתרת זכות; התנועה רק נרשמת בלי קישור.
  */
 export async function applyPaymentToParentPPs(opts: {
   parentId: string
   amount: number
   preferredMonthYear?: string | null
   /** סוג החוב שהתשלום יורד ממנו — נקבע לפי הפרויקט של התשלום */
-  ppType?: PayablePPType
+  ppType?: PayablePPType | null
 }): Promise<ApplyResult> {
   const amount = Math.abs(Number(opts.amount)) || 0
-  const targets = orderTargets(await fetchOpenPPs(opts.parentId, opts.ppType ?? 'tuition'), opts.preferredMonthYear)
+  const ppType = opts.ppType === undefined ? 'tuition' : opts.ppType
+  if (!ppType) return { ppId: null, ppMonthYear: null, ppBalance: null, applied: 0, leftover: amount }
+
+  const targets = orderTargets(await fetchOpenPPs(opts.parentId, ppType), opts.preferredMonthYear)
   const first = targets[0] ?? null
 
   let remaining = amount
