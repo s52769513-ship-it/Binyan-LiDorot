@@ -25,7 +25,7 @@ interface DryRunResult {
   total:       number
   excluded:    number
   excludedPaymentMethod: number
-  excludedDate: number
+  excludedOldBinyan: number
   alreadyLinked: number
   toProcess:   number
   matched:     number
@@ -41,7 +41,7 @@ interface ImportResult {
   skipped?:     number
   excluded?:    number
   excludedPaymentMethod?: number
-  excludedDate?: number
+  excludedOldBinyan?: number
   totalAmount?: number
   errors?:      string[]
   error?:       string
@@ -145,7 +145,7 @@ export default function AirtableTransactionsPullTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">משיכת תנועות כספיות מ-Airtable</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            מושך תנועות מטבלת התנועות ב-Airtable מתאריך 04/2026 ואילך — לא הו&quot;ק ולא אשראי (אלה מטופלים באוטומציות ייעודיות), כולל תנועות בקטגוריית &quot;בנין לדורות&quot; — ומקשר אותן לתשלום מתוכנן פתוח של ההורה המתאים.
+            מושך את כל התנועות מטבלת התנועות ב-Airtable שאינן הו&quot;ק ואינן אשראי (אלה מטופלים באוטומציות ייעודיות). תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. כל תנועה מקושרת לתשלום מתוכנן פתוח של ההורה המתאים.
           </p>
           {lastRun.lastRun && (
             <p className="text-xs text-gray-400 mt-1">
@@ -180,7 +180,7 @@ export default function AirtableTransactionsPullTab() {
           <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
             <Stat label="סה״כ ב-Airtable" value={preview.total}          />
             <Stat label="סונן (הו״ק/אשראי)" value={preview.excludedPaymentMethod} color="amber" />
-            <Stat label="סונן (לפני 04/2026)" value={preview.excludedDate}        color="amber" />
+            <Stat label="סונן (בנין לדורות לפני 04/2026)" value={preview.excludedOldBinyan} color="amber" />
             <Stat label="כבר מקושרות" value={preview.alreadyLinked}     color="gray"  />
             <Stat label="לטיפול"      value={preview.toProcess}         color="blue"  />
             <Stat label="זוהו הורים"  value={preview.matched}           color="green" />

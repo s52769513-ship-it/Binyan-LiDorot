@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchAirtableRecords, TABLES, P, T, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { normName } from '@/lib/nameUtils'
 import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
 const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
-// Same 04/2026+ cutover used across the app (dept-debt, summary, parents
-// routes) — earlier transactions are handled by the old-debts import instead.
+// Cutoff applied ONLY to "בנין לדורות" transactions (same 04/2026 cutover used
+// across the app) — earlier בנין לדורות rows come from the old-debts import.
 const CUTOFF_DATE = '2026-04-01'
 
 // Airtable single-select comes back as {id, name, color} or a plain string
@@ -36,8 +37,10 @@ interface Candidate {
 
 async function loadCandidates() {
   // Projects live only in Airtable (no Supabase table) — resolved up front so
-  // the category can be shown in the preview (all categories are included,
-  // including "בנין לדורות" — only payment method and date are filtered).
+  // the category can be checked in the filter and shown in the preview.
+  // Filter rules: הו"ק/אשראי are never pulled; every other category is pulled
+  // with NO date limit; "בנין לדורות" alone is pulled only from 04/2026
+  // (inclusive) — earlier periods are handled by the old-debts import.
   const rawProjects = await fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] })
   const projectNameMap = new Map(rawProjects.map(r => [r.id, String(r.fields[PROJ.NAME] || '')]))
 
@@ -47,14 +50,20 @@ async function loadCandidates() {
 
   const total = rawTx.length
   let excludedPaymentMethod = 0
-  let excludedDate = 0
+  let excludedOldBinyan = 0
 
   const filtered = rawTx.filter(r => {
     const method = selectName(r.fields[T.PAYMENT_METHOD])
     if (EXCLUDED_PAYMENT_METHODS.some(m => method.includes(m))) { excludedPaymentMethod++; return false }
 
-    const date = String(r.fields[T.DATE] || '').slice(0, 10) // YYYY-MM-DD prefix
-    if (!date || date < CUTOFF_DATE) { excludedDate++; return false }
+    // The date cutoff applies ONLY to בנין לדורות — other categories have no date limit
+    const projectIds = (r.fields[T.PROJECT] as string[]) || []
+    const isBinyan = projectIds.some(pid =>
+      normName(projectNameMap.get(pid) ?? '').includes('בנין לדורות'))
+    if (isBinyan) {
+      const date = String(r.fields[T.DATE] || '').slice(0, 10) // YYYY-MM-DD prefix
+      if (!date || date < CUTOFF_DATE) { excludedOldBinyan++; return false }
+    }
 
     return true
   })
@@ -96,7 +105,7 @@ async function loadCandidates() {
     }
   })
 
-  return { candidates, total, excludedPaymentMethod, excludedDate }
+  return { candidates, total, excludedPaymentMethod, excludedOldBinyan }
 }
 
 // ── GET — last run info ──────────────────────────────────────────────────────
@@ -127,7 +136,7 @@ export async function POST(req: NextRequest) {
       parentMappings = {},
     }: { dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
 
-    const { candidates, total, excludedPaymentMethod, excludedDate } = await loadCandidates()
+    const { candidates, total, excludedPaymentMethod, excludedOldBinyan } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
     // Load Supabase parents for direct-ID matching + name resolution
@@ -200,8 +209,8 @@ export async function POST(req: NextRequest) {
         dryRun: true,
         total,
         excludedPaymentMethod,
-        excludedDate,
-        excluded: excludedPaymentMethod + excludedDate,
+        excludedOldBinyan,
+        excluded: excludedPaymentMethod + excludedOldBinyan,
         alreadyLinked,
         toProcess: toProcess.length,
         matched,
@@ -349,8 +358,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       created, linked, skipped, errors, totalAmount,
-      excluded: excludedPaymentMethod + excludedDate,
-      excludedPaymentMethod, excludedDate,
+      excluded: excludedPaymentMethod + excludedOldBinyan,
+      excludedPaymentMethod, excludedOldBinyan,
     })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
