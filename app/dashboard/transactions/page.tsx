@@ -34,7 +34,7 @@ function projectBadge(name: string) { return PROJECT_COLORS[name] ?? defaultBadg
 interface TxRow {
   id: string; amount: number; type: string; date: string
   monthYear: string; notes: string; parentName: string; parentIds: string[]
-  projectNames: string[]
+  projectNames: string[]; plannedPaymentId?: string | null
 }
 
 export default function TransactionsPage() {

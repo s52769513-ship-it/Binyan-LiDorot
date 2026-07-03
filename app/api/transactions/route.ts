@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, month_year, notes, parent_ids, project_names', { count: 'exact' })
+      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -157,6 +157,7 @@ export async function GET(req: NextRequest) {
       parentIds:    (t.parent_ids as string[]) ?? [],
       parentName:   ((t.parent_ids as string[])?.[0]) ? (parentMap[(t.parent_ids as string[])[0]] ?? '') : '',
       projectNames: (t.project_names as string[]) ?? [],
+      plannedPaymentId: t.planned_payment_id ?? null,
     }))
 
     return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects })
