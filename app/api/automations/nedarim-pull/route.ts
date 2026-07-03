@@ -225,9 +225,11 @@ export async function POST(req: NextRequest) {
           if (dryRun) {
             if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear, targetPPType)).ppId
           } else {
+            const newTxId = crypto.randomUUID()
             if (ppParentId) {
               linkedPPId = (await applyPaymentToParentPPs({
                 parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
+                source: { txId: newTxId, label: monthYear, date },
               })).ppId
             }
 
@@ -237,7 +239,7 @@ export async function POST(req: NextRequest) {
             ]))
 
             await supabaseAdmin.from('transactions').insert({
-              id:                 crypto.randomUUID(),
+              id:                 newTxId,
               amount,
               type:               'הו"ק',
               date,

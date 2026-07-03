@@ -37,14 +37,14 @@ export async function POST(req: NextRequest) {
           continue
         }
 
+        const id = crypto.randomUUID()
         let plannedPaymentId: string | null = null
         if (shouldLink) {
           plannedPaymentId = (await applyPaymentToParentPPs({
             parentId, amount, preferredMonthYear: monthYear,
+            source: { txId: id, label: monthYear, date },
           })).ppId
         }
-
-        const id = crypto.randomUUID()
         const { error } = await supabaseAdmin.from('transactions').insert({
           id,
           amount,

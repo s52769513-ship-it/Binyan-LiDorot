@@ -1,13 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { insertSpilloverRows } from '@/lib/ppPayments'
 
 const PAGE_SIZE = 50
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
-    const plannedPaymentId = searchParams.get('plannedPaymentId') ?? ''
-    const standingOrderId  = searchParams.get('standingOrderId')  ?? ''
+    const plannedPaymentId    = searchParams.get('plannedPaymentId') ?? ''
+    const standingOrderId     = searchParams.get('standingOrderId')  ?? ''
+    const sourceTransactionId = searchParams.get('sourceTransactionId') ?? ''
+
+    // Spillover rows created from a specific source transaction — used by the
+    // transaction detail view to show exactly what the payment covered
+    if (sourceTransactionId) {
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('id, amount, date, month_year, notes, planned_payment_id')
+        .eq('source_transaction_id', sourceTransactionId)
+        .order('date', { ascending: true })
+      if (error) return NextResponse.json([]) // column may not be migrated yet
+      const ppIds = [...new Set((data ?? []).map(t => t.planned_payment_id).filter(Boolean))] as string[]
+      let ppMap: Record<string, string> = {}
+      if (ppIds.length > 0) {
+        const { data: ppData } = await supabaseAdmin
+          .from('planned_payments').select('id, name').in('id', ppIds)
+        ppMap = Object.fromEntries((ppData ?? []).map(p => [p.id as string, (p.name as string) ?? '']))
+      }
+      return NextResponse.json((data ?? []).map(t => ({
+        id:        t.id as string,
+        amount:    Number(t.amount) || 0,
+        date:      String(t.date || ''),
+        monthYear: String(t.month_year || ''),
+        notes:     String(t.notes || ''),
+        ppId:      (t.planned_payment_id as string) ?? null,
+        ppName:    t.planned_payment_id ? (ppMap[t.planned_payment_id as string] ?? '') : '',
+      })))
+    }
 
     // Simple path: fetch transactions linked to a specific planned payment
     if (plannedPaymentId) {
@@ -220,7 +249,7 @@ export async function POST(req: NextRequest) {
             // Find ONE target PP: most overdue first, then closest to today
             const { data: openPPs } = await supabaseAdmin
               .from('planned_payments')
-              .select('id, balance, date')
+              .select('id, balance, date, month_year, pp_type')
               .contains('parent_ids', [pid])
               .gt('balance', 0)
               .neq('id', plannedPaymentId)
@@ -238,19 +267,18 @@ export async function POST(req: NextRequest) {
                 .update({ balance: targetPP.balance - applied })
                 .eq('id', targetPP.id)
 
-              // Create a linked transaction so the target PP shows the payment
-              await supabaseAdmin.from('transactions').insert({
-                id:                 crypto.randomUUID(),
-                amount:             applied,
-                planned_payment_id: targetPP.id,
-                parent_ids:         Array.isArray(parentIds) ? parentIds : [],
-                project_names:      Array.isArray(projectNames) ? projectNames : [],
-                date:               date || null,
-                month_year:         monthYear || '',
-                notes:              `זיכוי מעודף תשלום מ-${monthYear || ''}`,
-                type:               type || '',
-                synced_at:          '2099-12-31T23:59:59.999Z',
-              })
+              // Visible spillover row on the target PP, pointing back at the
+              // source transaction so its detail view can show the breakdown
+              await insertSpilloverRows([{
+                parentId:    pid,
+                ppId:        targetPP.id,
+                ppMonthYear: targetPP.month_year ?? '',
+                ppType:      targetPP.pp_type ?? null,
+                amount:      applied,
+                sourceTxId:  id,
+                sourceLabel: monthYear || date || null,
+                date:        date || null,
+              }])
               remaining -= applied
             }
 

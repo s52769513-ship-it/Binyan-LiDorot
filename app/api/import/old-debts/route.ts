@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { nameSimilarity } from '@/lib/nameUtils'
 import { sortByMonth } from '@/lib/months'
-import { recalcParentTuitionBalance } from '@/lib/ppPayments'
+import { insertSpilloverRows, recalcParentTuitionBalance, type SpilloverRowInput } from '@/lib/ppPayments'
 
 export const maxDuration = 60 // extend Vercel function timeout to 60s
 
@@ -195,6 +195,7 @@ export async function POST(req: NextRequest) {
     const paymentRecords: object[] = []
     const balanceUpdates = new Map<string, number>() // ppId → new balance
     const creditUpdates = new Map<string, number>()  // parentId → surplus → credit_balance
+    const spilloverRows: SpilloverRowInput[] = []    // visible rows on PPs that received overflow
     const round2 = (n: number) => Math.round(n * 100) / 100
     let skippedPayments = 0
 
@@ -216,19 +217,22 @@ export async function POST(req: NextRequest) {
       const monthYear = monthYearOf(row)
 
       // Same cascade as the rest of the system (ppPayments): month-matched PP
-      // first, then oldest open; overflow rolls to the next debts and any
-      // leftover becomes parent credit — never silently swallowed.
+      // first, then oldest open; overflow rolls to the next debts (recorded as
+      // visible spillover rows) and any leftover becomes parent credit —
+      // never silently swallowed.
       const parentPPs = (ppByParent.get(parent.id) ?? []).filter(p => p.balance > 0)
       const monthMatch = parentPPs.find(p => p.month_year === monthYear)
       const ordered = monthMatch ? [monthMatch, ...parentPPs.filter(p => p !== monthMatch)] : parentPPs
       const target = ordered[0] ?? null
 
+      const txId = crypto.randomUUID()
+      const txDate = row.date || (monthYear ? firstOfMonth(monthYear) : null) || null
       paymentRecords.push({
-        id: crypto.randomUUID(),
+        id: txId,
         parent_ids: [parent.id],
         amount: Math.abs(amount),
         type: row.paymentMethod?.trim() || 'תשלום',
-        date: row.date || (monthYear ? firstOfMonth(monthYear) : null) || null,
+        date: txDate,
         month_year: monthYear,
         notes: row.notes || '',
         project_names: ['בנין לדורות'],
@@ -244,6 +248,18 @@ export async function POST(req: NextRequest) {
         pp.balance = round2(pp.balance - apply) // in-memory so the next payment sees updated balances
         remaining = round2(remaining - apply)
         balanceUpdates.set(pp.id, pp.balance)
+        if (apply > 0 && pp !== target) {
+          spilloverRows.push({
+            parentId: parent.id,
+            ppId: pp.id,
+            ppMonthYear: pp.month_year,
+            ppType: 'tuition',
+            amount: apply,
+            sourceTxId: txId,
+            sourceLabel: monthYear || txDate || null,
+            date: txDate,
+          })
+        }
       }
       if (remaining > 0) {
         creditUpdates.set(parent.id, round2((creditUpdates.get(parent.id) ?? 0) + remaining))
@@ -255,6 +271,7 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseAdmin.from('transactions').insert(paymentRecords.slice(i, i + CHUNK))
       if (error) throw error
     }
+    await insertSpilloverRows(spilloverRows)
     const createdPayments = paymentRecords.length
 
     // ── Phase 4: Batch update PP balances in groups of 50 ──

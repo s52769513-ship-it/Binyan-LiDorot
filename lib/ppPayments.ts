@@ -25,6 +25,62 @@ import { sortByMonth } from '@/lib/months'
 
 export type PayablePPType = 'tuition' | 'donation'
 
+/**
+ * שורות "גלישה" — כשתשלום גדול מיתרת ה-PP המקושר, העודף יורד מ-PPs אחרים.
+ * כדי שזה יהיה גלוי בכרטיס של ה-PP שקיבל את העודף, נרשמת שם שורת זיכוי
+ * אמיתית עם הפניה לתנועת המקור (source_transaction_id).
+ */
+export const SPILLOVER_NOTES_PREFIX = 'זיכוי מעודף תשלום'
+const FAR_FUTURE = '2099-12-31T23:59:59.999Z'
+// 42703 = SQL undefined column (select/filter); PGRST204 = PostgREST schema
+// cache miss on insert/update payload keys — both mean the column is missing
+const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204'])
+
+export interface SpilloverRowInput {
+  parentId: string
+  ppId: string
+  ppMonthYear?: string | null
+  ppType?: string | null
+  amount: number
+  sourceTxId: string
+  /** תיאור מקור לתצוגה — בדרך כלל חודש/תאריך של תנועת המקור */
+  sourceLabel?: string | null
+  date?: string | null
+}
+
+export async function insertSpilloverRows(rows: SpilloverRowInput[]): Promise<void> {
+  if (rows.length === 0) return
+  const today = new Date().toISOString().split('T')[0]
+  const build = (r: SpilloverRowInput, withSource: boolean) => ({
+    id:                 crypto.randomUUID(),
+    amount:             r.amount,
+    type:               'זיכוי',
+    date:               r.date || today,
+    month_year:         r.ppMonthYear ?? '',
+    notes:              r.sourceLabel ? `${SPILLOVER_NOTES_PREFIX} מ-${r.sourceLabel}` : SPILLOVER_NOTES_PREFIX,
+    parent_ids:         [r.parentId],
+    project_ids:        [],
+    // recalc-pp מנתק תנועות על PP שכ"ל שאינן מפרויקט "בנין לדורות" — הפרויקט
+    // כאן חייב להתאים לסוג ה-PP כדי שהשורה תשרוד חישוב מחדש
+    project_names:      [r.ppType === 'donation' ? 'דמי מגבית' : 'בנין לדורות'],
+    planned_payment_id: r.ppId,
+    synced_at:          FAR_FUTURE,
+    ...(withSource ? { source_transaction_id: r.sourceTxId } : {}),
+  })
+  const CHUNK = 500
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK)
+    const { error } = await supabaseAdmin.from('transactions').insert(chunk.map(r => build(r, true)))
+    if (error && MISSING_COLUMN_CODES.has(error.code)) {
+      // source_transaction_id טרם הוסף (SPILLOVER_MIGRATION.sql) — רושמים בלי ההפניה
+      const { error: e2 } = await supabaseAdmin.from('transactions').insert(chunk.map(r => build(r, false)))
+      if (e2) throw e2
+    } else if (error) {
+      throw error
+    }
+  }
+}
+
 /** קובע לאיזה סוג חוב תשלום שייך, לפי שם הפרויקט/קטגוריה שלו — null אם הקטגוריה אינה חוב שכ"ל/מגבית. */
 export function ppTypeForProject(projectName: string | null | undefined): PayablePPType | null {
   const name = projectName ?? ''
@@ -108,6 +164,12 @@ export async function applyPaymentToParentPPs(opts: {
   preferredMonthYear?: string | null
   /** סוג החוב שהתשלום יורד ממנו — נקבע לפי הפרויקט של התשלום */
   ppType?: PayablePPType | null
+  /**
+   * תנועת המקור שהתשלום יירשם בה (ה-id נוצר אצל הקורא לפני ההכנסה).
+   * כשמועבר — כל גלישה ל-PP שאינו הראשון נרשמת כשורת "זיכוי מעודף תשלום"
+   * גלויה על ה-PP שקיבל אותה, במקום הפחתת יתרה שקטה.
+   */
+  source?: { txId: string; label?: string | null; date?: string | null }
 }): Promise<ApplyResult> {
   const amount = Math.abs(Number(opts.amount)) || 0
   const ppType = opts.ppType === undefined ? 'tuition' : opts.ppType
@@ -116,6 +178,7 @@ export async function applyPaymentToParentPPs(opts: {
   const targets = orderTargets(await fetchOpenPPs(opts.parentId, ppType), opts.preferredMonthYear)
   const first = targets[0] ?? null
 
+  const spillovers: SpilloverRowInput[] = []
   let remaining = amount
   for (const pp of targets) {
     if (remaining <= 0) break
@@ -123,7 +186,20 @@ export async function applyPaymentToParentPPs(opts: {
     const newBal = round2(pp.balance - apply)
     remaining = round2(remaining - apply)
     await supabaseAdmin.from('planned_payments').update({ balance: newBal }).eq('id', pp.id)
+    if (opts.source && apply > 0 && pp !== first) {
+      spillovers.push({
+        parentId: opts.parentId,
+        ppId: pp.id,
+        ppMonthYear: pp.month_year,
+        ppType,
+        amount: apply,
+        sourceTxId: opts.source.txId,
+        sourceLabel: opts.source.label ?? opts.preferredMonthYear ?? null,
+        date: opts.source.date ?? null,
+      })
+    }
   }
+  await insertSpilloverRows(spillovers)
 
   if (remaining > 0) {
     const { data: parent } = await supabaseAdmin

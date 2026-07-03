@@ -1185,6 +1185,93 @@ function ScheduleTableRow({ def, enabled }: { def: ScheduleRowDef; enabled: bool
   )
 }
 
+/* ─── RelinkAllCard — ריענון יתרות לכל ההורים ─────────────────────────── */
+function RelinkAllCard() {
+  const [running, setRunning] = useState(false)
+  const [lines, setLines]     = useState<{ ok: boolean; text: string }[]>([])
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null)
+  const [summary, setSummary]   = useState<string | null>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+  }, [lines])
+
+  const run = async () => {
+    if (!confirm('לרענן יתרות ותנועות מקושרות לכל ההורים? הפעולה מריצה מחדש את כל התשלומים ויכולה לקחת כמה דקות.')) return
+    setRunning(true); setLines([]); setSummary(null); setProgress(null)
+    try {
+      const resp = await fetch('/api/parents/relink-all', { method: 'POST' })
+      if (!resp.body) throw new Error('no stream')
+      const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = ''
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break
+        buf += dec.decode(value, { stream: true })
+        const chunkLines = buf.split('\n'); buf = chunkLines.pop() ?? ''
+        for (const line of chunkLines) {
+          if (!line.trim()) continue
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'log') setLines(p => [...p, { ok: true, text: ev.message ?? '' }])
+            else if (ev.type === 'progress') {
+              setProgress({ current: ev.current, total: ev.total })
+              if (ev.skipped) setLines(p => [...p, { ok: false, text: `✗ ${ev.parentName} — ${ev.reason ?? 'שגיאה'}` }])
+              else {
+                const extras = [
+                  ev.spillover > 0 ? `גלישות ₪${fmtN(ev.spillover)}` : null,
+                  ev.credit > 0 ? `זיכוי ₪${fmtN(ev.credit)}` : null,
+                ].filter(Boolean).join(' · ')
+                setLines(p => [...p, { ok: true, text: `✓ ${ev.parentName}${extras ? ` — ${extras}` : ''}` }])
+              }
+            } else if (ev.type === 'complete') {
+              setSummary(`✅ הושלם: ${ev.applied} הורים רועננו${ev.skipped ? ` · ${ev.skipped} נכשלו` : ''} · גלישות ₪${fmtN(ev.totalSpill ?? 0)} · זיכויים ₪${fmtN(ev.totalCredit ?? 0)}`)
+            } else if (ev.type === 'error') {
+              setSummary(`❌ ${ev.message ?? 'שגיאה'}`)
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setSummary(`❌ ${String(err)}`)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 flex items-center justify-between gap-4 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <div>
+          <h3 className="font-bold text-gray-800">🔄 ריענון יתרות לכל ההורים</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            מריץ מחדש את כל התנועות המקושרות של כל הורה: עודף שגולש מתשלום אחד לאחר נרשם
+            כשורת זיכוי גלויה על התשלום שקיבל אותו, והשאר עובר ליתרת זכות. זהה ללחיצה על
+            ריענון בכרטיס הורה — אבל לכולם בבת אחת.
+          </p>
+        </div>
+        <button onClick={run} disabled={running}
+          className="shrink-0 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50 transition-colors">
+          {running
+            ? progress ? `מרענן... ${progress.current}/${progress.total}` : 'מרענן...'
+            : 'רענן את כולם'}
+        </button>
+      </div>
+      {(lines.length > 0 || summary) && (
+        <div className="px-6 py-3 border-t border-gray-100">
+          {summary && <p className="text-sm font-semibold text-gray-700 mb-2">{summary}</p>}
+          {lines.length > 0 && (
+            <div ref={logRef} className="max-h-40 overflow-y-auto space-y-0.5 text-xs font-mono" dir="rtl">
+              {lines.map((l, i) => (
+                <div key={i} className={l.ok ? 'text-gray-500' : 'text-red-500'}>{l.text}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ─── AutomationsTab (exported) ───────────────────────────────────────── */
 export default function AutomationsTab() {
   const [selectedId, setSelectedId] = useState(DEFS[0].id)
@@ -1261,6 +1348,9 @@ export default function AutomationsTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Relink all parents — one-click balance reconciliation */}
+      <RelinkAllCard />
 
       {/* Automation selector pills */}
       <div className="flex gap-2 flex-wrap">

@@ -142,6 +142,7 @@ export async function POST(req: NextRequest) {
               // logic; project דמי מגבית → donation PP, otherwise tuition PP)
               const ppParentId = billingParentId ?? payerParentId
               const targetPPType = ppTypeForProject(projectName)
+              const newTxId = crypto.randomUUID()
               let linkedPPId: string | null = null
 
               if (dryRun) {
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
               } else if (ppParentId) {
                 linkedPPId = (await applyPaymentToParentPPs({
                   parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
+                  source: { txId: newTxId, label: monthYear, date: dateStr },
                 })).ppId
               }
 
@@ -164,7 +166,7 @@ export async function POST(req: NextRequest) {
                 ]))
 
                 await supabaseAdmin.from('transactions').insert({
-                  id:                 crypto.randomUUID(),
+                  id:                 newTxId,
                   amount,
                   type:               'הו"ק',
                   date:               dateStr,

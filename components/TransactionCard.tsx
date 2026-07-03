@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { attributeTxsToPP } from '@/lib/ppAttribution'
 
 export interface Transaction {
   id: string
@@ -338,33 +339,35 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   const [draft, setDraft]       = useState<Transaction>(tx)
   const [saving, setSaving]     = useState(false)
   const [ppInfo, setPpInfo]     = useState<{ name: string; amount: number; balance: number; date: string; monthYear: string } | null>(null)
-  const [ppTxTotal, setPpTxTotal] = useState<number | null>(null)
+  const [ppTxList, setPpTxList] = useState<{ id: string; amount: number; date: string; isCredit?: boolean }[] | null>(null)
+  const [spillovers, setSpillovers] = useState<{ id: string; amount: number; ppName: string; monthYear: string }[]>([])
   const [ppLoading, setPpLoading] = useState(false)
   const [ppError, setPpError]   = useState(false)
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
 
-  // Load PP info by direct ID lookup + compute paid amount from linked transactions
+  // Load PP info by direct ID lookup + all its linked transactions (for the
+  // paid amount and attribution) + spillover rows this transaction generated
+  // (עודף שגלש ל-PPs אחרים / זיכוי)
   useEffect(() => {
-    if (!tx.plannedPaymentId) { setPpInfo(null); setPpTxTotal(null); return }
+    if (!tx.plannedPaymentId) { setPpInfo(null); setPpTxList(null); setSpillovers([]); return }
     setPpLoading(true); setPpError(false)
     Promise.all([
       fetch(`/api/planned-payments?id=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
       fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
+      fetch(`/api/transactions?sourceTransactionId=${encodeURIComponent(tx.id)}`).then(r => r.json()),
     ])
-      .then(([ppList, txList]) => {
+      .then(([ppList, txList, spillList]) => {
         const pp = Array.isArray(ppList) ? ppList[0] : null
         if (pp) setPpInfo({ name: pp.name, amount: pp.amount, balance: pp.balance, date: pp.date ?? '', monthYear: pp.monthYear ?? '' })
         else setPpError(true)
-        if (Array.isArray(txList)) {
-          const total = txList.filter((t: { isCredit?: boolean }) => !t.isCredit).reduce((s: number, t: { amount: number }) => s + Math.abs(t.amount), 0)
-          setPpTxTotal(total)
-        }
+        setPpTxList(Array.isArray(txList) ? txList : [])
+        setSpillovers(Array.isArray(spillList) ? spillList : [])
       })
       .catch(() => setPpError(true))
       .finally(() => setPpLoading(false))
-  }, [tx.plannedPaymentId])
+  }, [tx.plannedPaymentId, tx.id])
 
   // When date changes, auto-update monthYear
   const handleDateChange = (newDate: string) => {
@@ -483,10 +486,22 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
               // Linked payments can exceed the PP amount (עודף שגלש לחובות
               // אחרים / זיכוי) — count only up to the PP amount as paid here
               // and surface the overflow explicitly.
-              const totalLinked = ppTxTotal !== null ? ppTxTotal : (ppInfo.amount - ppInfo.balance)
+              const totalLinked = ppTxList !== null
+                ? ppTxList.reduce((s, t) => s + Math.abs(t.amount), 0)
+                : (ppInfo.amount - ppInfo.balance)
               const paid = Math.min(totalLinked, ppInfo.amount)
               const overflow = Math.max(0, totalLinked - ppInfo.amount)
               const remaining = Math.max(0, ppInfo.amount - paid)
+              // How much of THIS transaction counted toward THIS PP
+              const appliedHere = ppTxList !== null
+                ? (attributeTxsToPP(ppTxList, ppInfo.amount).appliedById.get(tx.id) ?? null)
+                : null
+              const txAmount = Math.abs(tx.amount)
+              const spillSum = spillovers.reduce((s, r) => s + Math.abs(r.amount), 0)
+              const creditPart = appliedHere !== null
+                ? Math.max(0, Math.round((txAmount - appliedHere - spillSum) * 100) / 100)
+                : 0
+              const showBreakdown = (appliedHere !== null && appliedHere < txAmount - 0.005) || spillovers.length > 0
               return (
                 <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
                   {/* Header: title + unlink */}
@@ -532,6 +547,31 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
                   )}
                   {overflow > 0 && (
                     <div className="text-xs text-amber-600">{fmtIL(overflow)} מעבר לסכום — גלש לחובות אחרים / זיכוי</div>
+                  )}
+
+                  {/* מה כיסה התשלום הזה — פירוק מדויק כשהתשלום גלש */}
+                  {showBreakdown && (
+                    <div className="border-t border-indigo-100 pt-1.5 space-y-1">
+                      <div className="text-[10px] font-semibold text-indigo-400">מה כיסה התשלום הזה ({fmtIL(txAmount)})</div>
+                      {appliedHere !== null && appliedHere > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600 tabular-nums">{fmtIL(appliedHere)}</span>
+                          <span className="text-gray-500">{ppInfo.name || 'תשלום זה'}</span>
+                        </div>
+                      )}
+                      {spillovers.map(s => (
+                        <div key={s.id} className="flex justify-between text-xs">
+                          <span className="text-gray-600 tabular-nums">{fmtIL(s.amount)}</span>
+                          <span className="text-gray-500">{s.ppName || s.monthYear || 'תשלום אחר'}</span>
+                        </div>
+                      ))}
+                      {creditPart > 0.005 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600 tabular-nums">{fmtIL(creditPart)}</span>
+                          <span className="text-gray-500">יתרת זכות</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )

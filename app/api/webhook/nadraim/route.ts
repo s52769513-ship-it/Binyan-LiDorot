@@ -226,16 +226,17 @@ export async function POST(req: NextRequest) {
     //    leftover → credit_balance, parents.tuition_balance recalculated).
     // Uses billingParentId (may differ from parentId if הו"ק is paying for someone else)
     let linkedPPId: string | null = null
+    const txId = crypto.randomUUID()
     const ppParentId = billingParentId ?? parentId
     if (ppParentId) {
       const applied = await applyPaymentToParentPPs({
         parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
+        source: { txId, label: monthYear, date },
       })
       linkedPPId = applied.ppId
     }
 
     // 6. Create transaction
-    const txId   = crypto.randomUUID()
     const txType = String(TransactionType ?? '').trim() || 'נדרים'
 
     // Include both the payer (parentId) and the billed person (billingParentId) in parent_ids
