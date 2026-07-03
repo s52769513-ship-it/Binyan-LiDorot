@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ParentDetail, PlannedPaymentItem, StandingOrderItem, TransactionItem, WomanDetail } from '@/lib/types'
 import { TransactionRow, TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
+import { attributeTxsToPP } from '@/lib/ppAttribution'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
@@ -742,12 +743,15 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parent?.plannedPayments])
 
-  // Recompute PP balance from linked transactions and patch DB if stale
+  // Recompute PP balance from linked transactions and patch DB if stale.
+  // Decrease-only: a payment can cascade to a PP it is NOT linked to
+  // (עודף שגולש בריענון/relink), so a balance lower than amount−linked is
+  // legitimate — pushing it back up here would silently undo the cascade.
   useEffect(() => {
     if (!selectedPP || loadingPpTx) return
     const computedPaid    = ppTxList.reduce((s, t) => s + Math.abs(t.amount), 0)
     const computedBalance = Math.max(0, selectedPP.amount - computedPaid)
-    if (computedBalance === selectedPP.balance) return
+    if (computedBalance >= selectedPP.balance) return
     setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
     fetch('/api/planned-payments', {
       method: 'PATCH',
@@ -2260,7 +2264,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               </p>
               {!loadingPpTx && ppTxList.length === 0 ? (
                 <p className="text-xs text-gray-300 text-center py-1">אין תשלומים עדיין</p>
-              ) : (
+              ) : (() => {
+                const attribution = attributeTxsToPP(ppTxList, selectedPP.amount)
+                return (
+                <>
                 <div className="space-y-1.5 max-h-44 overflow-y-auto">
                   {ppTxList.map(tx => (
                     <div key={tx.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${tx.isCredit ? 'bg-emerald-50' : 'bg-gray-50'}`}>
@@ -2290,7 +2297,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             {tx.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-gray-500 border border-gray-200">{tx.type}</span>}
                             {tx.date && <span className="text-xs text-gray-400">{fmtDate(tx.date)}</span>}
                           </div>
-                          <span className="text-sm font-bold text-emerald-700">{fmt(Math.abs(tx.amount))}</span>
+                          <div className="text-left">
+                            <span className="text-sm font-bold text-emerald-700">{fmt(Math.abs(tx.amount))}</span>
+                            {(() => {
+                              const applied = attribution.appliedById.get(tx.id) ?? Math.abs(tx.amount)
+                              if (attribution.overflow <= 0 || applied >= Math.abs(tx.amount)) return null
+                              return (
+                                <div className="text-[10px] text-amber-600 leading-tight">
+                                  {applied > 0 ? `מתוכו ${fmt(applied)} לתשלום זה` : 'גלש לחובות אחרים / זיכוי'}
+                                </div>
+                              )
+                            })()}
+                          </div>
                         </button>
                       )}
                       {!tx.isCredit && (
@@ -2312,7 +2330,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     </div>
                   ))}
                 </div>
-              )}
+                {attribution.overflow > 0 && (
+                  <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2 text-center">
+                    קושרו כאן {fmt(attribution.totalLinked)} — {fmt(attribution.overflow)} מעבר לסכום המתוכנן גלשו לחובות אחרים או לזיכוי
+                  </p>
+                )}
+                </>
+                )
+              })()}
             </div>
 
             {selectedPP.balance > 0 && (

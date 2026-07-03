@@ -479,8 +479,13 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
             ) : ppError ? (
               <div className="text-xs text-red-400 text-center py-2">לא נמצא תשלום מתוכנן</div>
             ) : ppInfo ? (() => {
-              // Use actual paid transactions sum; fallback to DB balance delta
-              const paid = ppTxTotal !== null ? ppTxTotal : (ppInfo.amount - ppInfo.balance)
+              // Use actual paid transactions sum; fallback to DB balance delta.
+              // Linked payments can exceed the PP amount (עודף שגלש לחובות
+              // אחרים / זיכוי) — count only up to the PP amount as paid here
+              // and surface the overflow explicitly.
+              const totalLinked = ppTxTotal !== null ? ppTxTotal : (ppInfo.amount - ppInfo.balance)
+              const paid = Math.min(totalLinked, ppInfo.amount)
+              const overflow = Math.max(0, totalLinked - ppInfo.amount)
               const remaining = Math.max(0, ppInfo.amount - paid)
               return (
                 <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
@@ -524,6 +529,9 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
                   </div>
                   {paid > 0 && (
                     <div className="text-xs text-emerald-600">{fmtIL(paid)} שולם</div>
+                  )}
+                  {overflow > 0 && (
+                    <div className="text-xs text-amber-600">{fmtIL(overflow)} מעבר לסכום — גלש לחובות אחרים / זיכוי</div>
                   )}
                 </div>
               )

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { nameSimilarity } from '@/lib/nameUtils'
+import { sortByMonth } from '@/lib/months'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 
 export const maxDuration = 60 // extend Vercel function timeout to 60s
 
@@ -128,6 +130,7 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = []
     const skippedRows: object[] = [] // rows that were skipped with reason
+    const affectedParents = new Set<string>() // parents whose PPs/credit changed → recalc balances
 
     // ── Phase 1: Batch insert all charges ──
     const chargeRecords: object[] = []
@@ -148,6 +151,7 @@ export async function POST(req: NextRequest) {
         continue
       }
       const monthYear = monthYearOf(row)
+      affectedParents.add(parent.id)
       chargeRecords.push({
         id: crypto.randomUUID(),
         parent_ids: [parent.id],
@@ -177,7 +181,7 @@ export async function POST(req: NextRequest) {
       .eq('pp_type', 'tuition')
       .eq('is_legacy', true)
 
-    // Index PPs by parent id
+    // Index PPs by parent id, oldest month first (chronological, not text order)
     const ppByParent = new Map<string, Array<{ id: string; balance: number; month_year: string }>>()
     for (const pp of allLegacyPPs ?? []) {
       for (const pid of (pp.parent_ids as string[]) ?? []) {
@@ -185,10 +189,13 @@ export async function POST(req: NextRequest) {
         ppByParent.get(pid)!.push({ id: pp.id, balance: Number(pp.balance), month_year: pp.month_year ?? '' })
       }
     }
+    for (const [pid, list] of ppByParent) ppByParent.set(pid, sortByMonth(list, true))
 
     // ── Phase 3: Batch insert all payments ──
     const paymentRecords: object[] = []
     const balanceUpdates = new Map<string, number>() // ppId → new balance
+    const creditUpdates = new Map<string, number>()  // parentId → surplus → credit_balance
+    const round2 = (n: number) => Math.round(n * 100) / 100
     let skippedPayments = 0
 
     for (const row of rows) {
@@ -208,8 +215,13 @@ export async function POST(req: NextRequest) {
       }
       const monthYear = monthYearOf(row)
 
+      // Same cascade as the rest of the system (ppPayments): month-matched PP
+      // first, then oldest open; overflow rolls to the next debts and any
+      // leftover becomes parent credit — never silently swallowed.
       const parentPPs = (ppByParent.get(parent.id) ?? []).filter(p => p.balance > 0)
-      const target = parentPPs.find(p => p.month_year === monthYear) ?? parentPPs[0] ?? null
+      const monthMatch = parentPPs.find(p => p.month_year === monthYear)
+      const ordered = monthMatch ? [monthMatch, ...parentPPs.filter(p => p !== monthMatch)] : parentPPs
+      const target = ordered[0] ?? null
 
       paymentRecords.push({
         id: crypto.randomUUID(),
@@ -225,12 +237,18 @@ export async function POST(req: NextRequest) {
         synced_at: FAR_FUTURE,
       })
 
-      if (target) {
-        const currentBal = balanceUpdates.has(target.id) ? balanceUpdates.get(target.id)! : target.balance
-        const newBal = Math.max(0, currentBal - Math.abs(amount))
-        balanceUpdates.set(target.id, newBal)
-        target.balance = newBal // update in-memory so next payment to same PP sees updated balance
+      let remaining = Math.abs(amount)
+      for (const pp of ordered) {
+        if (remaining <= 0) break
+        const apply = Math.min(remaining, pp.balance)
+        pp.balance = round2(pp.balance - apply) // in-memory so the next payment sees updated balances
+        remaining = round2(remaining - apply)
+        balanceUpdates.set(pp.id, pp.balance)
       }
+      if (remaining > 0) {
+        creditUpdates.set(parent.id, round2((creditUpdates.get(parent.id) ?? 0) + remaining))
+      }
+      affectedParents.add(parent.id)
     }
 
     for (let i = 0; i < paymentRecords.length; i += CHUNK) {
@@ -247,8 +265,24 @@ export async function POST(req: NextRequest) {
       ))
     }
 
+    // ── Phase 5: Payment surplus → parents.credit_balance ──
+    for (const [pid, extra] of creditUpdates) {
+      const { data: par } = await supabaseAdmin
+        .from('parents').select('credit_balance').eq('id', pid).single()
+      await supabaseAdmin.from('parents')
+        .update({ credit_balance: round2(Number(par?.credit_balance ?? 0) + extra) })
+        .eq('id', pid)
+    }
+
+    // ── Phase 6: Refresh parents.tuition_balance from actual PP balances ──
+    const affected = [...affectedParents]
+    for (let i = 0; i < affected.length; i += 25) {
+      await Promise.all(affected.slice(i, i + 25).map(pid => recalcParentTuitionBalance(pid)))
+    }
+
+    const creditTotal = round2([...creditUpdates.values()].reduce((s, v) => s + v, 0))
     const skipped = skippedCharges.count + skippedPayments
-    return NextResponse.json({ createdPPs, createdPayments, skipped, errors, skippedRows })
+    return NextResponse.json({ createdPPs, createdPayments, skipped, creditTotal, errors, skippedRows })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
   }

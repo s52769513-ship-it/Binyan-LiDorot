@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { attributeTxsToPP } from '@/lib/ppAttribution'
 
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
 
@@ -101,7 +102,9 @@ function PPRow({
         <div className="border-t border-gray-200/70 p-3 space-y-2 bg-white/40">
           {loading ? (
             <div className="text-xs text-gray-400">טוען תשלומים...</div>
-          ) : txs && txs.length > 0 ? (
+          ) : txs && txs.length > 0 ? (() => {
+            const attribution = attributeTxsToPP(txs, item.amount)
+            return (
             <div className="space-y-1">
               <div className="text-[11px] font-semibold text-gray-500">תשלומים מקושרים</div>
               {txs.map((t) => (
@@ -114,8 +117,14 @@ function PPRow({
                   <span className="font-medium tabular-nums">{fmt(Math.abs(t.amount))}</span>
                 </div>
               ))}
+              {attribution.overflow > 0 && (
+                <div className="text-[11px] text-amber-600 bg-amber-50 rounded px-2 py-1">
+                  {fmt(attribution.overflow)} מעבר לסכום המתוכנן — גלש לחובות אחרים או לזיכוי
+                </div>
+              )}
             </div>
-          ) : (
+            )
+          })() : (
             <div className="text-xs text-gray-400">אין תשלומים מקושרים עדיין</div>
           )}
 
