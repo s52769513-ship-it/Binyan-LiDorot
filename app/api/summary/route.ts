@@ -84,24 +84,24 @@ export async function GET() {
         .lt('date', todayStr)
         .gte('date', '2026-04-01'),
 
-      // New: salary debt (order by date — text sort of month_year breaks across years)
+      // New: salary debt — all open salary PPs (unlimited: the sum/count must be
+      // authoritative and match the חוב משכורות drill-down modal)
       supabase
         .from('planned_payments')
         .select('amount, balance, parent_ids, month_year')
         .eq('pp_type', 'salary')
         .gt('balance', 0)
-        .order('date', { ascending: false })
-        .limit(50),
+        .order('date', { ascending: false }),
 
-      // New: overdue tuition
+      // New: overdue tuition — all past-due open PPs (unlimited: authoritative
+      // sum/count matching the בפיגור drill-down modal)
       supabase
         .from('planned_payments')
         .select('id, amount, balance, date, month_year, parent_ids')
         .eq('pp_type', 'tuition')
         .gt('balance', 0)
         .lt('date', todayStr)
-        .order('date', { ascending: true })
-        .limit(50),
+        .order('date', { ascending: true }),
 
       // New: parents with credit (either legacy pp_credit or merged credit_balance)
       supabase
@@ -237,7 +237,9 @@ export async function GET() {
       balance: Number(p.tuition_balance) || 0,
       childrenCount: Number(p.children_count) || 0,
     }))
-    const totalDebt       = debtAlerts.reduce((s, p) => s + p.balance, 0)
+    // totalDebt is the FULL open tuition debt (all families), not just the
+    // top-6 debtAlerts preview — so the card matches the drill-down modal.
+    // Computed below from planned_payments (totalPlannedPayments).
     const parentsInDebt   = debtParentsCountRes.count ?? debtAlerts.length
 
     const recentTransactions = (recentTxRes.data ?? []).map(t => ({
@@ -313,7 +315,7 @@ export async function GET() {
       // New rich fields
       plannedThisMonth: Math.round(plannedThisMonth),
       actualThisMonth:  Math.round(actualThisMonth),
-      totalDebt:        Math.round(totalDebt),
+      totalDebt:        Math.round(totalPlannedPayments),
       parentsInDebt,
       debtAlerts,
       recentTransactions,

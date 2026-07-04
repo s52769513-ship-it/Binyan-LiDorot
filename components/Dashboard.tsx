@@ -7,6 +7,15 @@ import EmployeeCard from './EmployeeCard'
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
 const DeptDebtModal       = dynamic(() => import('./DeptDebtModal'),       { ssr: false })
+const MonthlyDebtModal    = dynamic(() => import('./MonthlyDebtModal'),    { ssr: false })
+
+// כרטיסי חוב שנפתחים למודל פירוט חודשי (טאב לכל חודש → הורים)
+type MonthlyModalType = 'tuition' | 'salary' | 'overdue'
+const MONTHLY_MODAL_CONFIG: Record<MonthlyModalType, { title: string; accent: string }> = {
+  tuition: { title: 'חוב שכ״ל — לפי חודש', accent: '#f59e0b' },
+  salary:  { title: 'חוב משכורות — לפי חודש', accent: '#f97316' },
+  overdue: { title: 'תשלומים בפיגור — לפי חודש', accent: '#ef4444' },
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -577,7 +586,8 @@ export default function Dashboard() {
   const [cashflowLoading, setCashflowLoading] = useState(false)
   const [showDeptBreakdown, setShowDeptBreakdown] = useState(false)
 
-  const [activePanel, setActivePanel] = useState<'debt' | 'overdue' | 'salary' | 'credit' | null>(null)
+  const [activePanel, setActivePanel] = useState<'credit' | null>(null)
+  const [monthlyModal, setMonthlyModal] = useState<MonthlyModalType | null>(null)
 
   const load = () => {
     setLoading(true); setError('')
@@ -622,34 +632,7 @@ export default function Dashboard() {
     ? new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(d.lastSync))
     : null
 
-  // Build panel records
-  const debtPanelRecords = (d?.debtAlerts ?? []).map(a => ({
-    key: a.id,
-    name: a.name,
-    amount: a.balance,
-    sub: `${a.childrenCount} ילדים`,
-    parentId: a.id,
-    amountColor: '#ef4444',
-  }))
-
-  const overduePanelRecords = (d?.overdueAlerts ?? []).map(a => ({
-    key: a.id,
-    name: a.parentName || a.parentId,
-    amount: a.balance,
-    sub: `${a.monthYear} · ${fmtDate(a.date)}`,
-    parentId: a.parentId,
-    amountColor: '#ef4444',
-  }))
-
-  const salaryPanelRecords = (d?.salaryAlerts ?? []).map((a, i) => ({
-    key: `${a.parentId}-${i}`,
-    name: a.parentName || a.parentId,
-    amount: a.balance,
-    sub: a.monthYear,
-    parentId: a.parentId,
-    amountColor: '#f59e0b',
-  }))
-
+  // Saved-credit panel (per-parent, no month dimension → stays a flat panel)
   const creditPanelRecords = (d?.ppCreditList ?? []).map(p => ({
     key: p.id,
     name: p.name,
@@ -657,39 +640,6 @@ export default function Dashboard() {
     parentId: p.id,
     amountColor: '#10b981',
   }))
-
-  type PanelRecord = { key: string; name: string; amount: number; sub?: string; parentId?: string; amountColor?: string }
-  const activePanelConfig: Record<NonNullable<typeof activePanel>, {
-    title: string
-    records: PanelRecord[]
-    total: number
-    totalLabel: string
-  }> = {
-    debt: {
-      title: 'חוב שכ״ל — משפחות בחוב',
-      records: debtPanelRecords,
-      total: d?.totalDebt ?? 0,
-      totalLabel: 'סה״כ חוב',
-    },
-    overdue: {
-      title: 'תשלומים בפיגור',
-      records: overduePanelRecords,
-      total: d?.overdueAmount ?? 0,
-      totalLabel: 'סה״כ פיגור',
-    },
-    salary: {
-      title: 'חוב משכורות',
-      records: salaryPanelRecords,
-      total: d?.salaryDebt ?? 0,
-      totalLabel: 'סה״כ חוב משכורות',
-    },
-    credit: {
-      title: 'זיכויים שמורים',
-      records: creditPanelRecords,
-      total: d?.ppCreditTotal ?? 0,
-      totalLabel: 'סה״כ זיכויים',
-    },
-  }
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -782,7 +732,7 @@ export default function Dashboard() {
                 </div>
 
                 <button
-                  onClick={() => setActivePanel('debt')}
+                  onClick={() => setMonthlyModal('tuition')}
                   className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-amber-300 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-1.5">
@@ -804,7 +754,7 @@ export default function Dashboard() {
 
                 {/* Row 2: Overdue, Salary debt, Credits */}
                 <button
-                  onClick={() => setActivePanel('overdue')}
+                  onClick={() => setMonthlyModal('overdue')}
                   className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-red-300 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-1.5">
@@ -822,7 +772,7 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => setActivePanel('salary')}
+                  onClick={() => setMonthlyModal('salary')}
                   className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-orange-300 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1051,24 +1001,31 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── PANELS ── */}
-      {activePanel && (
+      {/* ── Saved-credit flat panel (no month dimension) ── */}
+      {activePanel === 'credit' && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/20 z-[60]"
-            onClick={() => setActivePanel(null)}
-          />
+          <div className="fixed inset-0 bg-black/20 z-[60]" onClick={() => setActivePanel(null)} />
           <RecordsPanel
-            title={activePanelConfig[activePanel].title}
-            records={activePanelConfig[activePanel].records}
-            total={activePanelConfig[activePanel].total}
-            totalLabel={activePanelConfig[activePanel].totalLabel}
+            title="זיכויים שמורים"
+            records={creditPanelRecords}
+            total={d?.ppCreditTotal ?? 0}
+            totalLabel="סה״כ זיכויים"
             onClose={() => setActivePanel(null)}
             onOpenParent={id => { setActivePanel(null); setSelectedId(id) }}
             loading={loading}
           />
         </>
+      )}
+
+      {/* ── Monthly debt modal (tuition / salary / overdue) ── */}
+      {monthlyModal && (
+        <MonthlyDebtModal
+          type={monthlyModal}
+          title={MONTHLY_MODAL_CONFIG[monthlyModal].title}
+          accent={MONTHLY_MODAL_CONFIG[monthlyModal].accent}
+          onClose={() => setMonthlyModal(null)}
+          onOpenParent={id => { setMonthlyModal(null); setSelectedId(id) }}
+        />
       )}
 
       {deptModal && <DeptDebtModal framework={deptModal} onClose={() => setDeptModal(null)} />}
