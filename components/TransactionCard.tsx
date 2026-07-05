@@ -14,7 +14,11 @@ export interface Transaction {
   parentName?: string
   parentIds?: string[]
   plannedPaymentId?: string | null
+  framework?: string
+  receiptUrl?: string
 }
+
+const FRAMEWORKS = ['', 'תלמוד תורה', 'בית חינוך לבנות']
 
 interface Props {
   tx: Transaction
@@ -387,6 +391,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
         body.project_names = draft.projectNames
       if (draft.plannedPaymentId !== tx.plannedPaymentId)
         body.planned_payment_id = draft.plannedPaymentId ?? null
+      if ((draft.framework ?? '') !== (tx.framework ?? ''))
+        body.framework = draft.framework ?? ''
 
       if (Object.keys(body).length === 0) { onClose(); return }
       const r = await fetch(`/api/transactions/${tx.id}`, {
@@ -467,6 +473,29 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
             </select>
             <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
           </div>
+
+          {/* Framework/division — relevant for expenses */}
+          {draft.amount < 0 && (
+            <div className="flex justify-between items-center gap-3">
+              <select
+                value={draft.framework ?? ''}
+                onChange={e => setDraft(d => ({ ...d, framework: e.target.value }))}
+                className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
+              >
+                {FRAMEWORKS.map(f => <option key={f || 'none'} value={f}>{f || 'כללי / משותף'}</option>)}
+              </select>
+              <span className="text-xs text-gray-400 shrink-0">מסגרת</span>
+            </div>
+          )}
+
+          {/* Receipt/invoice link */}
+          {tx.receiptUrl && (
+            <div className="flex justify-between items-center gap-3">
+              <a href={tx.receiptUrl} target="_blank" rel="noreferrer"
+                className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</a>
+              <span className="text-xs text-gray-400 shrink-0">חשבונית</span>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="flex justify-between items-start gap-3">

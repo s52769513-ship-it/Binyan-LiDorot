@@ -51,6 +51,13 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [openPayments, setOpenPayments]         = useState<OpenPayment[]>([])
   const [linkedPayment, setLinkedPayment]       = useState<OpenPayment | null>(null)
   const [loadingPayments, setLoadingPayments]   = useState(false)
+  const [framework, setFramework]               = useState('')
+  const [showCustomProject, setShowCustomProject] = useState(false)
+  const [customProjectDraft, setCustomProjectDraft] = useState('')
+  const [receiptUrl, setReceiptUrl]             = useState('')
+  const [receiptName, setReceiptName]           = useState('')
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+  const [receiptError, setReceiptError]         = useState('')
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -114,6 +121,35 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
     setMonthYear(getMonthYear(d))
   }
 
+  const handleReceiptChange = async (file: File | null) => {
+    setReceiptError('')
+    if (!file) return
+    setUploadingReceipt(true)
+    try {
+      const form = new FormData()
+      form.set('file', file)
+      const res = await fetch('/api/transactions/upload-receipt', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error) { setReceiptError(data.error); return }
+      setReceiptUrl(data.url)
+      setReceiptName(data.name || file.name)
+    } catch {
+      setReceiptError('שגיאה בהעלאת הקובץ')
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
+
+  const commitCustomProject = () => {
+    const v = customProjectDraft.trim()
+    if (v) {
+      setProject(v)
+      setProjects(prev => prev.includes(v) ? prev : [v, ...prev])
+    }
+    setCustomProjectDraft('')
+    setShowCustomProject(false)
+  }
+
   const handleSubmit = async () => {
     const amtNum = Number(amount)
     if (!amount || isNaN(amtNum) || amtNum === 0) { setError('יש להזין סכום תקין'); return }
@@ -130,6 +166,8 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
           projectNames: project ? [project] : [],
           plannedPaymentId: plannedPaymentId || linkedPayment?.id || null,
+          framework: direction === 'הוצאה' ? framework : '',
+          receiptUrl: direction === 'הוצאה' ? receiptUrl : '',
         }),
       })
       const data = await res.json()
@@ -290,35 +328,91 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
             </div>
           </div>
 
-          {/* Project */}
+          {/* Project — pick an existing one, or type a new one to add it */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">קטגוריה / פרויקט</label>
-            {displayProjects.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setProject('')}
+            <label className="block text-sm font-medium text-gray-700 mb-1">סוג הוצאה / קטגוריה</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setProject('')}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  project === '' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                }`}>
+                ללא
+              </button>
+              {displayProjects.map(p => (
+                <button key={p} type="button" onClick={() => setProject(p)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    project === '' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                    project === p
+                      ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
                   }`}>
-                  ללא
+                  {p}
                 </button>
-                {displayProjects.map(p => (
-                  <button key={p} type="button" onClick={() => setProject(p)}
+              ))}
+              {!showCustomProject && (
+                <button type="button" onClick={() => setShowCustomProject(true)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#1a3a7a] hover:text-[#1a3a7a] transition-colors">
+                  + סוג חדש
+                </button>
+              )}
+            </div>
+            {showCustomProject && (
+              <input
+                autoFocus
+                type="text"
+                value={customProjectDraft}
+                onChange={e => setCustomProjectDraft(e.target.value)}
+                onBlur={commitCustomProject}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitCustomProject() }
+                  if (e.key === 'Escape') { setCustomProjectDraft(''); setShowCustomProject(false) }
+                }}
+                placeholder="הקלד סוג הוצאה חדש ולחץ Enter..."
+                className="w-full mt-1.5 px-3 py-2 rounded-lg border border-[#1a3a7a]/40 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+              />
+            )}
+          </div>
+
+          {/* Expense-only: which division it belongs to */}
+          {direction === 'הוצאה' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">שייך למסגרת</label>
+              <div className="flex flex-wrap gap-1.5">
+                {['', 'תלמוד תורה', 'בית חינוך לבנות'].map(f => (
+                  <button key={f || 'none'} type="button" onClick={() => setFramework(f)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                      project === p
+                      framework === f
                         ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
                     }`}>
-                    {p}
+                    {f || 'כללי / משותף'}
                   </button>
                 ))}
               </div>
-            ) : (
-              <select value={project} onChange={e => setProject(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
-                <option value="">ללא קטגוריה</option>
-              </select>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Expense-only: attach an invoice/receipt file */}
+          {direction === 'הוצאה' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">צירוף חשבונית</label>
+              {receiptUrl ? (
+                <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">
+                  <button type="button" onClick={() => { setReceiptUrl(''); setReceiptName('') }}
+                    className="text-red-400 hover:text-red-600 text-xs">✕ הסר</button>
+                  <a href={receiptUrl} target="_blank" rel="noreferrer" className="text-emerald-700 font-medium truncate hover:underline">
+                    📎 {receiptName || 'הקובץ שצורף'}
+                  </a>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 hover:border-[#1a3a7a] hover:text-[#1a3a7a] cursor-pointer transition-colors">
+                  {uploadingReceipt ? 'מעלה...' : '📎 בחר קובץ חשבונית'}
+                  <input type="file" accept="image/*,.pdf" className="hidden" disabled={uploadingReceipt}
+                    onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} />
+                </label>
+              )}
+              {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
+            </div>
+          )}
 
           {/* Payment method */}
           <div>

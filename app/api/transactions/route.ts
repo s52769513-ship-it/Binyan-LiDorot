@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id', { count: 'exact' })
+      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -220,6 +220,8 @@ export async function GET(req: NextRequest) {
       parentName:   ((t.parent_ids as string[])?.[0]) ? (parentMap[(t.parent_ids as string[])[0]] ?? '') : '',
       projectNames: (t.project_names as string[]) ?? [],
       plannedPaymentId: t.planned_payment_id ?? null,
+      framework:    String(t.framework || ''),
+      receiptUrl:   String(t.receipt_url || ''),
     }))
 
     return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, totalIncome, totalExpense })
@@ -232,7 +234,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, type, date, monthYear, notes, parentIds, projectNames, plannedPaymentId } = body
+    const { amount, type, date, monthYear, notes, parentIds, projectNames, plannedPaymentId, framework, receiptUrl } = body
 
     if (!amount || isNaN(Number(amount))) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
@@ -253,6 +255,8 @@ export async function POST(req: NextRequest) {
       project_ids: [],
       project_names: (Array.isArray(projectNames) ? projectNames : []).map((n: string) => n === 'משכורות' ? 'משכורת' : n),
       planned_payment_id: plannedPaymentId || null,
+      framework: framework || '',
+      receipt_url: receiptUrl || '',
       synced_at: syncedAt,
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)

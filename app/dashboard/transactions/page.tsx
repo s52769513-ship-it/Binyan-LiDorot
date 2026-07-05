@@ -60,6 +60,7 @@ interface TxRow {
   id: string; amount: number; type: string; date: string
   monthYear: string; notes: string; parentName: string; parentIds: string[]
   projectNames: string[]; plannedPaymentId?: string | null
+  framework?: string; receiptUrl?: string
 }
 
 export default function TransactionsPage() {
@@ -231,7 +232,9 @@ export default function TransactionsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{tx.type || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{tx.monthYear || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate">{tx.notes || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate">
+                      {tx.notes || '—'}{tx.receiptUrl && <span title="יש חשבונית מצורפת" className="mr-1">📎</span>}
+                    </td>
                     <td className="px-4 py-3 text-left">
                       <span className={`text-sm font-bold tabular-nums ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                         {tx.amount < 0 ? '−' : '+'}₪{fmt(tx.amount)}
