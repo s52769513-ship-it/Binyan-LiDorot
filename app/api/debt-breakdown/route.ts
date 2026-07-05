@@ -3,17 +3,20 @@ import { supabaseAdmin as supabase } from '@/lib/supabase'
 import { monthKey } from '@/lib/months'
 
 /**
- * GET /api/debt-breakdown?type=tuition|salary|overdue
+ * GET /api/debt-breakdown?pool=tuition|donation|salary&dueOnly=1
  *
- * פירוט חוב פתוח לפי חודש → הורים. משמש את המודל הנפתח מכרטיסי הדשבורד
- * (חוב שכ"ל / חוב משכורות / בפיגור): טאב לכל חודש שיש בו חוב פתוח, ותחתיו
- * רשומות ההורים עם היתרה שלהם באותו חודש.
+ * פירוט חוב פתוח לפי חודש → הורים. משמש את המודל הנפתח מכרטיסי הדשבורד.
+ * טאב לכל חודש שיש בו חוב פתוח, ותחתיו רשומות ההורים עם היתרה שלהם.
+ *
+ * pool   — בריכת החוב: שכ"ל / מגבית / משכורות (לעולם לא מערבבים).
+ * dueOnly — כשדולק, נכללים רק PP שתאריך היעד שלהם כבר עבר (date <= היום),
+ *           כדי שחודשים עתידיים שעדיין לא הגיע מועדם לא ייספרו כחוב.
  *
  * המקור היחיד לאמת: יתרות ה-planned_payments (לא parents.tuition_balance),
  * כדי שהסכומים יהיו עקביים עם כרטיס ה-PP ועם הריענון.
  */
 
-type DebtType = 'tuition' | 'salary' | 'overdue'
+type Pool = 'tuition' | 'donation' | 'salary'
 
 interface ParentRecord {
   parentId: string
@@ -27,9 +30,21 @@ interface MonthBucket {
   parents: ParentRecord[]
 }
 
+// legacy `type` param → pool/dueOnly (backward compat)
+function resolveParams(sp: URLSearchParams): { pool: Pool; dueOnly: boolean } {
+  const legacy = sp.get('type')
+  if (legacy === 'overdue') return { pool: 'tuition', dueOnly: true }
+  if (legacy === 'salary')  return { pool: 'salary', dueOnly: false }
+  if (legacy === 'tuition') return { pool: 'tuition', dueOnly: true }
+  if (legacy === 'donation') return { pool: 'donation', dueOnly: true }
+  const pool = (sp.get('pool') ?? 'tuition') as Pool
+  const dueOnly = sp.get('dueOnly') === '1' || sp.get('dueOnly') === 'true'
+  return { pool, dueOnly }
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const type = (req.nextUrl.searchParams.get('type') ?? 'tuition') as DebtType
+    const { pool, dueOnly } = resolveParams(req.nextUrl.searchParams)
     const todayStr = new Date().toISOString().slice(0, 10)
 
     let query = supabase
@@ -37,15 +52,17 @@ export async function GET(req: NextRequest) {
       .select('parent_ids, balance, month_year')
       .gt('balance', 0)
 
-    if (type === 'salary') {
+    if (pool === 'salary') {
       query = query.eq('pp_type', 'salary')
-    } else if (type === 'overdue') {
-      // מתאים להגדרת כרטיס "בפיגור": שכ"ל פתוח שתאריכו עבר
-      query = query.eq('pp_type', 'tuition').lt('date', todayStr)
+    } else if (pool === 'donation') {
+      query = query.eq('pp_type', 'donation')
     } else {
-      // tuition — כולל PP שמקורם ב-Airtable (pp_type ריק), כמו חישוב החוב הכולל
+      // tuition — כולל PP שמקורם ב-Airtable (pp_type ריק)
       query = query.or('pp_type.eq.tuition,pp_type.is.null')
     }
+
+    // רק תאריכים שכבר עברו (חוב אמיתי שהגיע מועדו)
+    if (dueOnly) query = query.lte('date', todayStr)
 
     const { data: pps, error } = await query
     if (error) throw error
@@ -111,7 +128,7 @@ export async function GET(req: NextRequest) {
       months.flatMap(m => m.parents.map(p => p.parentId).filter(Boolean))
     ).size
 
-    return NextResponse.json({ type, months, grandTotal, parentCount })
+    return NextResponse.json({ pool, dueOnly, months, grandTotal, parentCount })
   } catch (err) {
     console.error('debt-breakdown error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת פירוט חוב' }, { status: 500 })

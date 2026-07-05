@@ -30,10 +30,14 @@ interface BreakdownData {
   parentCount: number
 }
 
-export type DebtBreakdownType = 'tuition' | 'salary' | 'overdue'
+export type DebtPool = 'tuition' | 'donation' | 'salary'
+export interface PoolOption { key: DebtPool; label: string }
 
 interface Props {
-  type: DebtBreakdownType
+  /** בריכות חוב לבחירה. יותר מאחת → נציג טוגל שכ"ל/מגבית. */
+  pools: PoolOption[]
+  /** רק תאריכים שכבר עברו */
+  dueOnly: boolean
   title: string
   /** צבע הדגשה (טאב פעיל, סכומים) */
   accent: string
@@ -42,10 +46,12 @@ interface Props {
 }
 
 /**
- * מודל פירוט חוב לפי חודשים. טאב לכל חודש שיש בו חוב פתוח, ותחתיו רשומות
- * ההורים עם היתרה. לחיצה על הורה פותחת את הכרטיס שלו. חיפוש מסנן בכל החודשים.
+ * מודל פירוט חוב לפי חודשים. אם יש יותר מבריכה אחת (שכ"ל/מגבית) — טוגל בראש.
+ * טאב לכל חודש שיש בו חוב פתוח, ותחתיו רשומות ההורים עם היתרה. לחיצה על הורה
+ * פותחת את הכרטיס שלו. חיפוש מסנן בכל החודשים.
  */
-export default function MonthlyDebtModal({ type, title, accent, onClose, onOpenParent }: Props) {
+export default function MonthlyDebtModal({ pools, dueOnly, title, accent, onClose, onOpenParent }: Props) {
+  const [pool, setPool]       = useState<DebtPool>(pools[0]?.key ?? 'tuition')
   const [data, setData]       = useState<BreakdownData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -53,21 +59,23 @@ export default function MonthlyDebtModal({ type, title, accent, onClose, onOpenP
   const [search, setSearch]   = useState('')
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true); setError('')
-    fetch(`/api/debt-breakdown?type=${encodeURIComponent(type)}`)
+    fetch(`/api/debt-breakdown?pool=${encodeURIComponent(pool)}&dueOnly=${dueOnly ? 1 : 0}`)
       .then(r => r.json())
       .then((d: BreakdownData & { error?: string }) => {
+        if (cancelled) return
         if (d.error) { setError(d.error); return }
         setData(d)
-        // ברירת מחדל: החודש הנוכחי אם יש בו חוב, אחרת החודש האחרון (החדש ביותר)
         const now = new Date()
         const cur = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
         const hasCur = d.months.some(m => m.monthYear === cur)
         setActiveMonth(hasCur ? cur : d.months[d.months.length - 1]?.monthYear ?? null)
       })
-      .catch(() => setError('שגיאה בטעינת נתונים'))
-      .finally(() => setLoading(false))
-  }, [type])
+      .catch(() => { if (!cancelled) setError('שגיאה בטעינת נתונים') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [pool, dueOnly])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -86,7 +94,6 @@ export default function MonthlyDebtModal({ type, title, accent, onClose, onOpenP
     return activeBucket.parents.filter(p => p.parentName.includes(q))
   }, [activeBucket, q])
 
-  // כשמחפשים — מציגים בכותרת כמה חודשים מכילים התאמה
   const matchMonths = useMemo(() => {
     if (!data || !q) return null
     return data.months.filter(m => m.parents.some(p => p.parentName.includes(q))).map(m => m.monthYear)
@@ -113,6 +120,26 @@ export default function MonthlyDebtModal({ type, title, accent, onClose, onOpenP
           </button>
         </div>
 
+        {/* Pool toggle (שכ"ל / מגבית) */}
+        {pools.length > 1 && (
+          <div className="px-4 pt-3 shrink-0">
+            <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+              {pools.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => { setPool(p.key); setSearch('') }}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    pool === p.key ? 'text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  style={pool === p.key ? { background: accent } : undefined}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         {!loading && !error && data && data.months.length > 0 && (
           <div className="px-4 pt-3 shrink-0">
@@ -124,9 +151,7 @@ export default function MonthlyDebtModal({ type, title, accent, onClose, onOpenP
             />
             {matchMonths && (
               <p className="text-[11px] text-gray-400 mt-1">
-                {matchMonths.length > 0
-                  ? `נמצא ב-${matchMonths.length} חודשים`
-                  : 'לא נמצאו התאמות'}
+                {matchMonths.length > 0 ? `נמצא ב-${matchMonths.length} חודשים` : 'לא נמצאו התאמות'}
               </p>
             )}
           </div>

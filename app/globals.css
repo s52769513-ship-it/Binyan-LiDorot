@@ -37,3 +37,31 @@ body {
 .animate-beam {
   animation: beam 1s linear infinite;
 }
+
+/* Constant progress-bar shimmer — a soft light sweep across a filled meter.
+   Applied over the coloured fill; the fill keeps its own background. */
+@keyframes progress-shimmer {
+  0%   { transform: translateX(120%); }
+  100% { transform: translateX(-120%); }
+}
+.progress-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.progress-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  transform: translateX(120%);
+  animation: progress-shimmer 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-shimmer::after,
+  .animate-beam { animation: none; }
+}

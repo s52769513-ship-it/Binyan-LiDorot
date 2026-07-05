@@ -33,6 +33,7 @@ export async function GET() {
       ppCreditRes,
       employeesCountRes,
       salaryPaidThisMonthRes,
+      pastDueTuitionRes,
     ] = await Promise.all([
       // Tuition only — salary PPs are expenses, not expected income
       supabase.from('planned_payments').select('amount').eq('month_year', currentMonthYear)
@@ -122,6 +123,15 @@ export async function GET() {
         .select('amount, balance')
         .eq('pp_type', 'salary')
         .eq('month_year', currentMonthYear),
+
+      // חוב שכ"ל = יתרות שכ"ל פתוחות שתאריך היעד שלהן כבר עבר (לא כולל חודשים
+      // עתידיים שעדיין לא הגיע מועדם). כולל PP שמקורם ב-Airtable (pp_type ריק).
+      supabase
+        .from('planned_payments')
+        .select('balance')
+        .or('pp_type.eq.tuition,pp_type.is.null')
+        .gt('balance', 0)
+        .lte('date', todayStr),
     ])
 
     // Salary-side / expense transactions must not count as tuition income:
@@ -237,9 +247,9 @@ export async function GET() {
       balance: Number(p.tuition_balance) || 0,
       childrenCount: Number(p.children_count) || 0,
     }))
-    // totalDebt is the FULL open tuition debt (all families), not just the
-    // top-6 debtAlerts preview — so the card matches the drill-down modal.
-    // Computed below from planned_payments (totalPlannedPayments).
+    // חוב שכ"ל = יתרות שכ"ל פתוחות שמועדן עבר (past-due), לא כל החוב הכולל —
+    // חודשים עתידיים שעדיין לא הגיע מועדם אינם חוב. תואם את מודל הפירוט.
+    const totalDebt = (pastDueTuitionRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
     const parentsInDebt   = debtParentsCountRes.count ?? debtAlerts.length
 
     const recentTransactions = (recentTxRes.data ?? []).map(t => ({
@@ -315,7 +325,7 @@ export async function GET() {
       // New rich fields
       plannedThisMonth: Math.round(plannedThisMonth),
       actualThisMonth:  Math.round(actualThisMonth),
-      totalDebt:        Math.round(totalPlannedPayments),
+      totalDebt:        Math.round(totalDebt),
       parentsInDebt,
       debtAlerts,
       recentTransactions,

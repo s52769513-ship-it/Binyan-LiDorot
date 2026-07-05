@@ -8,13 +8,34 @@ const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
 const DeptDebtModal       = dynamic(() => import('./DeptDebtModal'),       { ssr: false })
 const MonthlyDebtModal    = dynamic(() => import('./MonthlyDebtModal'),    { ssr: false })
+const CashflowCellModal   = dynamic(() => import('./CashflowCellModal'),   { ssr: false })
+
+import type { CashflowCellTarget } from './CashflowCellModal'
+
+// accents for the cashflow drill-down cells
+const CF_ACCENT = { tuition: '#c98a1a', donation: '#a855f7', salary: '#f97316', net: '#0d9488' }
+
+type DebtPool = 'tuition' | 'donation' | 'salary'
+interface PoolOption { key: DebtPool; label: string }
 
 // כרטיסי חוב שנפתחים למודל פירוט חודשי (טאב לכל חודש → הורים)
 type MonthlyModalType = 'tuition' | 'salary' | 'overdue'
-const MONTHLY_MODAL_CONFIG: Record<MonthlyModalType, { title: string; accent: string }> = {
-  tuition: { title: 'חוב שכ״ל — לפי חודש', accent: '#f59e0b' },
-  salary:  { title: 'חוב משכורות — לפי חודש', accent: '#f97316' },
-  overdue: { title: 'תשלומים בפיגור — לפי חודש', accent: '#ef4444' },
+const MONTHLY_MODAL_CONFIG: Record<MonthlyModalType, {
+  title: string; accent: string; dueOnly: boolean; pools: PoolOption[]
+}> = {
+  // חוב שכ"ל / בפיגור — רק תאריכים שכבר עברו, עם חלוקה בין שכ"ל למגבית
+  tuition: {
+    title: 'חוב פתוח — לפי חודש', accent: '#f59e0b', dueOnly: true,
+    pools: [{ key: 'tuition', label: 'שכ״ל' }, { key: 'donation', label: 'מגבית' }],
+  },
+  overdue: {
+    title: 'תשלומים בפיגור — לפי חודש', accent: '#ef4444', dueOnly: true,
+    pools: [{ key: 'tuition', label: 'שכ״ל' }, { key: 'donation', label: 'מגבית' }],
+  },
+  salary: {
+    title: 'חוב משכורות — לפי חודש', accent: '#f97316', dueOnly: false,
+    pools: [{ key: 'salary', label: 'משכורות' }],
+  },
 }
 
 const fmt = (n: number) =>
@@ -384,11 +405,12 @@ function RecordsPanel({ title, records, total, totalLabel, onClose, onOpenParent
 
 // ─── Cashflow table ───────────────────────────────────────────────────────────
 
-function CashflowTable({ data, loading, showDept, onToggleDept }: {
+function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
   data: CashflowMonth[] | null
   loading: boolean
   showDept: boolean
   onToggleDept: () => void
+  onCellClick: (t: CashflowCellTarget) => void
 }) {
   if (loading) {
     return (
@@ -465,6 +487,20 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
 
               const deptEntries = showDept ? Object.entries(row.tuition.byDept) : []
 
+              // clickable amount → opens the cell composition modal
+              const amt = (
+                v: number,
+                pool: 'tuition' | 'donation' | 'salary',
+                field: 'planned' | 'collected' | 'remaining',
+                label: string,
+                accent: string,
+              ) => v > 0 ? (
+                <button
+                  onClick={() => onCellClick({ month: row.monthYear, pool, field, label, accent })}
+                  className="tabular-nums hover:underline decoration-dotted underline-offset-2 cursor-pointer"
+                >₪{fmt(v)}</button>
+              ) : <span className="text-gray-300">—</span>
+
               return (
                 <>
                   <tr
@@ -476,12 +512,12 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                       {row.monthYear}
                     </td>
                     {/* Tuition */}
-                    <td className="px-2 py-2 text-center tabular-nums">{row.tuition.planned > 0 ? `₪${fmt(row.tuition.planned)}` : '—'}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{amt(row.tuition.planned, 'tuition', 'planned', 'הכנסות שכ״ל · צפוי', CF_ACCENT.tuition)}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
-                      {row.tuition.collected > 0 ? `₪${fmt(row.tuition.collected)}` : '—'}
+                      {amt(row.tuition.collected, 'tuition', 'collected', 'הכנסות שכ״ל · נגבה', CF_ACCENT.tuition)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.tuition.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
-                      {row.tuition.remaining > 0 ? `₪${fmt(row.tuition.remaining)}` : '—'}
+                      {amt(row.tuition.remaining, 'tuition', 'remaining', 'הכנסות שכ״ל · יתרה', CF_ACCENT.tuition)}
                     </td>
                     <td className="px-2 py-2 text-center border-r border-gray-100">
                       {row.tuition.planned > 0 ? (
@@ -495,12 +531,12 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                       ) : '—'}
                     </td>
                     {/* Donation */}
-                    <td className="px-2 py-2 text-center tabular-nums">{row.donation.planned > 0 ? `₪${fmt(row.donation.planned)}` : '—'}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{amt(row.donation.planned, 'donation', 'planned', 'דמי מגבית · צפוי', CF_ACCENT.donation)}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
-                      {row.donation.collected > 0 ? `₪${fmt(row.donation.collected)}` : '—'}
+                      {amt(row.donation.collected, 'donation', 'collected', 'דמי מגבית · נגבה', CF_ACCENT.donation)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
-                      {row.donation.remaining > 0 ? `₪${fmt(row.donation.remaining)}` : '—'}
+                      {amt(row.donation.remaining, 'donation', 'remaining', 'דמי מגבית · יתרה', CF_ACCENT.donation)}
                     </td>
                     <td className="px-2 py-2 text-center border-r border-gray-100">
                       {row.donation.planned > 0 ? (
@@ -514,18 +550,34 @@ function CashflowTable({ data, loading, showDept, onToggleDept }: {
                       ) : '—'}
                     </td>
                     {/* Salary */}
-                    <td className="px-2 py-2 text-center tabular-nums">{row.salary.planned > 0 ? `₪${fmt(row.salary.planned)}` : '—'}</td>
+                    <td className="px-2 py-2 text-center tabular-nums">{amt(row.salary.planned, 'salary', 'planned', 'הוצאות משכורת · צפוי', CF_ACCENT.salary)}</td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.salary.paid > 0 && !isPast ? 'text-red-600' : ''}`}>
-                      {row.salary.paid > 0 ? `₪${fmt(row.salary.paid)}` : '—'}
+                      {amt(row.salary.paid, 'salary', 'collected', 'הוצאות משכורת · שולם', CF_ACCENT.salary)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums border-r border-gray-100 ${row.salary.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
-                      {row.salary.remaining > 0 ? `₪${fmt(row.salary.remaining)}` : '—'}
+                      {amt(row.salary.remaining, 'salary', 'remaining', 'הוצאות משכורת · יתרה', CF_ACCENT.salary)}
                     </td>
-                    {/* Net */}
+                    {/* Net — composed of the three pools' planned figures */}
                     <td className={`px-3 py-2 text-center tabular-nums font-bold ${
                       row.net >= 0 ? 'text-emerald-700' : 'text-red-600'
                     } ${isCurrent ? 'text-base' : ''}`}>
-                      {row.net !== 0 ? `${row.net >= 0 ? '+' : '−'}₪${fmt(Math.abs(row.net))}` : '—'}
+                      {row.net !== 0 ? (
+                        <button
+                          onClick={() => onCellClick({
+                            month: row.monthYear,
+                            label: 'נטו צפוי',
+                            accent: CF_ACCENT.net,
+                            netComponents: [
+                              { label: 'הכנסות שכ״ל (צפוי)', amount: row.tuition.planned, sign: 1 },
+                              { label: 'דמי מגבית (צפוי)', amount: row.donation.planned, sign: 1 },
+                              { label: 'הוצאות משכורת (צפוי)', amount: row.salary.planned, sign: -1 },
+                            ],
+                          })}
+                          className="tabular-nums hover:underline decoration-dotted underline-offset-2 cursor-pointer"
+                        >
+                          {row.net >= 0 ? '+' : '−'}₪{fmt(Math.abs(row.net))}
+                        </button>
+                      ) : <span className="text-gray-300">—</span>}
                     </td>
                   </tr>
 
@@ -588,6 +640,7 @@ export default function Dashboard() {
 
   const [activePanel, setActivePanel] = useState<'credit' | null>(null)
   const [monthlyModal, setMonthlyModal] = useState<MonthlyModalType | null>(null)
+  const [cashflowCell, setCashflowCell] = useState<CashflowCellTarget | null>(null)
 
   const load = () => {
     setLoading(true); setError('')
@@ -710,7 +763,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.plannedThisMonth ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: '100%', background: '#8899cc' }} />
+                    <div className="h-full rounded-full progress-shimmer" style={{ width: '100%', background: '#8899cc' }} />
                   </div>
                   <div className="text-[10px] text-gray-400 truncate">תשלומים מתוכננים</div>
                 </div>
@@ -724,7 +777,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.actualThisMonth ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, collectionPct)}%`, background: '#10b981' }} />
+                    <div className="h-full rounded-full progress-shimmer" style={{ width: `${Math.min(100, collectionPct)}%`, background: '#10b981' }} />
                   </div>
                   <div className="text-[10px] text-gray-400 truncate">
                     {collectionPct}% · פער ₪{fmt(Math.abs((d?.actualThisMonth ?? 0) - (d?.plannedThisMonth ?? 0)))}
@@ -907,6 +960,7 @@ export default function Dashboard() {
             loading={cashflowLoading}
             showDept={showDeptBreakdown}
             onToggleDept={() => setShowDeptBreakdown(v => !v)}
+            onCellClick={setCashflowCell}
           />
         </div>
       )}
@@ -1020,11 +1074,21 @@ export default function Dashboard() {
       {/* ── Monthly debt modal (tuition / salary / overdue) ── */}
       {monthlyModal && (
         <MonthlyDebtModal
-          type={monthlyModal}
+          pools={MONTHLY_MODAL_CONFIG[monthlyModal].pools}
+          dueOnly={MONTHLY_MODAL_CONFIG[monthlyModal].dueOnly}
           title={MONTHLY_MODAL_CONFIG[monthlyModal].title}
           accent={MONTHLY_MODAL_CONFIG[monthlyModal].accent}
           onClose={() => setMonthlyModal(null)}
           onOpenParent={id => { setMonthlyModal(null); setSelectedId(id) }}
+        />
+      )}
+
+      {/* ── Cashflow cell composition modal ── */}
+      {cashflowCell && (
+        <CashflowCellModal
+          target={cashflowCell}
+          onClose={() => setCashflowCell(null)}
+          onOpenParent={id => { setCashflowCell(null); setSelectedId(id) }}
         />
       )}
 
