@@ -41,6 +41,8 @@ interface Props {
   title: string
   /** צבע הדגשה (טאב פעיל, סכומים) */
   accent: string
+  /** להציג מספר ילדים מתחת לשם ההורה (לא רלוונטי למגבית) */
+  showChildren?: boolean
   onClose: () => void
   onOpenParent: (parentId: string) => void
 }
@@ -50,7 +52,7 @@ interface Props {
  * טאב לכל חודש שיש בו חוב פתוח, ותחתיו רשומות ההורים עם היתרה. לחיצה על הורה
  * פותחת את הכרטיס שלו. חיפוש מסנן בכל החודשים.
  */
-export default function MonthlyDebtModal({ pools, dueOnly, title, accent, onClose, onOpenParent }: Props) {
+export default function MonthlyDebtModal({ pools, dueOnly, title, accent, showChildren = true, onClose, onOpenParent }: Props) {
   const [pool, setPool]       = useState<DebtPool>(pools[0]?.key ?? 'tuition')
   const [data, setData]       = useState<BreakdownData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -212,7 +214,7 @@ export default function MonthlyDebtModal({ pools, dueOnly, title, accent, onClos
                       {p.parentName}
                       {p.parentId && <span className="text-gray-300 text-xs mr-1 opacity-0 group-hover:opacity-100 transition-opacity">↗</span>}
                     </div>
-                    {p.childrenCount > 0 && (
+                    {showChildren && p.childrenCount > 0 && (
                       <div className="text-[11px] text-gray-400 mt-0.5">{p.childrenCount} ילדים</div>
                     )}
                   </div>

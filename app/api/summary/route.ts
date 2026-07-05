@@ -34,6 +34,7 @@ export async function GET() {
       employeesCountRes,
       salaryPaidThisMonthRes,
       pastDueTuitionRes,
+      pastDueDonationRes,
     ] = await Promise.all([
       // Tuition only — salary PPs are expenses, not expected income
       supabase.from('planned_payments').select('amount').eq('month_year', currentMonthYear)
@@ -130,6 +131,14 @@ export async function GET() {
         .from('planned_payments')
         .select('balance')
         .or('pp_type.eq.tuition,pp_type.is.null')
+        .gt('balance', 0)
+        .lte('date', todayStr),
+
+      // חוב מגבית = יתרות מגבית פתוחות שמועדן עבר (מקביל לחוב שכ"ל, לבריכת המגבית)
+      supabase
+        .from('planned_payments')
+        .select('balance, parent_ids')
+        .eq('pp_type', 'donation')
         .gt('balance', 0)
         .lte('date', todayStr),
     ])
@@ -252,6 +261,12 @@ export async function GET() {
     const totalDebt = (pastDueTuitionRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
     const parentsInDebt   = debtParentsCountRes.count ?? debtAlerts.length
 
+    // חוב מגבית past-due (מחליף את כרטיס "בפיגור" שהיה כפילות של חוב שכ"ל)
+    const donationDebt = (pastDueDonationRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
+    const donationDebtFamilies = new Set(
+      (pastDueDonationRes.data ?? []).flatMap(r => (r.parent_ids as string[]) ?? [])
+    ).size
+
     const recentTransactions = (recentTxRes.data ?? []).map(t => ({
       id: t.id as string,
       amount: Number(t.amount) || 0,
@@ -327,6 +342,8 @@ export async function GET() {
       actualThisMonth:  Math.round(actualThisMonth),
       totalDebt:        Math.round(totalDebt),
       parentsInDebt,
+      donationDebt:         Math.round(donationDebt),
+      donationDebtFamilies,
       debtAlerts,
       recentTransactions,
       monthlyData,

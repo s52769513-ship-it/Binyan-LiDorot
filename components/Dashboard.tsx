@@ -18,23 +18,25 @@ const CF_ACCENT = { tuition: '#c98a1a', donation: '#a855f7', salary: '#f97316', 
 type DebtPool = 'tuition' | 'donation' | 'salary'
 interface PoolOption { key: DebtPool; label: string }
 
-// כרטיסי חוב שנפתחים למודל פירוט חודשי (טאב לכל חודש → הורים)
-type MonthlyModalType = 'tuition' | 'salary' | 'overdue'
+// כרטיסי חוב שנפתחים למודל פירוט חודשי (טאב לכל חודש → הורים).
+// כרטיס נפרד לכל בריכה (שכ"ל / מגבית / משכורות) — לכן אין טוגל בתוך המודל.
+type MonthlyModalType = 'tuition' | 'donation' | 'salary'
 const MONTHLY_MODAL_CONFIG: Record<MonthlyModalType, {
-  title: string; accent: string; dueOnly: boolean; pools: PoolOption[]
+  title: string; accent: string; dueOnly: boolean; pools: PoolOption[]; showChildren: boolean
 }> = {
-  // חוב שכ"ל / בפיגור — רק תאריכים שכבר עברו, עם חלוקה בין שכ"ל למגבית
+  // חוב שכ"ל — רק תאריכים שכבר עברו; מציג מספר ילדים
   tuition: {
-    title: 'חוב פתוח — לפי חודש', accent: '#f59e0b', dueOnly: true,
-    pools: [{ key: 'tuition', label: 'שכ״ל' }, { key: 'donation', label: 'מגבית' }],
+    title: 'חוב שכ״ל — לפי חודש', accent: '#f59e0b', dueOnly: true,
+    pools: [{ key: 'tuition', label: 'שכ״ל' }], showChildren: true,
   },
-  overdue: {
-    title: 'תשלומים בפיגור — לפי חודש', accent: '#ef4444', dueOnly: true,
-    pools: [{ key: 'tuition', label: 'שכ״ל' }, { key: 'donation', label: 'מגבית' }],
+  // חוב מגבית — רק תאריכים שכבר עברו; בלי מספר ילדים
+  donation: {
+    title: 'חוב מגבית — לפי חודש', accent: '#a855f7', dueOnly: true,
+    pools: [{ key: 'donation', label: 'מגבית' }], showChildren: false,
   },
   salary: {
     title: 'חוב משכורות — לפי חודש', accent: '#f97316', dueOnly: false,
-    pools: [{ key: 'salary', label: 'משכורות' }],
+    pools: [{ key: 'salary', label: 'משכורות' }], showChildren: false,
   },
 }
 
@@ -57,6 +59,8 @@ interface DashboardData {
   actualThisMonth: number
   totalDebt: number
   parentsInDebt: number
+  donationDebt: number
+  donationDebtFamilies: number
   debtAlerts: DebtAlert[]
   recentTransactions: RecentTx[]
   monthlyData: MonthlyItem[]
@@ -513,7 +517,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
                     </td>
                     {/* Tuition */}
                     <td className="px-2 py-2 text-center tabular-nums">{amt(row.tuition.planned, 'tuition', 'planned', 'הכנסות שכ״ל · צפוי', CF_ACCENT.tuition)}</td>
-                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
+                    <td className="px-2 py-2 text-center tabular-nums text-emerald-700">
                       {amt(row.tuition.collected, 'tuition', 'collected', 'הכנסות שכ״ל · נגבה', CF_ACCENT.tuition)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.tuition.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
@@ -532,7 +536,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
                     </td>
                     {/* Donation */}
                     <td className="px-2 py-2 text-center tabular-nums">{amt(row.donation.planned, 'donation', 'planned', 'דמי מגבית · צפוי', CF_ACCENT.donation)}</td>
-                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
+                    <td className="px-2 py-2 text-center tabular-nums text-emerald-700">
                       {amt(row.donation.collected, 'donation', 'collected', 'דמי מגבית · נגבה', CF_ACCENT.donation)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
@@ -805,23 +809,23 @@ export default function Dashboard() {
                   <div className="text-[10px] text-gray-400 truncate">{d?.parentsInDebt ?? 0} משפחות בחוב</div>
                 </button>
 
-                {/* Row 2: Overdue, Salary debt, Credits */}
+                {/* Row 2: Donation debt, Salary debt, Credits */}
                 <button
-                  onClick={() => setMonthlyModal('overdue')}
-                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-red-300 transition-all cursor-pointer group"
+                  onClick={() => setMonthlyModal('donation')}
+                  className="bg-white rounded-lg border border-gray-200 p-2.5 flex flex-col gap-1 text-right hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#ef4444' }} />
-                    <span className="text-[11px] text-gray-600 leading-tight">בפיגור</span>
-                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-red-400">←</span>
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#a855f7' }} />
+                    <span className="text-[11px] text-gray-600 leading-tight">חוב מגבית</span>
+                    <span className="mr-auto text-[10px] text-gray-300 group-hover:text-purple-400">←</span>
                   </div>
-                  <div className="text-xl font-bold tabular-nums text-red-700 leading-none">
-                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.overdueAmount ?? 0)}
+                  <div className="text-xl font-bold tabular-nums text-purple-700 leading-none">
+                    <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.donationDebt ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: d && d.overdueCount > 0 ? '70%' : '0%', background: '#ef4444' }} />
+                    <div className="h-full rounded-full" style={{ width: d && d.donationDebt > 0 ? '70%' : '0%', background: '#a855f7' }} />
                   </div>
-                  <div className="text-[10px] text-gray-400 truncate">{d?.overdueCount ?? 0} תשלומים באיחור</div>
+                  <div className="text-[10px] text-gray-400 truncate">{d?.donationDebtFamilies ?? 0} משפחות בחוב</div>
                 </button>
 
                 <button
@@ -1078,6 +1082,7 @@ export default function Dashboard() {
           dueOnly={MONTHLY_MODAL_CONFIG[monthlyModal].dueOnly}
           title={MONTHLY_MODAL_CONFIG[monthlyModal].title}
           accent={MONTHLY_MODAL_CONFIG[monthlyModal].accent}
+          showChildren={MONTHLY_MODAL_CONFIG[monthlyModal].showChildren}
           onClose={() => setMonthlyModal(null)}
           onOpenParent={id => { setMonthlyModal(null); setSelectedId(id) }}
         />
