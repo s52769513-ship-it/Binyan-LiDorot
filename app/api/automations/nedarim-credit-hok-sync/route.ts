@@ -33,15 +33,20 @@ function significantWords(n: string): string[] {
     .map(w => w.toLowerCase())
 }
 
+// Nedarim records list surname first, then given name(s), e.g.
+// "בלנדר אברהם יצחק" / "קאהן אברהם יצחק" — given-name combos like "אברהם
+// יצחק" are extremely common and shared by many unrelated people, so
+// counting ANY 2 overlapping words (regardless of which words) matched
+// totally different surnames together. The surname (first significant
+// word) must match; given-name overlap only breaks ties/adds confidence.
 function namesMatch(a: string, b: string): boolean {
   const wa = significantWords(a)
   const wb = significantWords(b)
   if (!wa.length || !wb.length) return false
   if (wa.join(' ') === wb.join(' ')) return true
-  if (wa.length >= 2 && wb.length >= 2) {
-    return wa.filter(w => wb.includes(w)).length >= 2
-  }
-  return false
+  if (wa[0] !== wb[0]) return false
+  if (wa.length === 1 || wb.length === 1) return true
+  return wa.slice(1).some(w => wb.slice(1).includes(w))
 }
 
 export async function GET() {
