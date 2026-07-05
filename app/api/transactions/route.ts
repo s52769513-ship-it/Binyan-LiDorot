@@ -4,6 +4,16 @@ import { insertSpilloverRows } from '@/lib/ppPayments'
 
 const PAGE_SIZE = 50
 
+// supabase-js's .contains() builds the Postgres array literal as a naive
+// `{${value.join(',')}}` with no escaping — a category/project name
+// containing a `"` (common in Hebrew acronyms like תשב"ר) breaks the array
+// literal syntax and the query fails server-side. Build it correctly here
+// and pass it through .filter() (which uses the value as-is) instead.
+function pgTextArrayLiteral(values: string[]): string {
+  const escape = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return `{${values.map(escape).join(',')}}`
+}
+
 function sumAmounts(rows: { amount: number | string | null }[]): { totalIncome: number; totalExpense: number } {
   let totalIncome = 0, totalExpense = 0
   for (const r of rows) {
@@ -150,7 +160,11 @@ export async function GET(req: NextRequest) {
 
     if (month)   { query = query.eq('month_year', month);                    sumQuery = sumQuery.eq('month_year', month) }
     if (type)    { query = query.eq('type', type);                           sumQuery = sumQuery.eq('type', type) }
-    if (project) { query = query.contains('project_names', [project]);       sumQuery = sumQuery.contains('project_names', [project]) }
+    if (project) {
+      const lit = pgTextArrayLiteral([project])
+      query    = query.filter('project_names', 'cs', lit)
+      sumQuery = sumQuery.filter('project_names', 'cs', lit)
+    }
     // Exclude internal credit rows from the general list
     query    = query.not('notes', 'like', 'זיכוי%')
     sumQuery = sumQuery.not('notes', 'like', 'זיכוי%')
