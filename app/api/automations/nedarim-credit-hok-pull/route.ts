@@ -88,11 +88,12 @@ export async function POST(req: NextRequest) {
           send({ type: 'progress', current: i + 1, total: creditSOs.length })
 
           try {
-            const url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevald&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&Kevald=${encodeURIComponent(so.external_id)}`
+            const url = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&KevaId=${encodeURIComponent(so.external_id)}`
             const resp = await fetch(url)
             if (!resp.ok) { send({ type: 'log', message: `הו"ק ${so.external_id}: שגיאת רשת` }); totalSkipped++; continue }
             const json = await resp.json()
-            if (json.Result !== 0) { send({ type: 'log', message: `הו"ק ${so.external_id}: ${json.Message ?? 'שגיאה'}` }); totalSkipped++; continue }
+            const isError = json.Result != null && json.Result !== 0
+            if (isError) { send({ type: 'log', message: `הו"ק ${so.external_id}: ${json.Message ?? 'שגיאה'}` }); totalSkipped++; continue }
 
             const clientName = String(json.KevaName ?? '').trim()
 

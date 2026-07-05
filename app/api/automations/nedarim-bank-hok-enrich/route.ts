@@ -22,17 +22,28 @@ function parseStatus(raw: string): string {
   return 'פעיל'
 }
 
+// Words like בר"א / ברא"צ / בריא"ז are patronymic-title acronyms, not real
+// name content — drop them as WHOLE words (any word containing a geresh/
+// gershayim character). A partial regex strip here previously left stray
+// one-letter fragments (e.g. "ברא"צ" → residual '"צ') that coincidentally
+// matched between unrelated people sharing that suffix style + a first name,
+// producing false-positive matches (reported: אייזנער דוד ברא"צ ≠ גורמן דוד ברא"צ).
+function significantWords(n: string): string[] {
+  return String(n ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => !/["'׳״]/.test(w))
+    .filter(w => !['הרב', 'רב'].includes(w))
+    .map(w => w.toLowerCase())
+}
+
 // Loose name match for linking a Nedarim record to a chosen parent when
 // there's no ת"ז yet — same heuristic used by nedarim-credit-hok-sync.
 function namesMatch(a: string, b: string): boolean {
-  const norm = (n: string) => n
-    .replace(/\b(הרב|ר'|ר"|רב|בר"?[א-ת]|בריא"ז|ברי"ט|ברי"מ|ברא"צ|ברא"ז|בר"ל|בר"מ|בר"צ|בר"א|בר"ב|בר"ש|בר"ד)\b/g, '')
-    .replace(/\s+/g, ' ').trim().toLowerCase()
-  const na = norm(a), nb = norm(b)
-  if (!na || !nb) return false
-  if (na === nb) return true
-  const wa = na.split(' ').filter(Boolean)
-  const wb = nb.split(' ').filter(Boolean)
+  const wa = significantWords(a)
+  const wb = significantWords(b)
+  if (!wa.length || !wb.length) return false
+  if (wa.join(' ') === wb.join(' ')) return true
   if (wa.length >= 2 && wb.length >= 2) {
     return wa.filter(w => wb.includes(w)).length >= 2
   }

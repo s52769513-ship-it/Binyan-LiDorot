@@ -10,14 +10,34 @@ function fmtExpiry(raw: string): string {
   return s
 }
 
+// "5" | "05/08/2026" | anything containing a day-of-month → 1-31, else null
+function parseChargeDay(raw: string): number | null {
+  const m = String(raw ?? '').match(/\d{1,2}/)
+  if (!m) return null
+  const n = Number(m[0])
+  return n >= 1 && n <= 31 ? n : null
+}
+
+// Words like בר"א / ברא"צ / בריא"ז are patronymic-title acronyms, not real
+// name content — drop them as WHOLE words (any word containing a geresh/
+// gershayim character). A partial regex strip here previously left stray
+// one-letter fragments (e.g. "ברא"צ" → residual '"צ') that coincidentally
+// matched between unrelated people sharing that suffix style + a first name,
+// producing false-positive matches (reported: אייזנער דוד ברא"צ ≠ גורמן דוד ברא"צ).
+function significantWords(n: string): string[] {
+  return String(n ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => !/["'׳״]/.test(w))
+    .filter(w => !['הרב', 'רב'].includes(w))
+    .map(w => w.toLowerCase())
+}
+
 function namesMatch(a: string, b: string): boolean {
-  const norm = (n: string) => n
-    .replace(/\b(הרב|ר'|ר"|רב|בר"?[א-ת]|בריא"ז|ברי"ט|ברי"מ|ברא"צ|ברא"ז|בר"ל|בר"מ|בר"צ|בר"א|בר"ב|בר"ש|בר"ד)\b/g, '')
-    .replace(/\s+/g, ' ').trim().toLowerCase()
-  const na = norm(a), nb = norm(b)
-  if (na === nb) return true
-  const wa = na.split(' ').filter(Boolean)
-  const wb = nb.split(' ').filter(Boolean)
+  const wa = significantWords(a)
+  const wb = significantWords(b)
+  if (!wa.length || !wb.length) return false
+  if (wa.join(' ') === wb.join(' ')) return true
   if (wa.length >= 2 && wb.length >= 2) {
     return wa.filter(w => wb.includes(w)).length >= 2
   }
@@ -46,90 +66,45 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        // 1. Pull full list via GetKeva.Json with pagination (LastId)
+        // 1. Pull the list via the documented GetKevaNew action (numbered
+        // fields only — no ת"ז/card details here, no pagination; the API
+        // itself caps this action at 20 requests/hour so we call it once).
         send({ type: 'log', message: 'מושך רשימת הו"ק אשראי מנדרים...' })
 
         type KevaRecord = Record<string, unknown>
-        const allRecords: KevaRecord[] = []
-        let lastId = ''
+        const listUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}`
+        const listResp = await fetch(listUrl)
+        if (!listResp.ok) throw new Error(`Nedarim returned ${listResp.status}`)
+        const listJson = await listResp.json()
+        if (listJson.Result != null && listJson.Result !== 0) throw new Error(`Nedarim: ${listJson.Message ?? listJson.Result}`)
+        if (!Array.isArray(listJson.data)) throw new Error('Nedarim: unexpected response format')
 
-        // Paginate: keep calling until we get fewer than 2000 records
-        // Try multiple action/param/endpoint variants — Nedarim API is inconsistent
-        type ActionCandidate = { base: string; params: string }
-        const actionsToTry: ActionCandidate[] = [
-          // GetKeva.Json — has named fields with Zeout/LastNum/Tokef
-          { base: 'Manage3.aspx',  params: `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          { base: 'Manage3.aspx',  params: `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          { base: 'Manage.aspx',   params: `Action=GetKeva.Json&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          { base: 'Manage.aspx',   params: `Action=GetKeva.Json&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          // GetKeva (without .Json)
-          { base: 'Manage3.aspx',  params: `Action=GetKeva&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          { base: 'Manage3.aspx',  params: `Action=GetKeva&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          // GetKevaNew fallback — numbered fields only
-          { base: 'Manage3.aspx',  params: `Action=GetKevaNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-          { base: 'Manage3.aspx',  params: `Action=GetKevaNew&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MaxId=2000` },
-        ]
-        let workingAction = ''
-        let workingBase   = ''
-        let hasNamedFields = false
-        for (const candidate of actionsToTry) {
-          const testUrl = `https://matara.pro/nedarimplus/Reports/${candidate.base}?${candidate.params}`
-          const testResp = await fetch(testUrl)
-          if (!testResp.ok) continue
-          const testJson = await testResp.json().catch(() => null)
-          if (!testJson) continue
-          const isError = testJson.Result != null && testJson.Result !== 0
-          if (isError) continue
-          const page = Array.isArray(testJson) ? testJson : (testJson.data ?? testJson.Data ?? [])
-          const firstRecord = page[0] as Record<string, unknown> | undefined
-          const named = !!(firstRecord && ('Kevald' in firstRecord || 'Zeout' in firstRecord))
-          workingAction = candidate.params
-          workingBase   = candidate.base
-          hasNamedFields = named
-          if (named) break  // found preferred named-field variant — stop searching
-        }
-        if (!workingAction) throw new Error('כל שמות הפעולה של GetKeva נדחו על ידי נדרים')
-        send({ type: 'log', message: `פעולה: ${workingAction.split('&')[0]} (${workingBase}) · שדות: ${hasNamedFields ? 'named ✓' : 'numbered (ללא פרטי כרטיס)'}` })
-        send({ type: 'log', message: `פעולה פעילה: ${workingAction.split('&')[0]}` })
+        const allRecords: KevaRecord[] = listJson.data
+        send({ type: 'log', message: `נמצאו ${allRecords.length} הו"ק אשראי` })
 
-        while (true) {
-          let url = `https://matara.pro/nedarimplus/Reports/${workingBase}?${workingAction}`
-          if (lastId) url += `&LastId=${encodeURIComponent(lastId)}`
-
-          const resp = await fetch(url)
-          if (!resp.ok) throw new Error(`Nedarim returned ${resp.status}`)
-          const json = await resp.json()
-          if (json.Result != null && json.Result !== 0) throw new Error(`Nedarim: ${json.Message ?? json.Result}`)
-
-          const page: KevaRecord[] = Array.isArray(json) ? json : (json.data ?? json.Data ?? [])
-          if (!page.length) break
-
-          // Debug: log first record keys on first page to verify field names
-          if (allRecords.length === 0 && page.length > 0) {
-            send({ type: 'log', message: `DEBUG שדות: ${Object.keys(page[0]).join(', ')}` })
-          }
-
-          allRecords.push(...page)
-          send({ type: 'log', message: `  משכנו ${allRecords.length} הו"ק עד כה...` })
-
-          if (page.length < 2000) break  // last page
-          // Set LastId to the last record's Kevald for next page
-          lastId = String((page[page.length - 1] as Record<string, unknown>).Kevald ?? (page[page.length - 1] as Record<string, unknown>)['DT_RowId'] ?? '').trim()
-          if (!lastId) break
-        }
-
-        // Filter to single parent if requested
+        // Filter to single parent if requested — keep records already linked
+        // to this parent (by external_id) AND not-yet-linked ones anywhere in
+        // Nedarim's full list whose client name matches the parent, so the
+        // sync can discover a הו"ק for a parent who doesn't have one locally
+        // yet (not just re-sync parents that already do).
+        let targetParentName = ''
         let filteredRecords = allRecords
         if (parentId) {
+          const { data: targetParent } = await supabaseAdmin
+            .from('parents').select('name').eq('id', parentId).single()
+          targetParentName = String(targetParent?.name ?? '').trim()
+
           const { data: parentSos } = await supabaseAdmin
             .from('standing_orders')
             .select('external_id')
             .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
             .eq('standing_order_type', 'אשראי')
           const parentExtIds = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
+
           filteredRecords = allRecords.filter(r => {
-            const eid = String(r.Kevald ?? r['DT_RowId'] ?? '').trim()
-            return parentExtIds.has(eid)
+            const eid = String(r['DT_RowId'] ?? '').trim()
+            if (parentExtIds.has(eid)) return true
+            return namesMatch(targetParentName, String(r['2'] ?? '').trim())
           })
         }
 
@@ -155,35 +130,53 @@ export async function POST(req: NextRequest) {
         const logRows: LogRow[] = []
         let updated = 0, created = 0, parentCreated = 0, skipped = 0
 
-        // Log first raw record to debug field names
-        if (allRecords.length > 0) {
-          send({ type: 'log', message: `DEBUG רשומה ראשונה: ${JSON.stringify(allRecords[0]).slice(0, 300)}` })
-        }
-
         for (let i = 0; i < filteredRecords.length; i++) {
           const r = filteredRecords[i] as Record<string, unknown>
-          // Support both named fields (GetKeva.Json) and numbered (GetKevaNew)
-          const externalId = String(r.Kevald ?? r['DT_RowId'] ?? r['1'] ?? '').trim()
+          const externalId = String(r['DT_RowId'] ?? '').trim()
           if (!externalId) { skipped++; continue }
 
           send({ type: 'progress', current: i + 1, total: filteredRecords.length })
 
-          // Named fields: from GetKeva.Json (preferred — has ת"ז and card details)
-          // Numbered fallbacks: from GetKevaNew (no card details, only basic info)
-          const clientName    = String(r.ClientName ?? r['2'] ?? '').trim()
-          const tz            = String(r.Zeout ?? '').trim()                          // only GetKeva.Json has this
-          const chargeAmount  = Number(String(r.Amount ?? r['6'] ?? r['5'] ?? '').replace(/[^\d.]/g, '')) || null
-          const projectName   = String(r.Groupe ?? r['7'] ?? '').trim() || null
-          const notes         = String(r.Comments ?? r['8'] ?? '').trim()
-          const cardLast4     = String(r.LastNum ?? '').trim() || null                // only GetKeva.Json
-          const cardExpiry    = fmtExpiry(String(r.Tokef ?? ''))                      // only GetKeva.Json
-          const creditBalance = Number(String(r.Itra ?? '').replace(/[^\d.]/g, '')) || null
-          const isActive      = String(r.Enabled ?? '1') !== '0'
-          const errorText     = String(r.ErrorText ?? '').trim()
-          const soStatus      = !isActive ? 'לא פעיל' : errorText ? 'סירוב' : 'פעיל'
+          // GetKevaNew numbered fields per the documented API:
+          // 2 name · 3 address+phone · 4 amount · 5 category · 6 notes ·
+          // 7 remaining charges · 8 times performed · 9 next charge date ·
+          // 10 error text · 11 last4 · 12 expiry (MMYY)
+          const clientName    = String(r['2'] ?? '').trim()
+          const chargeAmount  = Number(String(r['4'] ?? '').replace(/[^\d.]/g, '')) || null
+          const projectName   = String(r['5'] ?? '').trim() || null
+          const notes         = String(r['6'] ?? '').trim()
+          const creditBalance = Number(String(r['7'] ?? '').replace(/[^\d.]/g, '')) || null
+          const errorText     = String(r['10'] ?? '').trim()
+          const cardLast4     = String(r['11'] ?? '').trim() || null
+          const cardExpiry    = fmtExpiry(String(r['12'] ?? '')) || null
+          let   chargeDay     = parseChargeDay(String(r['9'] ?? ''))
 
-          // Match parent: ת"ז first, then name
-          let parentId: string | null = null
+          // GetKevaId — the only place ת"ז and canonical status live for
+          // credit הו"ק (the list endpoint above doesn't expose them).
+          let tz = ''
+          let soStatus = errorText ? 'סירוב' : 'פעיל'
+          try {
+            const idUrl = `https://matara.pro/nedarimplus/Reports/Manage3.aspx?Action=GetKevaId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&KevaId=${encodeURIComponent(externalId)}`
+            const idResp = await fetch(idUrl)
+            if (idResp.ok) {
+              const idJson = await idResp.json()
+              const isError = idJson.Result != null && idJson.Result !== 0
+              if (!isError) {
+                if (idJson.KevaZeout) tz = String(idJson.KevaZeout).trim()
+                if (idJson.KevaStatus === '2' || idJson.KevaStatus === 2) soStatus = 'מושהה'
+                else if (idJson.KevaStatus === '3' || idJson.KevaStatus === 3) soStatus = 'מבוטל'
+                else if (idJson.KevaStatus === '1' || idJson.KevaStatus === 1) soStatus = 'פעיל'
+                const nd = parseChargeDay(String(idJson.KevaNextDate ?? ''))
+                if (nd != null) chargeDay = nd
+              }
+            }
+          } catch { /* לא קריטי */ }
+
+          // Match parent: ת"ז first, then name against the whole parent
+          // list; if a specific parent was requested, this record already
+          // survived the parent filter above (linked or name-matched), so
+          // attach it to that parent instead of creating a duplicate.
+          let matchedParentId: string | null = null
           let parentAction = 'לא קושר'
 
           const byTz   = tz ? parentByTz.get(tz) : undefined
@@ -191,15 +184,18 @@ export async function POST(req: NextRequest) {
           const matched = byTz ?? byName
 
           if (matched) {
-            parentId = matched.id
+            matchedParentId = matched.id
             parentAction = `קושר → ${matched.name}${byTz ? ' (ת"ז)' : ' (שם)'}`
+          } else if (parentId) {
+            matchedParentId = parentId
+            parentAction = `קושר → ${targetParentName || clientName} (הורה שנבחר)`
           } else if (!dryRun) {
             const newId = crypto.randomUUID()
             const { error: pErr } = await supabaseAdmin.from('parents').insert({
               id: newId, name: clientName || `הו"ק ${externalId}`, id_number: tz || null,
             })
             if (!pErr) {
-              parentId = newId; parentAction = 'נוצר חדש'; parentCreated++
+              matchedParentId = newId; parentAction = 'נוצר חדש'; parentCreated++
               parentList.push({ id: newId, name: clientName, tz })
               if (tz) parentByTz.set(tz, { id: newId, name: clientName, tz })
             }
@@ -209,9 +205,10 @@ export async function POST(req: NextRequest) {
 
           const payload: Record<string, unknown> = {
             external_id: externalId, standing_order_type: 'אשראי',
-            parent_id: parentId, charge_amount: chargeAmount,
+            parent_id: matchedParentId, charge_amount: chargeAmount,
+            charge_day: chargeDay,
             credit_balance: creditBalance, project_name: projectName,
-            card_last4: cardLast4, card_expiry: cardExpiry || null,
+            card_last4: cardLast4, card_expiry: cardExpiry,
             so_status: soStatus,
           }
           if (notes) payload.notes = notes
