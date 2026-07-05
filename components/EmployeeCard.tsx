@@ -641,6 +641,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [soParentQuery, setSoParentQuery]           = useState('')
   const [soParentResults, setSoParentResults]       = useState<{id:string;name:string}[]>([])
   const [soParentSearching, setSoParentSearching]   = useState(false)
+  const [chargingSoId, setChargingSoId]             = useState<string | null>(null)
+  const [chargeDraft, setChargeDraft]               = useState({ amount: '', comments: '', date: '' })
+  const [chargeInFlight, setChargeInFlight]         = useState(false)
+  const [chargeResult, setChargeResult]             = useState<{ soId: string; success: boolean; message?: string } | null>(null)
 
   const creditApplyingRef = useRef(false)
 
@@ -2077,6 +2081,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
                           className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
                         >עריכה</button>
+                        {(so.standingOrderType === 'אשראי' || so.standingOrderType === 'בנקאי') && so.externalId && (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              setChargingSoId(prev => prev === so.id ? null : so.id)
+                              setChargeDraft({ amount: so.chargeAmount ? String(so.chargeAmount) : '', comments: '', date: '' })
+                              setChargeResult(null)
+                            }}
+                            className="text-[11px] text-emerald-600 hover:text-emerald-800 px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                          >חייב עכשיו</button>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className="flex items-center gap-2 justify-end">
@@ -2098,6 +2113,78 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                       </div>
                     </div>
                   </div>
+
+                  {/* Charge-now form */}
+                  {chargingSoId === so.id && (
+                    <div className="p-3 bg-emerald-50 border-b border-emerald-100 space-y-2" dir="rtl">
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] font-medium text-gray-500 shrink-0">סכום</label>
+                        <input
+                          type="number"
+                          value={chargeDraft.amount}
+                          onChange={e => setChargeDraft(d => ({ ...d, amount: e.target.value }))}
+                          className="w-24 px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                          dir="ltr"
+                        />
+                        {so.standingOrderType === 'בנקאי' && (
+                          <>
+                            <label className="text-[11px] font-medium text-gray-500 shrink-0">תאריך</label>
+                            <input
+                              type="date"
+                              value={chargeDraft.date}
+                              onChange={e => setChargeDraft(d => ({ ...d, date: e.target.value }))}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                              dir="ltr"
+                            />
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={chargeDraft.comments}
+                        onChange={e => setChargeDraft(d => ({ ...d, comments: e.target.value }))}
+                        placeholder="הערה (אופציונלי)"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded-lg text-right"
+                      />
+                      <div className="flex items-center gap-2 justify-start">
+                        <button
+                          onClick={() => setChargingSoId(null)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        >ביטול</button>
+                        <button
+                          disabled={chargeInFlight || !Number(chargeDraft.amount)}
+                          onClick={async () => {
+                            const amount = Number(chargeDraft.amount)
+                            if (!amount || amount <= 0) return
+                            if (!confirm(`לחייב עכשיו ${fmt(amount)} מהו"ק ${so.externalId}? הפעולה תגבה כסף אמיתי.`)) return
+                            setChargeInFlight(true)
+                            setChargeResult(null)
+                            try {
+                              const res = await fetch(`/api/standing-orders/${so.id}/charge`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ amount, comments: chargeDraft.comments, date: chargeDraft.date || undefined }),
+                              })
+                              const data = await res.json()
+                              setChargeResult({ soId: so.id, success: !!data.success, message: data.message })
+                              if (data.success) setChargingSoId(null)
+                            } catch (err) {
+                              setChargeResult({ soId: so.id, success: false, message: String(err) })
+                            } finally {
+                              setChargeInFlight(false)
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+                        >{chargeInFlight ? '...' : 'אשר חיוב'}</button>
+                      </div>
+                    </div>
+                  )}
+                  {chargeResult?.soId === so.id && (
+                    <div className={`px-3 py-2 text-xs ${chargeResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                      {chargeResult.success
+                        ? 'החיוב בוצע בהצלחה - יופיע ברשימת התנועות לאחר הסנכרון הבא מול נדרים.'
+                        : `שגיאה: ${chargeResult.message || 'לא ידוע'}`}
+                    </div>
+                  )}
 
                   {/* Transactions panel */}
                   {selectedSo?.id === so.id && (
