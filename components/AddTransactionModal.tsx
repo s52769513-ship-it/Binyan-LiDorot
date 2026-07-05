@@ -60,6 +60,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [receiptError, setReceiptError]         = useState('')
   const [previewReceipt, setPreviewReceipt]     = useState(false)
+  const [showCashFundInfo, setShowCashFundInfo] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -344,7 +345,10 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                 ללא
               </button>
               {displayProjects.map(p => (
-                <button key={p} type="button" onClick={() => setProject(p)}
+                <button key={p} type="button" onClick={() => {
+                  setProject(p)
+                  if (p === 'מזומנים') setShowCashFundInfo(true)
+                }}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                     project === p
                       ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]'
@@ -477,6 +481,51 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
       </div>
       {previewReceipt && receiptUrl && (
         <FilePreviewModal url={receiptUrl} name={receiptName} onClose={() => setPreviewReceipt(false)} />
+      )}
+      {showCashFundInfo && (
+        <div className="fixed inset-0 z-[51] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowCashFundInfo(false) }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden" dir="rtl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <button onClick={() => setShowCashFundInfo(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">✕</button>
+              <h2 className="text-lg font-bold text-gray-900">💰 קופת מזומנים</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                <div>
+                  <h3 className="font-bold text-blue-900 mb-2">מה זה עושה?</h3>
+                  <p className="text-sm text-blue-800">
+                    תנועה זו מעדכנת את קופת המזומנים הישירה של הארגון.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-bold text-blue-900 mb-2">כיצד זה עובד?</h3>
+                  <p className="text-sm text-blue-800">
+                    הסכום שתזינו יופרד מחישוב הסכומים הרגילים (הכנסות והוצאות) כדי לנהל את המזומנים בנפרד.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-bold text-blue-900 mb-2">מה יקרה?</h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>✓ הסכום יתווסף לקופת המזומנים</li>
+                    <li>✓ הוא <strong>לא יופיע</strong> בחישוב הכנסות/הוצאות רגילות</li>
+                    <li>✓ אתה יכול לעקוב אחרי יתרת המזומנים בדשבורד</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                אתה יכול להמשיך להזין את פרטי התנועה לעיל.
+              </p>
+            </div>
+            <div className="p-4 border-t border-gray-100">
+              <button onClick={() => setShowCashFundInfo(false)}
+                className="w-full px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
+                הבנתי
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

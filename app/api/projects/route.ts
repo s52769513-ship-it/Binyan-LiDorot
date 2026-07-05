@@ -29,6 +29,9 @@ export async function GET() {
       }
     }
 
+    // Always include "מזומנים" for cash fund management
+    all.add('מזומנים')
+
     // Sort: בניין לדורות first, then alphabetically
     const sorted = [...all].sort((a, b) => {
       if (a === 'בניין לדורות') return -1
