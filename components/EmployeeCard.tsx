@@ -2518,6 +2518,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
             setSelectedPpTx(null)
             load()
           }}
+          onDeleted={id => {
+            setPpTxList(prev => prev.filter(t => t.id !== id))
+            setSelectedPpTx(null)
+            load()
+          }}
         />
       )}
 

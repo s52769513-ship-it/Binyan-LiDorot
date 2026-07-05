@@ -846,6 +846,10 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
             setSelectedPpTx(null)
             if (selectedPP) loadPpTx(selectedPP.id)
           }}
+          onDeleted={() => {
+            setSelectedPpTx(null)
+            if (selectedPP) loadPpTx(selectedPP.id)
+          }}
         />
       )}
 

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { attributeTxsToPP } from '@/lib/ppAttribution'
+import FilePreviewModal from '@/components/FilePreviewModal'
 
 export interface Transaction {
   id: string
@@ -332,11 +333,12 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
 }
 
 /* ─── Transaction Detail Modal ─────────────────────────────── */
-export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
+export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }: {
   tx: Transaction
   onClose: () => void
   onOpenParent?: (id: string) => void
   onSaved?: (updated: Transaction) => void
+  onDeleted?: (id: string) => void
 }) {
   const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
@@ -347,6 +349,10 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
   const [spillovers, setSpillovers] = useState<{ id: string; amount: number; ppName: string; monthYear: string }[]>([])
   const [ppLoading, setPpLoading] = useState(false)
   const [ppError, setPpError]   = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting]   = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [previewReceipt, setPreviewReceipt] = useState(false)
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
@@ -403,6 +409,21 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
     } finally { setSaving(false) }
   }
 
+  const handleDelete = async () => {
+    setDeleting(true); setDeleteError('')
+    try {
+      const r = await fetch(`/api/transactions/${tx.id}`, { method: 'DELETE' })
+      const data = await r.json().catch(() => ({}))
+      if (data?.error) { setDeleteError(data.error); return }
+      onDeleted?.(tx.id)
+      onClose()
+    } catch {
+      setDeleteError('שגיאה במחיקה')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const currentType = TX_TYPES.includes(draft.type) ? draft.type : draft.type
   const currentProject = draft.projectNames?.[0] ?? ''
 
@@ -411,10 +432,24 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
           <span className="text-sm font-bold" style={{ color: '#d4a921' }}>פירוט תנועה</span>
-          <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+          <div className="flex items-center gap-3">
+            {!confirmDelete ? (
+              <button onClick={() => setConfirmDelete(true)} className="text-white/60 hover:text-red-300 text-base leading-none" title="מחק תנועה">🗑️</button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setConfirmDelete(false)} className="text-[11px] text-white/60 hover:text-white">ביטול</button>
+                <button onClick={handleDelete} disabled={deleting}
+                  className="text-[11px] bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600 disabled:opacity-60">
+                  {deleting ? '...' : 'מחק'}
+                </button>
+              </div>
+            )}
+            <button onClick={onClose} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+          </div>
         </div>
 
         <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto" dir="rtl">
+          {deleteError && <p className="text-xs text-red-500 text-center">{deleteError}</p>}
           {tx.parentName && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-400">שם</span>
@@ -488,11 +523,11 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
             </div>
           )}
 
-          {/* Receipt/invoice link */}
+          {/* Receipt/invoice — opens in an in-page preview, not a new tab */}
           {tx.receiptUrl && (
             <div className="flex justify-between items-center gap-3">
-              <a href={tx.receiptUrl} target="_blank" rel="noreferrer"
-                className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</a>
+              <button onClick={() => setPreviewReceipt(true)}
+                className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
               <span className="text-xs text-gray-400 shrink-0">חשבונית</span>
             </div>
           )}
@@ -626,6 +661,9 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved }: {
           )}
         </div>
       </div>
+      {previewReceipt && tx.receiptUrl && (
+        <FilePreviewModal url={tx.receiptUrl} onClose={() => setPreviewReceipt(false)} />
+      )}
     </div>
   )
 }
@@ -666,7 +704,8 @@ export function TransactionRow({ tx, onUpdate, onDelete, onOpenParent }: Props) 
   return (
     <>
       {showDetail && (
-        <TxDetailModal tx={local} onClose={() => setShowDetail(false)} onOpenParent={onOpenParent} />
+        <TxDetailModal tx={local} onClose={() => setShowDetail(false)} onOpenParent={onOpenParent}
+          onDeleted={id => { setShowDetail(false); onDelete(id) }} />
       )}
     <tr onClick={() => setShowDetail(true)} className="border-b border-gray-100 hover:bg-blue-50/40 cursor-pointer transition-colors" dir="rtl">
       <td className="px-3 py-2 text-sm">

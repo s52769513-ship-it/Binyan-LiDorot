@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import FilePreviewModal from '@/components/FilePreviewModal'
 
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
 
@@ -58,6 +59,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [receiptName, setReceiptName]           = useState('')
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [receiptError, setReceiptError]         = useState('')
+  const [previewReceipt, setPreviewReceipt]     = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -140,13 +142,13 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
     }
   }
 
+  // `project` is kept in sync on every keystroke (see the input's onChange
+  // below), so it's already correct even if the user clicks "שמור" straight
+  // from the text field without pressing Enter first — this just folds the
+  // new value into the pill list for next time and hides the input.
   const commitCustomProject = () => {
     const v = customProjectDraft.trim()
-    if (v) {
-      setProject(v)
-      setProjects(prev => prev.includes(v) ? prev : [v, ...prev])
-    }
-    setCustomProjectDraft('')
+    if (v) setProjects(prev => prev.includes(v) ? prev : [v, ...prev])
     setShowCustomProject(false)
   }
 
@@ -155,6 +157,9 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
     if (!amount || isNaN(amtNum) || amtNum === 0) { setError('יש להזין סכום תקין'); return }
     // הוצאה = שלילי, הכנסה = חיובי
     const finalAmount = direction === 'הוצאה' ? -Math.abs(amtNum) : Math.abs(amtNum)
+    // Belt-and-suspenders: if the custom-category field is still open, use
+    // whatever's typed in it directly rather than trusting `project` state.
+    const finalProject = (showCustomProject && customProjectDraft.trim()) ? customProjectDraft.trim() : project
     setSubmitting(true); setError('')
     try {
       const res = await fetch('/api/transactions', {
@@ -164,7 +169,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           amount: finalAmount,
           type, date, monthYear, notes,
           parentIds: selectedParent ? [selectedParent.id] : (parentId ? [parentId] : []),
-          projectNames: project ? [project] : [],
+          projectNames: finalProject ? [finalProject] : [],
           plannedPaymentId: plannedPaymentId || linkedPayment?.id || null,
           framework: direction === 'הוצאה' ? framework : '',
           receiptUrl: direction === 'הוצאה' ? receiptUrl : '',
@@ -356,19 +361,24 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
               )}
             </div>
             {showCustomProject && (
-              <input
-                autoFocus
-                type="text"
-                value={customProjectDraft}
-                onChange={e => setCustomProjectDraft(e.target.value)}
-                onBlur={commitCustomProject}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); commitCustomProject() }
-                  if (e.key === 'Escape') { setCustomProjectDraft(''); setShowCustomProject(false) }
-                }}
-                placeholder="הקלד סוג הוצאה חדש ולחץ Enter..."
-                className="w-full mt-1.5 px-3 py-2 rounded-lg border border-[#1a3a7a]/40 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
-              />
+              <>
+                <input
+                  autoFocus
+                  type="text"
+                  value={customProjectDraft}
+                  onChange={e => { setCustomProjectDraft(e.target.value); setProject(e.target.value) }}
+                  onBlur={commitCustomProject}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitCustomProject() }
+                    if (e.key === 'Escape') { setCustomProjectDraft(''); setProject(''); setShowCustomProject(false) }
+                  }}
+                  placeholder="הקלד סוג הוצאה חדש..."
+                  className="w-full mt-1.5 px-3 py-2 rounded-lg border border-[#1a3a7a]/40 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30"
+                />
+                {customProjectDraft.trim() && (
+                  <p className="text-[11px] text-[#1a3a7a] mt-1">ייבחר: {customProjectDraft.trim()}</p>
+                )}
+              </>
             )}
           </div>
 
@@ -399,9 +409,9 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                 <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">
                   <button type="button" onClick={() => { setReceiptUrl(''); setReceiptName('') }}
                     className="text-red-400 hover:text-red-600 text-xs">✕ הסר</button>
-                  <a href={receiptUrl} target="_blank" rel="noreferrer" className="text-emerald-700 font-medium truncate hover:underline">
+                  <button type="button" onClick={() => setPreviewReceipt(true)} className="text-emerald-700 font-medium truncate hover:underline">
                     📎 {receiptName || 'הקובץ שצורף'}
-                  </a>
+                  </button>
                 </div>
               ) : (
                 <label className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 hover:border-[#1a3a7a] hover:text-[#1a3a7a] cursor-pointer transition-colors">
@@ -465,6 +475,9 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           </button>
         </div>
       </div>
+      {previewReceipt && receiptUrl && (
+        <FilePreviewModal url={receiptUrl} name={receiptName} onClose={() => setPreviewReceipt(false)} />
+      )}
     </div>
   )
 }

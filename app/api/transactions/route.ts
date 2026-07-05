@@ -14,14 +14,27 @@ function pgTextArrayLiteral(values: string[]): string {
   return `{${values.map(escape).join(',')}}`
 }
 
-function sumAmounts(rows: { amount: number | string | null }[]): { totalIncome: number; totalExpense: number } {
-  let totalIncome = 0, totalExpense = 0
-  for (const r of rows) {
-    const amt = Number(r.amount) || 0
-    if (amt > 0) totalIncome += amt
-    else totalExpense += amt
-  }
-  return { totalIncome, totalExpense }
+// Computed in the database via the transactions_totals() function
+// (TRANSACTIONS_TOTALS_RPC.sql) so it covers the whole matching set
+// regardless of table size — a plain row-returning SELECT gets silently
+// truncated by PostgREST's row cap once the table passes a few thousand
+// rows, which previously made the dashboard undercount (or miss entirely)
+// totals on a filtered view.
+async function totalsFor(opts: {
+  parentIds?: string[] | null
+  month?: string
+  type?: string
+  project?: string
+}): Promise<{ totalIncome: number; totalExpense: number }> {
+  const { data, error } = await supabaseAdmin.rpc('transactions_totals', {
+    p_parent_ids: opts.parentIds ?? null,
+    p_month: opts.month || null,
+    p_type: opts.type || null,
+    p_project: opts.project || null,
+  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  return { totalIncome: Number(row?.total_income ?? 0), totalExpense: Number(row?.total_expense ?? 0) }
 }
 
 export async function GET(req: NextRequest) {
@@ -118,7 +131,7 @@ export async function GET(req: NextRequest) {
         .order('date', { ascending: false })
         .limit(500)
       if (error) throw error
-      const { totalIncome, totalExpense } = sumAmounts(data ?? [])
+      const { totalIncome, totalExpense } = await totalsFor({ parentIds: [parentId] })
       return NextResponse.json({
         data: (data ?? []).map(t => ({
           id: t.id, amount: t.amount, type: t.type, date: t.date,
@@ -146,35 +159,27 @@ export async function GET(req: NextRequest) {
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
-    // Lightweight parallel query (amount only, no pagination) so the summary
-    // totals reflect every matching row, not just the current page.
-    let sumQuery = supabaseAdmin.from('transactions').select('amount')
-
     if (parentIdFilter !== null) {
       if (parentIdFilter.length === 0) {
         return NextResponse.json({ data: [], total: 0, months: [], types: [], projects: [], totalIncome: 0, totalExpense: 0 })
       }
-      query    = query.overlaps('parent_ids', parentIdFilter)
-      sumQuery = sumQuery.overlaps('parent_ids', parentIdFilter)
+      query = query.overlaps('parent_ids', parentIdFilter)
     }
 
-    if (month)   { query = query.eq('month_year', month);                    sumQuery = sumQuery.eq('month_year', month) }
-    if (type)    { query = query.eq('type', type);                           sumQuery = sumQuery.eq('type', type) }
-    if (project) {
-      const lit = pgTextArrayLiteral([project])
-      query    = query.filter('project_names', 'cs', lit)
-      sumQuery = sumQuery.filter('project_names', 'cs', lit)
-    }
+    if (month)   query = query.eq('month_year', month)
+    if (type)    query = query.eq('type', type)
+    if (project) query = query.filter('project_names', 'cs', pgTextArrayLiteral([project]))
     // Exclude internal credit rows from the general list
-    query    = query.not('notes', 'like', 'זיכוי%')
-    sumQuery = sumQuery.not('notes', 'like', 'זיכוי%')
+    query = query.not('notes', 'like', 'זיכוי%')
 
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-    const [{ data, error, count }, { data: sumData, error: sumError }] = await Promise.all([query, sumQuery])
+    const [{ data, error, count }, totals] = await Promise.all([
+      query,
+      totalsFor({ parentIds: parentIdFilter, month, type, project }),
+    ])
     if (error) throw error
-    if (sumError) throw sumError
-    const { totalIncome, totalExpense } = sumAmounts(sumData ?? [])
+    const { totalIncome, totalExpense } = totals
 
     // Fetch parent names for these transactions
     const allParentIds = [...new Set((data ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
