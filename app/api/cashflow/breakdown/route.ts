@@ -33,23 +33,28 @@ export async function GET(req: NextRequest) {
       return amount - balance // collected / paid
     }
 
-    // parentId → aggregated value
-    const byParent = new Map<string, number>()
+    // parentId → { value (של השדה הנבחר), remaining (יתרה פתוחה) }
+    // ה-remaining מאפשר לצבוע שורות שכבר שולמו במלואן בירוק.
+    const byParent = new Map<string, { value: number; remaining: number }>()
     const allIds = new Set<string>()
+    const add = (pid: string, value: number, remaining: number) => {
+      const cur = byParent.get(pid) ?? { value: 0, remaining: 0 }
+      cur.value += value
+      cur.remaining += remaining
+      byParent.set(pid, cur)
+      if (pid) allIds.add(pid)
+    }
     for (const pp of pps ?? []) {
       const amount = Number(pp.amount) || 0
       const balance = Number(pp.balance) || 0
       const val = valueOf(amount, balance)
       if (val === 0) continue
       const pids = (pp.parent_ids as string[]) ?? []
-      const share = pids.length > 0 ? val / pids.length : val
-      if (pids.length === 0) {
-        byParent.set('', (byParent.get('') ?? 0) + val)
+      const n = pids.length
+      if (n === 0) {
+        add('', val, balance)
       } else {
-        for (const pid of pids) {
-          byParent.set(pid, (byParent.get(pid) ?? 0) + share)
-          allIds.add(pid)
-        }
+        for (const pid of pids) add(pid, val / n, balance / n)
       }
     }
 
@@ -64,10 +69,12 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = [...byParent.entries()]
-      .map(([parentId, amount]) => ({
+      .map(([parentId, v]) => ({
         parentId,
         parentName: parentId ? (nameMap.get(parentId) || '—') : 'ללא הורה משויך',
-        amount: Math.round(amount),
+        amount: Math.round(v.value),
+        // שולם במלואו כשאין יתרה פתוחה (מאפשר צביעה ירוקה בחלון)
+        paid: Math.round(v.remaining) <= 0,
       }))
       .filter(r => Math.abs(r.amount) > 0)
       .sort((a, b) => b.amount - a.amount)

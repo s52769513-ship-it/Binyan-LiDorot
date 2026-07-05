@@ -35,7 +35,7 @@ interface Props {
   onOpenParent: (id: string) => void
 }
 
-interface Row { parentId: string; parentName: string; amount: number }
+interface Row { parentId: string; parentName: string; amount: number; paid: boolean }
 
 /**
  * חלון "ממה מורכב המספר" בתזרים. תא רגיל — רשימת ההורים והסכום שלהם (שליפה
@@ -154,18 +154,19 @@ export default function CashflowCellModal({ target, onClose, onOpenParent }: Pro
                 </thead>
                 <tbody>
                   {rows.map(r => (
-                    <tr key={r.parentId || r.parentName} className="border-b border-gray-50 hover:bg-gray-50 group">
+                    <tr key={r.parentId || r.parentName} className={`border-b border-gray-50 hover:bg-gray-50 group ${r.paid ? 'bg-emerald-50/50' : ''}`}>
                       <td className="py-2">
                         <button
                           onClick={() => r.parentId && onOpenParent(r.parentId)}
                           disabled={!r.parentId}
-                          className="text-gray-800 group-hover:text-[#1a3a7a] disabled:cursor-default text-right"
+                          className={`disabled:cursor-default text-right ${r.paid ? 'text-emerald-700' : 'text-gray-800'} group-hover:text-[#1a3a7a]`}
                         >
+                          {r.paid && <span className="text-emerald-500 ml-1">✓</span>}
                           {r.parentName}
                           {r.parentId && <span className="text-gray-300 text-xs mr-1 opacity-0 group-hover:opacity-100">↗</span>}
                         </button>
                       </td>
-                      <td className="py-2 text-left tabular-nums font-medium" style={{ color: target.accent }}>₪{fmt(r.amount)}</td>
+                      <td className="py-2 text-left tabular-nums font-medium" style={{ color: r.paid ? '#059669' : target.accent }}>₪{fmt(r.amount)}</td>
                     </tr>
                   ))}
                   <tr className="tot">

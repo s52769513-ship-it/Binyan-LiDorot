@@ -517,7 +517,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
                     </td>
                     {/* Tuition */}
                     <td className="px-2 py-2 text-center tabular-nums">{amt(row.tuition.planned, 'tuition', 'planned', 'הכנסות שכ״ל · צפוי', CF_ACCENT.tuition)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums text-emerald-700">
+                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
                       {amt(row.tuition.collected, 'tuition', 'collected', 'הכנסות שכ״ל · נגבה', CF_ACCENT.tuition)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.tuition.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
@@ -536,7 +536,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
                     </td>
                     {/* Donation */}
                     <td className="px-2 py-2 text-center tabular-nums">{amt(row.donation.planned, 'donation', 'planned', 'דמי מגבית · צפוי', CF_ACCENT.donation)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums text-emerald-700">
+                    <td className={`px-2 py-2 text-center tabular-nums ${!isPast ? 'text-emerald-700' : ''}`}>
                       {amt(row.donation.collected, 'donation', 'collected', 'דמי מגבית · נגבה', CF_ACCENT.donation)}
                     </td>
                     <td className={`px-2 py-2 text-center tabular-nums ${row.donation.remaining > 0 && !isPast ? 'text-amber-600' : ''}`}>
@@ -801,7 +801,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.totalDebt ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{
+                    <div className="h-full rounded-full progress-shimmer" style={{
                       width: `${Math.min(100, ((d?.totalDebt ?? 0) / Math.max(d?.plannedThisMonth ?? 1, 1)) * 100)}%`,
                       background: '#f59e0b',
                     }} />
@@ -823,7 +823,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.donationDebt ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: d && d.donationDebt > 0 ? '70%' : '0%', background: '#a855f7' }} />
+                    <div className="h-full rounded-full progress-shimmer" style={{ width: d && d.donationDebt > 0 ? '70%' : '0%', background: '#a855f7' }} />
                   </div>
                   <div className="text-[10px] text-gray-400 truncate">{d?.donationDebtFamilies ?? 0} משפחות בחוב</div>
                 </button>
@@ -841,7 +841,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.salaryDebt ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: d && d.salaryDebtCount > 0 ? '60%' : '0%', background: '#f97316' }} />
+                    <div className="h-full rounded-full progress-shimmer" style={{ width: d && d.salaryDebtCount > 0 ? '60%' : '0%', background: '#f97316' }} />
                   </div>
                   <div className="text-[10px] text-gray-400 truncate">{d?.salaryDebtCount ?? 0} רשומות פתוחות</div>
                 </button>
@@ -859,7 +859,7 @@ export default function Dashboard() {
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.ppCreditTotal ?? 0)}
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: d && (d.ppCreditTotal ?? 0) > 0 ? '50%' : '0%', background: '#10b981' }} />
+                    <div className="h-full rounded-full progress-shimmer" style={{ width: d && (d.ppCreditTotal ?? 0) > 0 ? '50%' : '0%', background: '#10b981' }} />
                   </div>
                   <div className="text-[10px] text-gray-400 truncate">{d?.ppCreditList?.length ?? 0} משפחות עם זיכוי</div>
                 </button>
