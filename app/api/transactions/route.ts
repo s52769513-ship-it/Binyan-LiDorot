@@ -4,6 +4,16 @@ import { insertSpilloverRows } from '@/lib/ppPayments'
 
 const PAGE_SIZE = 50
 
+function sumAmounts(rows: { amount: number | string | null }[]): { totalIncome: number; totalExpense: number } {
+  let totalIncome = 0, totalExpense = 0
+  for (const r of rows) {
+    const amt = Number(r.amount) || 0
+    if (amt > 0) totalIncome += amt
+    else totalExpense += amt
+  }
+  return { totalIncome, totalExpense }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
@@ -98,13 +108,14 @@ export async function GET(req: NextRequest) {
         .order('date', { ascending: false })
         .limit(500)
       if (error) throw error
+      const { totalIncome, totalExpense } = sumAmounts(data ?? [])
       return NextResponse.json({
         data: (data ?? []).map(t => ({
           id: t.id, amount: t.amount, type: t.type, date: t.date,
           monthYear: t.month_year, notes: t.notes ?? '',
           parentIds: t.parent_ids ?? [], projectNames: t.project_names ?? [],
         })),
-        total: (data ?? []).length, months: [], types: [], projects: [],
+        total: (data ?? []).length, months: [], types: [], projects: [], totalIncome, totalExpense,
       })
     }
 
@@ -125,23 +136,31 @@ export async function GET(req: NextRequest) {
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
+    // Lightweight parallel query (amount only, no pagination) so the summary
+    // totals reflect every matching row, not just the current page.
+    let sumQuery = supabaseAdmin.from('transactions').select('amount')
+
     if (parentIdFilter !== null) {
       if (parentIdFilter.length === 0) {
-        return NextResponse.json({ data: [], total: 0, months: [], types: [], projects: [] })
+        return NextResponse.json({ data: [], total: 0, months: [], types: [], projects: [], totalIncome: 0, totalExpense: 0 })
       }
-      query = query.overlaps('parent_ids', parentIdFilter)
+      query    = query.overlaps('parent_ids', parentIdFilter)
+      sumQuery = sumQuery.overlaps('parent_ids', parentIdFilter)
     }
 
-    if (month)   query = query.eq('month_year', month)
-    if (type)    query = query.eq('type', type)
-    if (project) query = query.contains('project_names', [project])
+    if (month)   { query = query.eq('month_year', month);                    sumQuery = sumQuery.eq('month_year', month) }
+    if (type)    { query = query.eq('type', type);                           sumQuery = sumQuery.eq('type', type) }
+    if (project) { query = query.contains('project_names', [project]);       sumQuery = sumQuery.contains('project_names', [project]) }
     // Exclude internal credit rows from the general list
-    query = query.not('notes', 'like', 'זיכוי%')
+    query    = query.not('notes', 'like', 'זיכוי%')
+    sumQuery = sumQuery.not('notes', 'like', 'זיכוי%')
 
     query = query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-    const { data, error, count } = await query
+    const [{ data, error, count }, { data: sumData, error: sumError }] = await Promise.all([query, sumQuery])
     if (error) throw error
+    if (sumError) throw sumError
+    const { totalIncome, totalExpense } = sumAmounts(sumData ?? [])
 
     // Fetch parent names for these transactions
     const allParentIds = [...new Set((data ?? []).flatMap(t => (t.parent_ids as string[]) ?? []))]
@@ -189,7 +208,7 @@ export async function GET(req: NextRequest) {
       plannedPaymentId: t.planned_payment_id ?? null,
     }))
 
-    return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects })
+    return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, totalIncome, totalExpense })
   } catch (err) {
     console.error('transactions GET error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת תנועות' }, { status: 500 })

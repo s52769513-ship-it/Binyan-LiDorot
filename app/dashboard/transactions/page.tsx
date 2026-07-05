@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AddTransactionModal from '@/components/AddTransactionModal'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
@@ -13,6 +13,31 @@ const fmtDate = (d: string) => {
   if (!d) return '—'
   const [y, m, day] = d.split('-')
   return day ? `${day}/${m}/${y.slice(2)}` : d
+}
+
+// Smoothly counts from the previous value to the new one whenever `value`
+// changes, instead of the figure just popping to the new total.
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value)
+  const fromRef = useRef(value)
+  useEffect(() => {
+    const from = fromRef.current
+    const to = value
+    if (from === to) return
+    const duration = 600
+    const start = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setDisplay(from + (to - from) * eased)
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = to
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+  return <>{fmt(display)}</>
 }
 
 // Colour a project badge
@@ -40,6 +65,9 @@ interface TxRow {
 export default function TransactionsPage() {
   const [rows, setRows]         = useState<TxRow[]>([])
   const [total, setTotal]       = useState(0)
+  const [totalIncome, setTotalIncome]   = useState(0)
+  const [totalExpense, setTotalExpense] = useState(0)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [page, setPage]         = useState(0)
   const [search, setSearch]     = useState('')
   const [month, setMonth]       = useState('')
@@ -72,21 +100,21 @@ export default function TransactionsPage() {
         if (d.error) { setError(d.error); return }
         setRows(d.data ?? [])
         setTotal(d.total ?? 0)
+        setTotalIncome(d.totalIncome ?? 0)
+        setTotalExpense(d.totalExpense ?? 0)
         if (d.months?.length)   setMonths(d.months)
         if (d.types?.length)    setTypes(d.types)
         if (d.projects?.length) setProjects(d.projects)
       })
       .catch(() => setError('שגיאה בטעינת תנועות'))
-      .finally(() => setLoading(false))
+      .finally(() => { setLoading(false); setHasLoadedOnce(true) })
   }, [page, debouncedSearch, month, type, project])
 
   useEffect(() => { setPage(0) }, [debouncedSearch, month, type, project])
   useEffect(() => { load() }, [load])
   useRealtimeRefresh(load, 'transactions')
 
-  const totalIncome  = useMemo(() => rows.filter(r => r.amount > 0).reduce((s, r) => s + r.amount, 0), [rows])
-  const totalExpense = useMemo(() => rows.filter(r => r.amount < 0).reduce((s, r) => s + r.amount, 0), [rows])
-  const totalPages   = Math.ceil(total / PAGE_SIZE)
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -100,20 +128,22 @@ export default function TransactionsPage() {
 
       {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 text-sm">{error}</div>}
 
-      {/* Summary row */}
-      {!loading && rows.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+      {/* Summary row — reflects the whole filtered set, not just this page.
+          Stays mounted across reloads (instead of unmounting while loading)
+          so the numbers animate smoothly between old and new totals. */}
+      {hasLoadedOnce && (
+        <div className={`grid grid-cols-3 gap-3 transition-opacity duration-300 ${loading ? 'opacity-60' : 'opacity-100'}`}>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 transition-transform duration-300 hover:scale-[1.02]">
             <p className="text-xs text-gray-500 mb-1">סה"כ בעמוד</p>
-            <p className="text-lg font-bold text-gray-700">{rows.length} מתוך {total}</p>
+            <p className="text-lg font-bold text-gray-700 tabular-nums">{rows.length} מתוך <AnimatedNumber value={total} /></p>
           </div>
-          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4">
+          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 transition-transform duration-300 hover:scale-[1.02]">
             <p className="text-xs text-gray-500 mb-1">הכנסות</p>
-            <p className="text-lg font-bold text-emerald-700 tabular-nums">+₪{fmt(totalIncome)}</p>
+            <p className="text-lg font-bold text-emerald-700 tabular-nums">+₪<AnimatedNumber value={totalIncome} /></p>
           </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+          <div className="bg-red-50 rounded-xl border border-red-200 p-4 transition-transform duration-300 hover:scale-[1.02]">
             <p className="text-xs text-gray-500 mb-1">הוצאות</p>
-            <p className="text-lg font-bold text-red-600 tabular-nums">−₪{fmt(Math.abs(totalExpense))}</p>
+            <p className="text-lg font-bold text-red-600 tabular-nums">−₪<AnimatedNumber value={Math.abs(totalExpense)} /></p>
           </div>
         </div>
       )}
