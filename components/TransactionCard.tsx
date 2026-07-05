@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { attributeTxsToPP } from '@/lib/ppAttribution'
 import FilePreviewModal from '@/components/FilePreviewModal'
+import { isCashFundTransaction } from '@/lib/cashFund'
 
 export interface Transaction {
   id: string
@@ -353,9 +354,41 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   const [deleting, setDeleting]   = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [previewReceipt, setPreviewReceipt] = useState(false)
+  const [cashFundStatus, setCashFundStatus] = useState<'checking' | 'none' | 'duplicated'>('checking')
+  const [duplicating, setDuplicating] = useState(false)
+  const [duplicateError, setDuplicateError] = useState('')
   const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
+  const isCashFund = isCashFundTransaction(tx.projectNames)
+
+  // Cash-fund duplication status — checked against the persisted tx (not the
+  // in-progress draft) so the button doesn't flicker while editing category.
+  useEffect(() => {
+    if (!isCashFund) { setCashFundStatus('none'); return }
+    setCashFundStatus('checking')
+    fetch(`/api/cash-fund?sourceTransactionId=${encodeURIComponent(tx.id)}`)
+      .then(r => r.json())
+      .then(d => setCashFundStatus(d ? 'duplicated' : 'none'))
+      .catch(() => setCashFundStatus('none'))
+  }, [isCashFund, tx.id])
+
+  const handleDuplicate = async () => {
+    setDuplicating(true); setDuplicateError('')
+    try {
+      const r = await fetch('/api/cash-fund/duplicate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceTransactionId: tx.id }),
+      })
+      const data = await r.json()
+      if (data.error) { setDuplicateError(data.error); return }
+      setCashFundStatus('duplicated')
+    } catch {
+      setDuplicateError('שגיאה בשכפול')
+    } finally {
+      setDuplicating(false)
+    }
+  }
 
   // Load PP info by direct ID lookup + all its linked transactions (for the
   // paid amount and attribution) + spillover rows this transaction generated
@@ -508,6 +541,25 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </select>
             <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
           </div>
+
+          {/* קופת מזומנים — only for transactions tagged with the cash-fund
+              category (the swap: bank transfer to a person → person returns
+              the equivalent in physical cash into the fund). */}
+          {isCashFund && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1.5">
+              {cashFundStatus === 'checking' ? (
+                <p className="text-xs text-gray-400 text-center">בודק סטטוס קופת מזומנים...</p>
+              ) : cashFundStatus === 'duplicated' ? (
+                <p className="text-xs text-emerald-700 font-medium text-center">✓ כבר שוכפל לקופת המזומנים</p>
+              ) : (
+                <button onClick={handleDuplicate} disabled={duplicating}
+                  className="w-full py-1.5 rounded-lg text-xs font-semibold border border-amber-400 text-amber-700 hover:bg-amber-100 disabled:opacity-60 transition-colors">
+                  {duplicating ? 'משכפל...' : '🔁 שכפל לקופת המזומנים'}
+                </button>
+              )}
+              {duplicateError && <p className="text-xs text-red-500 text-center">{duplicateError}</p>}
+            </div>
+          )}
 
           {/* Framework/division — relevant for expenses */}
           {draft.amount < 0 && (

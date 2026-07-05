@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
+import { isCashFundTransaction } from '@/lib/cashFund'
 
 export async function GET() {
   try {
@@ -56,7 +57,7 @@ export async function GET() {
 
       supabase
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids')
+        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
         .order('date', { ascending: false })
         .limit(10),
 
@@ -267,7 +268,10 @@ export async function GET() {
       (pastDueDonationRes.data ?? []).flatMap(r => (r.parent_ids as string[]) ?? [])
     ).size
 
-    const recentTransactions = (recentTxRes.data ?? []).map(t => ({
+    const recentTransactions = (recentTxRes.data ?? [])
+      // קופת מזומנים: לא להראות בפעילות האחרונה בדשבורד - ראו lib/cashFund.ts
+      .filter(t => !isCashFundTransaction(t.project_names as string[] | null))
+      .map(t => ({
       id: t.id as string,
       amount: Number(t.amount) || 0,
       type: String(t.type || ''),

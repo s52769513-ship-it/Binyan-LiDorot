@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { isCashFundTransaction } from '@/lib/cashFund'
 
 export async function GET(req: NextRequest) {
   try {
@@ -59,6 +60,8 @@ export async function GET(req: NextRequest) {
 
     for (const r of allTxs ?? []) {
       if (!(r.month_year in incByMonth)) continue
+      // קופת מזומנים: העברה שמוחזרת במזומן - שינוי צורה, לא הכנסה/הוצאה אמיתית
+      if (isCashFundTransaction(r.project_names as string[] | null)) continue
       const amount = Number(r.amount) || 0
       if (amount < 0) expByMonth[r.month_year] += Math.abs(amount)
       else if (isSalaryExpense(r)) expByMonth[r.month_year] += amount

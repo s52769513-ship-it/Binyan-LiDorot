@@ -29,4 +29,7 @@ AS $$
     AND (p_type    IS NULL OR type = p_type)
     AND (p_project IS NULL OR p_project = ANY(project_names))
     AND notes NOT LIKE 'זיכוי%'
+    -- קופת מזומנים: העברה לאדם שמוחזרת במזומן - לא הכנסה/הוצאה אמיתית,
+    -- רק שינוי צורה (יתרת בנק → מזומן ביד). ראו lib/cashFund.ts.
+    AND NOT (project_names @> ARRAY['מזומנים']::text[])
 $$;
