@@ -2098,10 +2098,18 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           <span className="font-semibold text-sm text-gray-900 font-mono" dir="ltr">{so.externalId || '—'}</span>
                           {so.standingOrderType && <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{so.standingOrderType}</span>}
                         </div>
+                        {(so.projectName || so.chargeAmount != null || so.chargeDay) && (
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            {[
+                              so.projectName || null,
+                              so.chargeAmount != null ? `${fmt(so.chargeAmount)}/חודש` : null,
+                              so.chargeDay ? `יום ${so.chargeDay}` : null,
+                            ].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
                         {(so.bankName || so.bankBranch || so.bankAccount) && (
                           <p className="text-[11px] text-gray-400 mt-0.5" dir="ltr">
                             {[so.bankName, so.bankBranch, so.bankAccount].filter(Boolean).join(' · ')}
-                            {so.chargeDay ? ` · יום ${so.chargeDay}` : ''}
                           </p>
                         )}
                         {so.linkedParentName && (

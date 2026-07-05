@@ -566,11 +566,12 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
   const loadParents = async () => {
     setParentsLoading(true)
     try {
-      // nedarim-bank-hok-pull: load parents via standing orders (not salary endpoint)
+      // nedarim automations: list ALL parents (not just ones who already
+      // have a הו"ק of this type) — running a sync for a parent should be
+      // able to discover a הו"ק they don't have linked locally yet.
       if (def.id === 'nedarim-bank-hok-pull' || def.id === 'nedarim-credit-hok-pull' ||
           def.id === 'nedarim-bank-hok-enrich' || def.id === 'nedarim-credit-hok-sync') {
-        const soType = (def.id === 'nedarim-bank-hok-pull' || def.id === 'nedarim-bank-hok-enrich') ? 'בנקאי' : 'אשראי'
-        const r = await fetch(`/api/standing-orders?byType=${encodeURIComponent(soType)}`)
+        const r = await fetch('/api/parents-simple')
         const d = await r.json()
         const opts: ParentOpt[] = (Array.isArray(d) ? d : []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name, salary_gross: 0 }))
         setParentOptions(opts)

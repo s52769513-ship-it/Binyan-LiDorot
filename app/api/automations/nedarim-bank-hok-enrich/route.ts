@@ -22,6 +22,23 @@ function parseStatus(raw: string): string {
   return 'פעיל'
 }
 
+// Loose name match for linking a Nedarim record to a chosen parent when
+// there's no ת"ז yet — same heuristic used by nedarim-credit-hok-sync.
+function namesMatch(a: string, b: string): boolean {
+  const norm = (n: string) => n
+    .replace(/\b(הרב|ר'|ר"|רב|בר"?[א-ת]|בריא"ז|ברי"ט|ברי"מ|ברא"צ|ברא"ז|בר"ל|בר"מ|בר"צ|בר"א|בר"ב|בר"ש|בר"ד)\b/g, '')
+    .replace(/\s+/g, ' ').trim().toLowerCase()
+  const na = norm(a), nb = norm(b)
+  if (!na || !nb) return false
+  if (na === nb) return true
+  const wa = na.split(' ').filter(Boolean)
+  const wb = nb.split(' ').filter(Boolean)
+  if (wa.length >= 2 && wb.length >= 2) {
+    return wa.filter(w => wb.includes(w)).length >= 2
+  }
+  return false
+}
+
 export async function GET() {
   const { data } = await supabaseAdmin
     .from('automation_logs')
@@ -55,15 +72,29 @@ export async function POST(req: NextRequest) {
 
         let records: Record<string, string>[] = listJson.data
 
-        // Filter to single parent if requested
+        // Filter to single parent if requested — keep records already linked
+        // to this parent (by external_id) AND not-yet-linked ones anywhere in
+        // Nedarim's full list whose client name matches the parent, so the
+        // sync can discover a הו"ק for a parent who doesn't have one locally
+        // yet (not just re-sync parents that already do).
+        let targetParentName = ''
         if (parentId) {
+          const { data: targetParent } = await supabaseAdmin
+            .from('parents').select('name').eq('id', parentId).single()
+          targetParentName = String(targetParent?.name ?? '').trim()
+
           const { data: parentSos } = await supabaseAdmin
             .from('standing_orders')
             .select('external_id')
             .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
             .eq('standing_order_type', 'בנקאי')
           const parentExtIds = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
-          records = records.filter(r => parentExtIds.has(String(r['DT_RowId'] ?? '').trim()))
+
+          records = records.filter(r => {
+            const eid = String(r.DT_RowId ?? '').trim()
+            if (parentExtIds.has(eid)) return true
+            return namesMatch(targetParentName, String(r['2'] ?? '').trim())
+          })
         }
 
         send({ type: 'log', message: `קיבלנו ${records.length} הו"ק בנקאי${parentId ? ' (מסונן להורה)' : ''}` })
@@ -99,15 +130,17 @@ export async function POST(req: NextRequest) {
 
           const clientName   = String(r['2'] ?? '').trim()
           const bankRaw      = String(r['3'] ?? '').trim()
-          const statusRaw    = String(r['4'] ?? '').trim()
           const chargeAmount = Number(String(r['6'] ?? '').replace(/[^\d.]/g, '')) || null
           const projectName  = String(r['7'] ?? '').trim() || null
           const notes        = String(r['8'] ?? '').trim()
-          const soStatus     = parseStatus(statusRaw)
           const { bankName, bankBranch, bankAccount } = parseBankField(bankRaw)
 
-          // 4a. Try GetMasavId for ת"ז
+          // 4a. GetMasavId for ת"ז, status text and next-charge day — the
+          // list endpoint's field '4' is the next-charge date, not a status,
+          // so status/day come from the documented per-record fields instead.
           let tz = ''
+          let statusText = ''
+          let chargeDay: number | null = null
           try {
             const idUrl = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MasavId=${encodeURIComponent(externalId)}`
             const idResp = await fetch(idUrl)
@@ -115,18 +148,31 @@ export async function POST(req: NextRequest) {
               const idJson = await idResp.json()
               // Accept response if no explicit error (Result may be absent)
               const isError = idJson.Result != null && idJson.Result !== 0
-              if (!isError && idJson.ClientZeout) tz = String(idJson.ClientZeout).trim()
+              if (!isError) {
+                if (idJson.ClientZeout) tz = String(idJson.ClientZeout).trim()
+                if (idJson.StatusText)  statusText = String(idJson.StatusText).trim()
+                const nd = parseInt(String(idJson.NextDate ?? '').trim(), 10)
+                if (!isNaN(nd) && nd >= 1 && nd <= 31) chargeDay = nd
+              }
             }
-          } catch { /* ת"ז not critical */ }
+          } catch { /* לא קריטי */ }
+          const soStatus = parseStatus(statusText)
 
-          // 4b. Find or create parent
-          let parentId: string | null = null
+          // 4b. Find or create parent — trust a ת"ז match first; if a
+          // specific parent was requested, this record already survived the
+          // parent filter above (linked or name-matched), so attach it to
+          // that parent instead of guessing or creating a duplicate. Only
+          // fall back to creating a brand-new parent in bulk (no target) mode.
+          let matchedParentId: string | null = null
           let parentAction = 'לא קושר'
 
           if (tz && parentByTz.has(tz)) {
             const p = parentByTz.get(tz)!
-            parentId = p.id
+            matchedParentId = p.id
             parentAction = `קושר → ${p.name}`
+          } else if (parentId) {
+            matchedParentId = parentId
+            parentAction = `קושר → ${targetParentName || clientName} (הורה שנבחר)`
           } else if (!dryRun) {
             // Create new parent
             const newParentId = crypto.randomUUID()
@@ -136,7 +182,7 @@ export async function POST(req: NextRequest) {
               id_number:  tz || null,
             })
             if (!pErr) {
-              parentId = newParentId
+              matchedParentId = newParentId
               parentAction = `נוצר חדש`
               parentCreated++
               if (tz) parentByTz.set(tz, { id: newParentId, name: clientName })
@@ -145,12 +191,14 @@ export async function POST(req: NextRequest) {
             parentAction = tz ? 'ת"ז לא נמצא — ייווצר' : 'אין ת"ז — ייווצר'
           }
 
-          // 4c. Upsert standing order
+          // 4c. Upsert standing order (by external_id — never duplicates,
+          // only ever updates the existing row or creates it once)
           const payload: Record<string, unknown> = {
             external_id:         externalId,
             standing_order_type: 'בנקאי',
-            parent_id:           parentId,
+            parent_id:           matchedParentId,
             charge_amount:       chargeAmount,
+            charge_day:          chargeDay,
             project_name:        projectName,
             bank_name:           bankName || null,
             bank_branch:         bankBranch || null,
