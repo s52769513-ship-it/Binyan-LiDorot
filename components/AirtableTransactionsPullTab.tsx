@@ -72,6 +72,7 @@ export default function AirtableTransactionsPullTab() {
   const [allParents, setAllParents]     = useState<ParentOption[]>([])
   const [selectorOpen, setSelectorOpen] = useState<{ key: string; label: string } | null>(null)
   const [lastRun, setLastRun]           = useState<{ lastRun: string | null; lastSummary: string | null }>({ lastRun: null, lastSummary: null })
+  const [includeCreditAndLoan, setIncludeCreditAndLoan] = useState(false)
 
   // Manual mappings: airtableParentId → { id, name } (Supabase parent)
   const [manualMappings, setManualMappings] = useState<Record<string, { id: string; name: string }>>(() => {
@@ -105,7 +106,7 @@ export default function AirtableTransactionsPullTab() {
       const res = await fetch('/api/automations/airtable-transactions-pull', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ dryRun: true, parentMappings: buildParentMappings() }),
+        body:    JSON.stringify({ dryRun: true, parentMappings: buildParentMappings(), includeCreditAndLoan }),
       })
       const data = await res.json()
       if (!res.ok || data.error) { setResult({ error: data?.error ?? `שגיאה ${res.status}` }); return }
@@ -122,7 +123,7 @@ export default function AirtableTransactionsPullTab() {
       const res = await fetch('/api/automations/airtable-transactions-pull', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ dryRun: false, parentMappings: buildParentMappings() }),
+        body:    JSON.stringify({ dryRun: false, parentMappings: buildParentMappings(), includeCreditAndLoan }),
       })
       const data = await res.json()
       if (!res.ok || data.error) { setResult({ error: data?.error ?? `שגיאה ${res.status}` }); return }
@@ -152,7 +153,7 @@ export default function AirtableTransactionsPullTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">משיכת תנועות כספיות מ-Airtable</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            מושך את כל התנועות מטבלת התנועות ב-Airtable שאינן הו&quot;ק ואינן אשראי (אלה מטופלים באוטומציות ייעודיות). תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. <b>רק</b> תנועות בקטגוריית &quot;בנין לדורות&quot; מקושרות ל-PP שכ&quot;ל, ורק תנועות &quot;מגבית&quot; מקושרות ל-PP מגבית — כל קטגוריה אחרת (משכורות, הוצאות וכו&apos;) נכנסת בלי קישור לשום תשלום מתוכנן.
+            מושך את כל התנועות מטבלת התנועות ב-Airtable. בברירת מחדל, מעוג תנועות הו&quot;ק ואשראי — אך ניתן להכליל אותן עם החיקוי בעלוק. תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. <b>רק</b> תנועות בקטגוריית &quot;בנין לדורות&quot; מקושרות ל-PP שכ&quot;ל, ורק תנועות &quot;מגבית&quot; מקושרות ל-PP מגבית — כל קטגוריה אחרת (משכורות, הוצאות וכו&apos;) נכנסת בלי קישור לשום תשלום מתוכנן.
           </p>
           {lastRun.lastRun && (
             <p className="text-xs text-gray-400 mt-1">
@@ -162,13 +163,24 @@ export default function AirtableTransactionsPullTab() {
           )}
         </div>
 
-        <button
-          onClick={runPreview}
-          disabled={busy}
-          className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-        >
-          {busy ? 'טוען…' : 'תצוגה מקדימה'}
-        </button>
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeCreditAndLoan}
+              onChange={e => setIncludeCreditAndLoan(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-[#1a3a7a] focus:ring-[#1a3a7a]"
+            />
+            <span className="text-sm font-medium text-gray-700">לכלול גם תנועות של אשראי והו"ק</span>
+          </label>
+          <button
+            onClick={runPreview}
+            disabled={busy}
+            className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            {busy ? 'טוען…' : 'תצוגה מקדימה'}
+          </button>
+        </div>
       </div>
 
       {/* ── Error ── */}

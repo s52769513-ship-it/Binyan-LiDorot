@@ -8,7 +8,7 @@ import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
-const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
+const DEFAULT_EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
 // Cutoff applied ONLY to "בנין לדורות" transactions (same 04/2026 cutover used
 // across the app) — earlier בנין לדורות rows come from the old-debts import.
 const CUTOFF_DATE = '2026-04-01'
@@ -35,12 +35,12 @@ interface Candidate {
   existingPPId:     string | null // planned_payment_id already set on the existing row, if any
 }
 
-async function loadCandidates() {
+async function loadCandidates(includeCreditAndLoan: boolean = false) {
   // Projects live only in Airtable (no Supabase table) — resolved up front so
   // the category can be checked in the filter and shown in the preview.
-  // Filter rules: הו"ק/אשראי are never pulled; every other category is pulled
-  // with NO date limit; "בנין לדורות" alone is pulled only from 04/2026
-  // (inclusive) — earlier periods are handled by the old-debts import.
+  // Filter rules: הו"ק/אשראי are excluded by default unless includeCreditAndLoan is true;
+  // every other category is pulled with NO date limit; "בנין לדורות" alone is pulled only
+  // from 04/2026 (inclusive) — earlier periods are handled by the old-debts import.
   const rawProjects = await fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] })
   const projectNameMap = new Map(rawProjects.map(r => [r.id, String(r.fields[PROJ.NAME] || '')]))
 
@@ -52,9 +52,11 @@ async function loadCandidates() {
   let excludedPaymentMethod = 0
   let excludedOldBinyan = 0
 
+  const excludedMethods = includeCreditAndLoan ? [] : DEFAULT_EXCLUDED_PAYMENT_METHODS
+
   const filtered = rawTx.filter(r => {
     const method = selectName(r.fields[T.PAYMENT_METHOD])
-    if (EXCLUDED_PAYMENT_METHODS.some(m => method.includes(m))) { excludedPaymentMethod++; return false }
+    if (excludedMethods.some(m => method.includes(m))) { excludedPaymentMethod++; return false }
 
     // The date cutoff applies ONLY to בנין לדורות — other categories have no date limit
     const projectIds = (r.fields[T.PROJECT] as string[]) || []
@@ -134,9 +136,10 @@ export async function POST(req: NextRequest) {
     const {
       dryRun = false,
       parentMappings = {},
-    }: { dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
+      includeCreditAndLoan = false,
+    }: { dryRun?: boolean; parentMappings?: Record<string, string>; includeCreditAndLoan?: boolean } = await req.json()
 
-    const { candidates, total, excludedPaymentMethod, excludedOldBinyan } = await loadCandidates()
+    const { candidates, total, excludedPaymentMethod, excludedOldBinyan } = await loadCandidates(includeCreditAndLoan)
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
     // Load Supabase parents for direct-ID matching + name resolution
