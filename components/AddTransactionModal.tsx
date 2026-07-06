@@ -506,6 +506,14 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                   </p>
                 </div>
                 <div>
+                  <h3 className="font-bold text-blue-900 mb-2">צעדים לביצוע:</h3>
+                  <ol className="text-sm text-blue-800 space-y-1">
+                    <li>1️⃣ <strong>מלא בהערה</strong> את שם התנועה המקורית (למשל "העברה מחשבון בנק")</li>
+                    <li>2️⃣ <strong>שמור</strong> את התנועה לקופת המזומנים</li>
+                    <li>3️⃣ <strong>חזור לתנועה המקורית</strong> ולחץ על "שכפל לקופת המזומנים"</li>
+                  </ol>
+                </div>
+                <div>
                   <h3 className="font-bold text-blue-900 mb-2">מה יקרה?</h3>
                   <ul className="text-sm text-blue-800 space-y-1">
                     <li>✓ הסכום יתווסף לקופת המזומנים</li>
