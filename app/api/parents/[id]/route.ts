@@ -203,6 +203,9 @@ export async function PATCH(
       const camelKey = reverseMap[dbKey] || dbKey
       result[camelKey] = value
     }
+    // Normalize array fields the frontend always expects as arrays (DB may store null)
+    result.status = Array.isArray(result.status) ? result.status : (result.status ? [result.status] : [])
+    result.role = Array.isArray(result.role) ? result.role : []
     return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
