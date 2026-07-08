@@ -10,6 +10,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
+const AddDonationDebtModal   = dynamic(() => import('./AddDonationDebtModal'),   { ssr: false })
 const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
 import { DebtModal }         from './DebtModal'
 
@@ -240,6 +241,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean }[]>>({})
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
+  const [showAddDebt, setShowAddDebt]         = useState(false)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
@@ -442,13 +444,22 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
       </div>
 
       <div>
-        <p className="text-xs font-semibold text-gray-500 mb-2">תשלומים מתוכננים — מגבית</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500">תשלומים מתוכננים — מגבית</p>
+          <button
+            type="button"
+            onClick={() => setShowAddDebt(true)}
+            className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors whitespace-nowrap"
+          >
+            + הוספת חוב
+          </button>
+        </div>
         {loadingPPs ? (
           <div className="space-y-1">{[1,2,3].map(i=><div key={i} className="h-8 bg-gray-100 rounded animate-pulse"/>)}</div>
         ) : donationPPs.length === 0 ? (
           <div className="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded-xl border border-dashed border-gray-200">
             <p>אין תשלומים מתוכננים עדיין</p>
-            <p className="text-xs mt-1">הרץ אוטומציית &quot;יצירת PP מגבית&quot; ליצירה אוטומטית</p>
+            <p className="text-xs mt-1">לחץ &quot;הוספת חוב&quot; או הרץ אוטומציית &quot;יצירת PP מגבית&quot;</p>
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -539,6 +550,16 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
             loadPPs()
             loadPpTxs(ppId)
           }}
+        />
+      )}
+
+      {showAddDebt && (
+        <AddDonationDebtModal
+          parentId={parent.id}
+          parentName={parent.name}
+          defaultAmount={parent.monthlyDonation ?? 0}
+          onClose={() => setShowAddDebt(false)}
+          onSuccess={() => { setShowAddDebt(false); loadPPs(); onUpdate() }}
         />
       )}
     </div>
