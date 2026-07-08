@@ -3,8 +3,9 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 
-const EmployeeCard        = dynamic(() => import('@/components/EmployeeCard'),        { ssr: false })
-const DonationImportModal = dynamic(() => import('@/components/DonationImportModal'), { ssr: false })
+const EmployeeCard         = dynamic(() => import('@/components/EmployeeCard'),         { ssr: false })
+const DonationImportModal  = dynamic(() => import('@/components/DonationImportModal'),  { ssr: false })
+const AddDonationDebtModal = dynamic(() => import('@/components/AddDonationDebtModal'), { ssr: false })
 
 /* ─── helpers ─────────────────────────────────────────── */
 const HM: Record<string, string> = {
@@ -73,6 +74,7 @@ export default function DonationsPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [showAddDebt, setShowAddDebt] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,8 +119,14 @@ export default function DonationsPage() {
           />
           <span className="text-sm font-medium text-emerald-700">{fmtMY(month)}</span>
           <button
-            onClick={() => setShowImport(true)}
+            onClick={() => setShowAddDebt(true)}
             className="px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+          >
+            ➕ הוספת חוב
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 transition-colors"
           >
             ⬆ ייבוא CSV
           </button>
@@ -273,6 +281,14 @@ export default function DonationsPage() {
         <DonationImportModal
           onClose={() => setShowImport(false)}
           onSuccess={() => { setShowImport(false); load() }}
+        />
+      )}
+
+      {/* ── Add debt modal (pick a person) ── */}
+      {showAddDebt && (
+        <AddDonationDebtModal
+          onClose={() => setShowAddDebt(false)}
+          onSuccess={() => { setShowAddDebt(false); load() }}
         />
       )}
     </div>
