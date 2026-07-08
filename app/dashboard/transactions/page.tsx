@@ -60,7 +60,7 @@ interface TxRow {
   id: string; amount: number; type: string; date: string
   monthYear: string; notes: string; parentName: string; parentIds: string[]
   projectNames: string[]; plannedPaymentId?: string | null
-  framework?: string; receiptUrl?: string
+  framework?: string; receiptUrl?: string; bankClassification?: string
 }
 
 export default function TransactionsPage() {
@@ -74,9 +74,11 @@ export default function TransactionsPage() {
   const [month, setMonth]       = useState('')
   const [type, setType]         = useState('')
   const [project, setProject]   = useState('')
+  const [bankClass, setBankClass] = useState('')
   const [months, setMonths]     = useState<string[]>([])
   const [types, setTypes]       = useState<string[]>([])
   const [projects, setProjects] = useState<string[]>([])
+  const [bankClasses, setBankClasses] = useState<string[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
   const [showAdd, setShowAdd]   = useState(false)
@@ -92,9 +94,10 @@ export default function TransactionsPage() {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page) })
     if (debouncedSearch) params.set('search', debouncedSearch)
-    if (month)   params.set('month', month)
-    if (type)    params.set('type', type)
-    if (project) params.set('project', project)
+    if (month)     params.set('month', month)
+    if (type)      params.set('type', type)
+    if (project)   params.set('project', project)
+    if (bankClass) params.set('bankClassification', bankClass)
     fetch(`/api/transactions?${params}`)
       .then(r => r.json())
       .then(d => {
@@ -103,15 +106,16 @@ export default function TransactionsPage() {
         setTotal(d.total ?? 0)
         setTotalIncome(d.totalIncome ?? 0)
         setTotalExpense(d.totalExpense ?? 0)
-        if (d.months?.length)   setMonths(d.months)
-        if (d.types?.length)    setTypes(d.types)
-        if (d.projects?.length) setProjects(d.projects)
+        if (d.months?.length)     setMonths(d.months)
+        if (d.types?.length)      setTypes(d.types)
+        if (d.projects?.length)   setProjects(d.projects)
+        if (d.bankClasses?.length) setBankClasses(d.bankClasses)
       })
       .catch(() => setError('שגיאה בטעינת תנועות'))
       .finally(() => { setLoading(false); setHasLoadedOnce(true) })
-  }, [page, debouncedSearch, month, type, project])
+  }, [page, debouncedSearch, month, type, project, bankClass])
 
-  useEffect(() => { setPage(0) }, [debouncedSearch, month, type, project])
+  useEffect(() => { setPage(0) }, [debouncedSearch, month, type, project, bankClass])
   useEffect(() => { load() }, [load])
   useRealtimeRefresh(load, 'transactions')
 
@@ -179,8 +183,16 @@ export default function TransactionsPage() {
           </select>
         )}
 
-        {(search || month || type || project) && (
-          <button onClick={() => { setSearch(''); setMonth(''); setType(''); setProject('') }}
+        {bankClasses.length > 0 && (
+          <select value={bankClass} onChange={e => setBankClass(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30">
+            <option value="">כל סיווגי הבנק</option>
+            {bankClasses.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        )}
+
+        {(search || month || type || project || bankClass) && (
+          <button onClick={() => { setSearch(''); setMonth(''); setType(''); setProject(''); setBankClass('') }}
             className="px-3 py-2 text-sm text-gray-400 hover:text-gray-700 underline">נקה</button>
         )}
       </div>
@@ -230,6 +242,9 @@ export default function TransactionsPage() {
                         }
                         {tx.framework && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">{tx.framework}</span>
+                        )}
+                        {tx.bankClassification && (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700">🏦 {tx.bankClassification}</span>
                         )}
                       </div>
                     </td>

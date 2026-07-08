@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import FilePreviewModal from '@/components/FilePreviewModal'
 
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
+export const BANK_CLASSIFICATIONS = ['בנק כולל', 'בנק אורחות מאיר']
 
 interface ParentOption { id: string; name: string }
 
@@ -53,6 +54,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const [linkedPayment, setLinkedPayment]       = useState<OpenPayment | null>(null)
   const [loadingPayments, setLoadingPayments]   = useState(false)
   const [framework, setFramework]               = useState('')
+  const [bankClassification, setBankClassification] = useState('')
   const [showCustomProject, setShowCustomProject] = useState(false)
   const [customProjectDraft, setCustomProjectDraft] = useState('')
   const [receiptUrl, setReceiptUrl]             = useState('')
@@ -173,6 +175,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
           plannedPaymentId: plannedPaymentId || linkedPayment?.id || null,
           framework: direction === 'הוצאה' ? framework : '',
           receiptUrl: direction === 'הוצאה' ? receiptUrl : '',
+          bankClassification,
         }),
       })
       const data = await res.json()
@@ -434,6 +437,27 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                     type === t ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
                   }`}>
                   {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bank classification — for both income and expense */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">סיווג בנק</label>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setBankClassification('')}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  bankClassification === '' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                }`}>
+                ללא
+              </button>
+              {BANK_CLASSIFICATIONS.map(b => (
+                <button key={b} type="button" onClick={() => setBankClassification(b)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                    bankClassification === b ? 'bg-[#1a3a7a] text-white border-[#1a3a7a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#1a3a7a]'
+                  }`}>
+                  {b}
                 </button>
               ))}
             </div>

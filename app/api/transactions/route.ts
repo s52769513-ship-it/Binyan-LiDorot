@@ -120,6 +120,7 @@ export async function GET(req: NextRequest) {
     const month     = searchParams.get('month') ?? ''
     const type      = searchParams.get('type') ?? ''
     const project   = searchParams.get('project') ?? ''
+    const bankClass = searchParams.get('bankClassification') ?? ''
     const dir       = searchParams.get('dir') ?? 'desc'
 
     // Direct parentId filter takes priority
@@ -155,7 +156,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
+      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url, bank_classification', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -166,9 +167,10 @@ export async function GET(req: NextRequest) {
       query = query.overlaps('parent_ids', parentIdFilter)
     }
 
-    if (month)   query = query.eq('month_year', month)
-    if (type)    query = query.eq('type', type)
-    if (project) query = query.filter('project_names', 'cs', pgTextArrayLiteral([project]))
+    if (month)     query = query.eq('month_year', month)
+    if (type)      query = query.eq('type', type)
+    if (bankClass) query = query.eq('bank_classification', bankClass)
+    if (project)   query = query.filter('project_names', 'cs', pgTextArrayLiteral([project]))
     // Exclude internal credit rows from the general list
     query = query.not('notes', 'like', 'זיכוי%')
 
@@ -189,11 +191,12 @@ export async function GET(req: NextRequest) {
       parentMap = Object.fromEntries((pData ?? []).map(p => [p.id, p.name as string]))
     }
 
-    // Fetch distinct months, types, projects for filter dropdowns
-    const [{ data: allMonths }, { data: allTypes }, { data: allProjects }] = await Promise.all([
+    // Fetch distinct months, types, projects, bank classes for filter dropdowns
+    const [{ data: allMonths }, { data: allTypes }, { data: allProjects }, { data: allBankClasses }] = await Promise.all([
       supabaseAdmin.from('transactions').select('month_year').not('month_year', 'is', null).not('month_year', 'eq', ''),
       supabaseAdmin.from('transactions').select('type').not('type', 'is', null).not('type', 'eq', ''),
       supabaseAdmin.from('transactions').select('project_names').not('project_names', 'is', null),
+      supabaseAdmin.from('transactions').select('bank_classification').not('bank_classification', 'is', null).not('bank_classification', 'eq', ''),
     ])
 
     const months = [...new Set((allMonths ?? []).map(r => r.month_year).filter(Boolean))].sort((a: string, b: string) => {
@@ -213,6 +216,7 @@ export async function GET(req: NextRequest) {
       if (b === 'בנין לדורות') return 1
       return a.localeCompare(b, 'he')
     })
+    const bankClasses = [...new Set((allBankClasses ?? []).map(r => r.bank_classification).filter(Boolean))].sort((a: string, b: string) => a.localeCompare(b, 'he'))
 
     const rows = (data ?? []).map(t => ({
       id:           t.id as string,
@@ -227,9 +231,10 @@ export async function GET(req: NextRequest) {
       plannedPaymentId: t.planned_payment_id ?? null,
       framework:    String(t.framework || ''),
       receiptUrl:   String(t.receipt_url || ''),
+      bankClassification: String(t.bank_classification || ''),
     }))
 
-    return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, totalIncome, totalExpense })
+    return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, bankClasses, totalIncome, totalExpense })
   } catch (err) {
     console.error('transactions GET error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת תנועות' }, { status: 500 })
@@ -239,7 +244,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, type, date, monthYear, notes, parentIds, projectNames, plannedPaymentId, framework, receiptUrl } = body
+    const { amount, type, date, monthYear, notes, parentIds, projectNames, plannedPaymentId, framework, receiptUrl, bankClassification } = body
 
     if (!amount || isNaN(Number(amount))) {
       return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
@@ -262,6 +267,7 @@ export async function POST(req: NextRequest) {
       planned_payment_id: plannedPaymentId || null,
       framework: framework || '',
       receipt_url: receiptUrl || '',
+      bank_classification: bankClassification || '',
       synced_at: syncedAt,
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)

@@ -18,9 +18,11 @@ export interface Transaction {
   plannedPaymentId?: string | null
   framework?: string
   receiptUrl?: string
+  bankClassification?: string
 }
 
 const FRAMEWORKS = ['', 'תלמוד תורה', 'בית חינוך לבנות']
+const BANK_CLASSIFICATIONS = ['', 'בנק כולל', 'בנק אורחות מאיר']
 
 interface Props {
   tx: Transaction
@@ -432,6 +434,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
         body.planned_payment_id = draft.plannedPaymentId ?? null
       if ((draft.framework ?? '') !== (tx.framework ?? ''))
         body.framework = draft.framework ?? ''
+      if ((draft.bankClassification ?? '') !== (tx.bankClassification ?? ''))
+        body.bank_classification = draft.bankClassification ?? ''
 
       if (Object.keys(body).length === 0) { onClose(); return }
       const r = await fetch(`/api/transactions/${tx.id}`, {
@@ -574,6 +578,21 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
               <span className="text-xs text-gray-400 shrink-0">מסגרת</span>
             </div>
           )}
+
+          {/* Bank classification — for both income and expense */}
+          <div className="flex justify-between items-center gap-3">
+            <select
+              value={draft.bankClassification ?? ''}
+              onChange={e => setDraft(d => ({ ...d, bankClassification: e.target.value }))}
+              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
+            >
+              {!BANK_CLASSIFICATIONS.includes(draft.bankClassification ?? '') && draft.bankClassification && (
+                <option value={draft.bankClassification}>{draft.bankClassification}</option>
+              )}
+              {BANK_CLASSIFICATIONS.map(b => <option key={b || 'none'} value={b}>{b || '— ללא —'}</option>)}
+            </select>
+            <span className="text-xs text-gray-400 shrink-0">סיווג בנק</span>
+          </div>
 
           {/* Receipt/invoice — opens in an in-page preview, not a new tab */}
           {tx.receiptUrl && (
