@@ -25,13 +25,20 @@ async function totalsFor(opts: {
   month?: string
   type?: string
   project?: string
+  bank?: string
 }): Promise<{ totalIncome: number; totalExpense: number }> {
-  const { data, error } = await supabaseAdmin.rpc('transactions_totals', {
+  const base = {
     p_parent_ids: opts.parentIds ?? null,
     p_month: opts.month || null,
     p_type: opts.type || null,
     p_project: opts.project || null,
-  })
+  }
+  let { data, error } = await supabaseAdmin.rpc('transactions_totals', { ...base, p_bank: opts.bank || null })
+  // Fallback for DBs where the RPC hasn't been migrated with p_bank yet:
+  // retry without it (bank filter just won't be reflected in totals).
+  if (error) {
+    ;({ data, error } = await supabaseAdmin.rpc('transactions_totals', base))
+  }
   if (error) throw error
   const row = Array.isArray(data) ? data[0] : data
   return { totalIncome: Number(row?.total_income ?? 0), totalExpense: Number(row?.total_expense ?? 0) }
@@ -178,7 +185,7 @@ export async function GET(req: NextRequest) {
 
     const [{ data, error, count }, totals] = await Promise.all([
       query,
-      totalsFor({ parentIds: parentIdFilter, month, type, project }),
+      totalsFor({ parentIds: parentIdFilter, month, type, project, bank: bankClass }),
     ])
     if (error) throw error
     const { totalIncome, totalExpense } = totals

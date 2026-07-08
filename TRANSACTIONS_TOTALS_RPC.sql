@@ -10,11 +10,17 @@
 -- whole filtered set (this is why a freshly-added expense sometimes didn't
 -- move the "הוצאות" total at all). An aggregate function returns exactly
 -- one row no matter how many rows it scans, so it isn't subject to that cap.
+--
+-- Drop the previous 4-arg overload first: the new version adds p_bank with a
+-- DEFAULT, so keeping both would make a 4-arg call ambiguous.
+DROP FUNCTION IF EXISTS transactions_totals(TEXT[], TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION transactions_totals(
   p_parent_ids TEXT[] DEFAULT NULL,
   p_month      TEXT   DEFAULT NULL,
   p_type       TEXT   DEFAULT NULL,
-  p_project    TEXT   DEFAULT NULL
+  p_project    TEXT   DEFAULT NULL,
+  p_bank       TEXT   DEFAULT NULL
 )
 RETURNS TABLE(total_income NUMERIC, total_expense NUMERIC)
 LANGUAGE sql
@@ -28,6 +34,7 @@ AS $$
     AND (p_month   IS NULL OR month_year = p_month)
     AND (p_type    IS NULL OR type = p_type)
     AND (p_project IS NULL OR p_project = ANY(project_names))
+    AND (p_bank    IS NULL OR bank_classification = p_bank)
     AND notes NOT LIKE 'זיכוי%'
     -- קופת מזומנים: העברה לאדם שמוחזרת במזומן - לא הכנסה/הוצאה אמיתית,
     -- רק שינוי צורה (יתרת בנק → מזומן ביד). ראו lib/cashFund.ts.
