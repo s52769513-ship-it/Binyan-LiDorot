@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   try {
     const month = req.nextUrl.searchParams.get('month') ?? currentMY()
 
-    // Only parents with monthly_donation > 0 (manually set)
+    // Parents explicitly set as monthly donors (monthly_donation > 0)
     const { data: donorParents, error: e1 } = await supabaseAdmin
       .from('parents')
       .select('id, name, first_name, last_name, monthly_donation, notes')
@@ -14,35 +14,54 @@ export async function GET(req: NextRequest) {
 
     if (e1) throw e1
 
-    const parentIdArr = (donorParents ?? []).map(p => p.id)
+    // Donation PPs for this month — for ANY parent, so debts added manually
+    // ("הוספת חוב") to someone who isn't a fixed monthly donor still show up.
+    const { data: pps } = await supabaseAdmin
+      .from('planned_payments')
+      .select('id, parent_ids, name, amount, balance, month_year')
+      .eq('pp_type', 'donation')
+      .eq('month_year', month)
 
-    // Donation PPs for this month
-    const { data: pps } = parentIdArr.length > 0
-      ? await supabaseAdmin
-          .from('planned_payments')
-          .select('id, parent_ids, name, amount, balance, month_year')
-          .eq('pp_type', 'donation')
-          .eq('month_year', month)
-          .overlaps('parent_ids', parentIdArr)
-      : { data: [] }
-
+    // Aggregate PPs per parent (a parent may have more than one this month)
     const ppMap: Record<string, { id: string; amount: number; balance: number }> = {}
     for (const pp of pps ?? []) {
       for (const pid of (pp.parent_ids as string[]) ?? []) {
-        ppMap[pid] = { id: pp.id, amount: Number(pp.amount), balance: Number(pp.balance) }
+        const prev = ppMap[pid]
+        ppMap[pid] = prev
+          ? { id: prev.id, amount: prev.amount + Number(pp.amount), balance: prev.balance + Number(pp.balance) }
+          : { id: pp.id, amount: Number(pp.amount), balance: Number(pp.balance) }
       }
     }
 
-    const donors: DonorRow[] = (donorParents ?? []).map(p => ({
-      id:              p.id,
-      name:            p.name,
-      firstName:       p.first_name ?? '',
-      lastName:        p.last_name ?? '',
-      monthlyDonation: Number(p.monthly_donation) || 0,
-      paymentMethod:   'ניכוי משכורת',
-      soStatus:        'פעיל',
-      ppThisMonth:     ppMap[p.id] ?? null,
-    }))
+    // Include parents who have a donation PP this month but aren't fixed donors
+    const donorIdSet = new Set((donorParents ?? []).map(p => p.id))
+    const extraIds = Object.keys(ppMap).filter(id => !donorIdSet.has(id))
+    let extraParents: NonNullable<typeof donorParents> = []
+    if (extraIds.length > 0) {
+      const { data: ep } = await supabaseAdmin
+        .from('parents')
+        .select('id, name, first_name, last_name, monthly_donation, notes')
+        .in('id', extraIds)
+      extraParents = ep ?? []
+    }
+
+    const allParents = [...(donorParents ?? []), ...extraParents]
+
+    const donors: DonorRow[] = allParents.map(p => {
+      const pp = ppMap[p.id] ?? null
+      const monthly = Number(p.monthly_donation) || 0
+      return {
+        id:              p.id,
+        name:            p.name,
+        firstName:       p.first_name ?? '',
+        lastName:        p.last_name ?? '',
+        // For ad-hoc donors (no fixed monthly amount) fall back to the debt amount
+        monthlyDonation: monthly > 0 ? monthly : (pp ? pp.amount : 0),
+        paymentMethod:   monthly > 0 ? 'ניכוי משכורת' : 'חד פעמי',
+        soStatus:        'פעיל',
+        ppThisMonth:     pp,
+      }
+    })
 
     donors.sort((a, b) => (a.lastName ?? '').localeCompare(b.lastName ?? '', 'he'))
 
