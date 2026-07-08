@@ -242,8 +242,23 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
   const [showAddDebt, setShowAddDebt]         = useState(false)
+  const [deletingPP, setDeletingPP]           = useState<string | null>(null)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
+
+  const deleteDonationPP = async (ppId: string) => {
+    if (!confirm('למחוק את חוב המגבית? פעולה זו תמחק גם תשלומים מקושרים לרשומה זו.')) return
+    setDeletingPP(ppId)
+    try {
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(ppId)}`, { method: 'DELETE' })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(`שגיאה במחיקה: ${j?.error ?? res.status}`); return }
+      setExpandedPP(null)
+      loadPPs()
+      onUpdate()
+    } finally {
+      setDeletingPP(null)
+    }
+  }
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
 
   const loadPPs = useCallback(async () => {
@@ -518,11 +533,20 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                           ) : (
                             <div className="text-[11px] text-gray-400 mb-2">אין תשלומים מקושרים עדיין</div>
                           )}
-                          <button type="button"
-                            onClick={(e) => { e.stopPropagation(); setAddPaymentPP({ id: pp.id, name: pp.name, balance: pp.balance, monthYear: pp.monthYear }) }}
-                            className="w-full px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
-                            + הוסף תשלום לרשומה זו
-                          </button>
+                          <div className="flex gap-2">
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); setAddPaymentPP({ id: pp.id, name: pp.name, balance: pp.balance, monthYear: pp.monthYear }) }}
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+                              + הוסף תשלום לרשומה זו
+                            </button>
+                            <button type="button"
+                              disabled={deletingPP === pp.id}
+                              onClick={(e) => { e.stopPropagation(); deleteDonationPP(pp.id) }}
+                              title="מחיקת חוב מגבית"
+                              className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 border border-red-200 disabled:opacity-40 whitespace-nowrap">
+                              {deletingPP === pp.id ? '...' : '🗑 מחק'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )}

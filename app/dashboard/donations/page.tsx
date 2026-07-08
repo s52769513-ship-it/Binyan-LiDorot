@@ -75,6 +75,7 @@ export default function DonationsPage() {
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [showAddDebt, setShowAddDebt] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,6 +88,18 @@ export default function DonationsPage() {
   }, [month])
 
   useEffect(() => { load() }, [load])
+
+  const deletePP = async (ppId: string) => {
+    if (!confirm('למחוק את חוב המגבית לחודש זה? פעולה זו תמחק גם תשלומים מקושרים.')) return
+    setDeletingId(ppId)
+    try {
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(ppId)}`, { method: 'DELETE' })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(`שגיאה במחיקה: ${j?.error ?? res.status}`); return }
+      load()
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const filtered = donors.filter(d => {
     if (search && !d.name.includes(search) && !d.lastName.includes(search)) return false
@@ -221,6 +234,7 @@ export default function DonationsPage() {
                 <th className="px-4 py-3 text-left">יתרה</th>
                 <th className="px-4 py-3">שיטה</th>
                 <th className="px-4 py-3 text-center">סטטוס</th>
+                <th className="px-4 py-3 text-center"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -246,6 +260,18 @@ export default function DonationsPage() {
                   <td className="px-4 py-3 text-center">
                     <StatusBadge donor={donor} />
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    {donor.ppThisMonth && (
+                      <button
+                        onClick={e => { e.stopPropagation(); deletePP(donor.ppThisMonth!.id) }}
+                        disabled={deletingId === donor.ppThisMonth.id}
+                        title="מחיקת חוב מגבית לחודש זה"
+                        className="text-gray-300 hover:text-red-600 disabled:opacity-40 transition-colors text-base leading-none"
+                      >
+                        {deletingId === donor.ppThisMonth.id ? '…' : '🗑'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -261,7 +287,7 @@ export default function DonationsPage() {
                 <td className="px-4 py-3 text-left tabular-nums">
                   {fmt(filtered.reduce((s, d) => s + (d.ppThisMonth?.balance ?? 0), 0))}
                 </td>
-                <td colSpan={2} />
+                <td colSpan={3} />
               </tr>
             </tfoot>
           </table>
