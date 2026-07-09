@@ -1,14 +1,17 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { calcTransportCost } from '@/lib/transport'
 
 export async function recalcTuitionForParent(parentId: string): Promise<void> {
   const { data: students } = await supabaseAdmin
     .from('students')
-    .select('status, transportation_cost')
+    .select('status, transportation')
     .contains('parent_ids', [parentId])
 
   const active = (students ?? []).filter(s => s.status === 'פעיל')
   const activeCount = active.length
-  const transportTotal = active.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
+  // Derive transport cost from the legs so recalc is correct even when the
+  // stored transportation_cost predates the transport backfill (lib/transport).
+  const transportTotal = active.reduce((sum, s) => sum + calcTransportCost(s.transportation), 0)
   const baseTuition = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
   const newTuition = baseTuition + transportTotal
 
