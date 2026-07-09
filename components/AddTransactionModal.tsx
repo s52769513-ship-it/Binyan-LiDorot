@@ -5,6 +5,25 @@ import FilePreviewModal from '@/components/FilePreviewModal'
 
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
 
+// Custom transaction categories the user has typed via "+ סוג חדש". Persisted
+// locally so they stay selectable next time even before any transaction uses them.
+const CUSTOM_CATEGORIES_KEY = 'custom_transaction_categories'
+function readCustomCategories(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(CUSTOM_CATEGORIES_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr.filter((v): v is string => typeof v === 'string') : []
+  } catch { return [] }
+}
+function saveCustomCategory(name: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = readCustomCategories()
+    if (!list.includes(name)) localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify([name, ...list]))
+  } catch { /* ignore quota/serialization errors */ }
+}
+
 interface ParentOption { id: string; name: string }
 
 function getMonthYear(dateStr: string): string {
@@ -64,25 +83,34 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load project list
+  // Load project list. /api/projects only returns categories that already exist
+  // on some transaction, so a freshly-typed custom category would vanish next
+  // time. Merge in any custom categories the user has added before (persisted in
+  // localStorage) so they stay selectable across sessions.
   useEffect(() => {
     fetch('/api/projects')
       .then(r => r.json())
       .then(d => {
-        if (Array.isArray(d)) {
-          const list = [...d]
-          if (preselectedProject && !list.includes(preselectedProject)) list.unshift(preselectedProject)
-          setProjects(list)
-        }
+        const fromApi: string[] = Array.isArray(d) ? d : []
+        const merged = [...fromApi]
+        for (const c of readCustomCategories()) if (!merged.includes(c)) merged.push(c)
+        if (preselectedProject && !merged.includes(preselectedProject)) merged.unshift(preselectedProject)
+        setProjects(merged)
       })
-      .catch(() => {})
+      .catch(() => setProjects(readCustomCategories()))
   }, [])
 
-  // Always include "משכורת" in the list for הוצאה
+  // Always include "משכורת" in the list for הוצאה, and always offer "מזומנים"
+  // (קופת מזומנים) — it may not yet exist in any transaction, so it won't come
+  // back from /api/projects on its own.
   const SALARY_PROJECT = 'משכורת'
-  const displayProjects = direction === 'הוצאה' && !projects.includes(SALARY_PROJECT)
-    ? [SALARY_PROJECT, ...projects]
-    : projects
+  const CASH_FUND_PROJECT = 'מזומנים'
+  const displayProjects = (() => {
+    let list = [...projects]
+    if (direction === 'הוצאה' && !list.includes(SALARY_PROJECT)) list = [SALARY_PROJECT, ...list]
+    if (!list.includes(CASH_FUND_PROJECT)) list = [...list, CASH_FUND_PROJECT]
+    return list
+  })()
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -149,7 +177,10 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
   // new value into the pill list for next time and hides the input.
   const commitCustomProject = () => {
     const v = customProjectDraft.trim()
-    if (v) setProjects(prev => prev.includes(v) ? prev : [v, ...prev])
+    if (v) {
+      setProjects(prev => prev.includes(v) ? prev : [v, ...prev])
+      saveCustomCategory(v)  // persist so it's offered again next time
+    }
     setShowCustomProject(false)
   }
 

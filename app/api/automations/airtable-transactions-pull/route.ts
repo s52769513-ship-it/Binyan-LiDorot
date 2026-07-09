@@ -8,7 +8,10 @@ import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
-const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
+// All payment methods are pulled now (previously הו"ק/אשראי were skipped as
+// "handled by dedicated automations"). Left as an empty list so the counter
+// wiring below keeps working with no behavioural change beyond "pull everything".
+const EXCLUDED_PAYMENT_METHODS: string[] = []
 // Cutoff applied ONLY to "בנין לדורות" transactions (same 04/2026 cutover used
 // across the app) — earlier בנין לדורות rows come from the old-debts import.
 const CUTOFF_DATE = '2026-04-01'

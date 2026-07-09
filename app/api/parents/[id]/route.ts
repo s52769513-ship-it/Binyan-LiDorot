@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { tuitionMonthForSalary } from '@/lib/months'
+import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -258,7 +259,9 @@ export async function GET(
     // ── Calculate tuition dynamically from active students ──────────────────
     const activeStudents = (studentsRes.data ?? []).filter(s => s.status === 'פעיל')
     const activeCount    = activeStudents.length
-    const transportTotal = activeStudents.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
+    // Derive from the legs directly so it's correct even for rows whose stored
+    // transportation_cost predates the backfill (see lib/transport).
+    const transportTotal = activeStudents.reduce((sum, s) => sum + calcTransportCost(s.transportation), 0)
     const baseTuition    = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
     const computedTuitionTotal = baseTuition + transportTotal
 
@@ -353,8 +356,8 @@ export async function GET(
         classDepartment: s.class_department ?? s.class_name ?? '',
         framework: frameMap[s.class_name ?? ''] ?? '',
         status: s.status ?? '',
-        transportation: toArray(s.transportation),
-        transportationCost: s.transportation_cost ?? 0,
+        transportation: normalizeTransport(s.transportation),
+        transportationCost: calcTransportCost(s.transportation),
       })),
 
       debts: (debtsRes.data ?? []).map(d => ({

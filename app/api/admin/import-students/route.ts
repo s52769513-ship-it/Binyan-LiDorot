@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { calcTransportCost } from '@/lib/transport'
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -24,12 +25,6 @@ function parseCSV(text: string): string[][] {
     rows.push(fields)
   }
   return rows
-}
-
-function calcTransportCost(transport: string[]): number {
-  if (!transport.includes('הלוך')) return 0
-  const hasReturn = transport.includes('חזור שעה 1') || transport.includes('חזור שעה 4')
-  return hasReturn ? 130 : 65
 }
 
 export async function POST(req: NextRequest) {
@@ -139,12 +134,14 @@ export async function POST(req: NextRequest) {
       const statusRaw = row[18]?.trim()
       const status = statusRaw === 'V' ? 'פעיל' : statusRaw || null
 
-      // Cols L(11), M(12), N(13): הסעות — 3 separate columns
+      // Cols L(11), M(12), N(13): הסעות — 3 separate columns, each holding a
+      // marker ("1"/"V") when that leg applies. Push the canonical leg LABEL
+      // (not the cell value) so the checkboxes and cost calc line up.
       const transport: string[] = []
       const lVal = row[11]?.trim(); const mVal = row[12]?.trim(); const nVal = row[13]?.trim()
-      if (lVal && lVal !== '0') transport.push(lVal)
-      if (mVal && mVal !== '0') transport.push(mVal)
-      if (nVal && nVal !== '0') transport.push(nVal)
+      if (lVal && lVal !== '0') transport.push('הלוך')
+      if (mVal && mVal !== '0') transport.push('חזור שעה 1')
+      if (nVal && nVal !== '0') transport.push('חזור שעה 4')
       const transportationCost = transport.length > 0 ? calcTransportCost(transport) : 0
 
       // Col AB(27): קופ"ח · AC(28): לימודים קודם
