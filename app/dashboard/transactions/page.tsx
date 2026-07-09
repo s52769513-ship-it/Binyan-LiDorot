@@ -82,11 +82,48 @@ export default function TransactionsPage() {
   const [showAdd, setShowAdd]   = useState(false)
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [selectedTx, setSelectedTx] = useState<TxRow | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
   const [debouncedSearch, setDebouncedSearch] = useState('')
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 350); return () => clearTimeout(t) }, [search])
 
   const PAGE_SIZE = 50
+
+  const toggleSelected = (id: string) => {
+    const newSelected = new Set(selected)
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
+    setSelected(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selected.size === rows.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(rows.map(r => r.id)))
+    }
+  }
+
+  const deleteSelected = async () => {
+    if (selected.size === 0 || !confirm(`מחיקת ${selected.size} תנועות?`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/transactions/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'שגיאה במחיקה')
+      setSelected(new Set())
+      load()
+    } catch (err) {
+      setError(`שגיאה: ${(err as { message?: string })?.message ?? String(err)}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -149,6 +186,17 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {/* Batch delete bar */}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+          <span className="text-sm text-blue-700 font-medium">נבחרו {selected.size} תנועות</span>
+          <button onClick={deleteSelected} disabled={deleting}
+            className="px-4 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+            {deleting ? 'מוחק...' : 'מחק נבחרות'}
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -198,6 +246,11 @@ export default function TransactionsPage() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="text-xs font-semibold text-gray-400 uppercase text-right bg-gray-50 border-b border-gray-100">
+                  <th className="px-4 py-3 w-12">
+                    <input type="checkbox" checked={selected.size === rows.length && rows.length > 0}
+                      onChange={toggleSelectAll} title="בחר הכל בעמוד זה"
+                      className="rounded border-gray-300 cursor-pointer" />
+                  </th>
                   <th className="px-4 py-3">תאריך</th>
                   <th className="px-4 py-3">הורה</th>
                   <th className="px-4 py-3">קטגוריה</th>
@@ -209,18 +262,22 @@ export default function TransactionsPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map(tx => (
-                  <tr key={tx.id} onClick={() => setSelectedTx(tx)}
-                    className="hover:bg-blue-50/40 cursor-pointer transition-colors">
-                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums whitespace-nowrap">{fmtDate(tx.date)}</td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                  <tr key={tx.id}
+                    className={`hover:bg-blue-50/40 transition-colors ${selected.has(tx.id) ? 'bg-blue-100/50' : ''}`}>
+                    <td className="px-4 py-3 w-12" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(tx.id)} onChange={() => toggleSelected(tx.id)}
+                        className="rounded border-gray-300 cursor-pointer" />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums whitespace-nowrap cursor-pointer" onClick={() => setSelectedTx(tx)}>{fmtDate(tx.date)}</td>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       {tx.parentName ? (
-                        <button onClick={() => setSelectedParent(tx.parentIds[0])}
+                        <button onClick={e => { e.stopPropagation(); setSelectedParent(tx.parentIds[0]) }}
                           className="text-sm font-medium text-[#1a3a7a] hover:underline">
                           {tx.parentName}
                         </button>
                       ) : <span className="text-sm text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       <div className="flex flex-wrap gap-1">
                         {tx.projectNames.length > 0
                           ? tx.projectNames.map(p => (
@@ -233,12 +290,12 @@ export default function TransactionsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{tx.type || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{tx.monthYear || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate">
+                    <td className="px-4 py-3 text-sm text-gray-600 cursor-pointer" onClick={() => setSelectedTx(tx)}>{tx.type || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => setSelectedTx(tx)}>{tx.monthYear || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       {tx.notes || '—'}{tx.receiptUrl && <span title="יש חשבונית מצורפת" className="mr-1">📎</span>}
                     </td>
-                    <td className="px-4 py-3 text-left">
+                    <td className="px-4 py-3 text-left cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       <span className={`text-sm font-bold tabular-nums ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                         {tx.amount < 0 ? '−' : '+'}₪{fmt(tx.amount)}
                       </span>

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase *)",
+      "Bash(curl -s \"http://localhost:3000/api/automations/airtable-transactions-pull\")"
+    ]
+  }
+}
