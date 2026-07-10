@@ -50,6 +50,25 @@ function firstOfMonth(monthYear: string): string {
   return `${m[2]}-${m[1].padStart(2, '0')}-01`
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+// A charge/payment has no stable id in the source file, so we fingerprint it
+// from its natural key. Re-uploading the same file then matches these against
+// the already-imported legacy rows and skips them. Counts are kept as a multiset
+// so genuinely repeated identical rows still import the right number of times.
+function chargeName(notes: string | undefined, monthYear: string): string {
+  return notes?.trim() || (monthYear ? `שכ"ל ${monthYear}` : 'שכ"ל — חוב ישן')
+}
+function chargeFingerprint(parentId: string, amount: number, monthYear: string, name: string): string {
+  return `c|${parentId}|${round2(Math.abs(amount))}|${monthYear}|${name}`
+}
+function paymentType(pm: string | undefined): string {
+  return pm?.trim() || 'תשלום'
+}
+function paymentFingerprint(parentId: string, amount: number, type: string, monthYear: string, notes: string): string {
+  return `p|${parentId}|${round2(Math.abs(amount))}|${type}|${monthYear}|${notes ?? ''}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { rows, dryRun = false, parentMappings = {} }: { rows: RawRow[]; dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
@@ -88,28 +107,72 @@ export async function POST(req: NextRequest) {
       return result
     }
 
+    // Fingerprint every legacy row already in the DB (charges → planned_payments,
+    // payments → transactions) so a re-uploaded file can skip what's there.
+    const existingChargeCounts = new Map<string, number>()
+    const existingPaymentCounts = new Map<string, number>()
+    try {
+      const { data: ec } = await supabaseAdmin
+        .from('planned_payments')
+        .select('parent_ids, amount, month_year, name')
+        .eq('pp_type', 'tuition').eq('is_legacy', true)
+      for (const pp of ec ?? []) {
+        const pid = ((pp.parent_ids as string[]) ?? [])[0]
+        if (!pid) continue
+        const fp = chargeFingerprint(pid, Number(pp.amount), pp.month_year ?? '', pp.name ?? '')
+        existingChargeCounts.set(fp, (existingChargeCounts.get(fp) ?? 0) + 1)
+      }
+      const { data: ep } = await supabaseAdmin
+        .from('transactions')
+        .select('parent_ids, amount, type, month_year, notes')
+        .eq('is_legacy', true)
+      for (const tx of ep ?? []) {
+        const pid = ((tx.parent_ids as string[]) ?? [])[0]
+        if (!pid) continue
+        const fp = paymentFingerprint(pid, Number(tx.amount), tx.type ?? 'תשלום', tx.month_year ?? '', tx.notes ?? '')
+        existingPaymentCounts.set(fp, (existingPaymentCounts.get(fp) ?? 0) + 1)
+      }
+    } catch { /* is_legacy column may not exist yet — dedup simply finds nothing */ }
+
     // ── DRY RUN ──
     if (dryRun) {
-      let charges = 0, payments = 0, matched = 0
+      let charges = 0, payments = 0, matched = 0, duplicates = 0
       let matchedCharges = 0, matchedPayments = 0, chargeAmount = 0, paymentAmount = 0
       const unmatched: string[] = []
       const preview: object[] = []
+      // Work on clones so counting doesn't consume the real maps
+      const chargeSeen = new Map(existingChargeCounts)
+      const paymentSeen = new Map(existingPaymentCounts)
       for (const row of rows) {
         const kind = classify(row.type)
         const amount = toNumber(row.amount)
         if (kind === 'charge') charges++
         else if (kind === 'payment') payments++
         const parent = matchParent(row.parentName)
+        const monthYear = monthYearOf(row)
+        let duplicate = false
+        if (parent) {
+          if (kind === 'charge') {
+            const fp = chargeFingerprint(parent.id, amount, monthYear, chargeName(row.notes, monthYear))
+            const c = chargeSeen.get(fp) ?? 0
+            if (c > 0) { duplicate = true; chargeSeen.set(fp, c - 1) }
+          } else if (kind === 'payment') {
+            const fp = paymentFingerprint(parent.id, amount, paymentType(row.paymentMethod), monthYear, row.notes || '')
+            const c = paymentSeen.get(fp) ?? 0
+            if (c > 0) { duplicate = true; paymentSeen.set(fp, c - 1) }
+          }
+        }
+        if (duplicate) duplicates++
         if (parent) {
           matched++
           if (kind === 'charge') { matchedCharges++; chargeAmount += Math.abs(amount) }
           else if (kind === 'payment') { matchedPayments++; paymentAmount += Math.abs(amount) }
         } else if (row.parentName?.trim()) unmatched.push(row.parentName.trim())
-        preview.push({ parentName: row.parentName, matchedParent: parent?.name ?? null, kind, amount, monthYear: monthYearOf(row) })
+        preview.push({ parentName: row.parentName, matchedParent: parent?.name ?? null, kind, amount, monthYear, duplicate })
       }
       return NextResponse.json({
         dryRun: true, total: rows.length, charges, payments,
-        unknown: rows.length - charges - payments, matched,
+        unknown: rows.length - charges - payments, matched, duplicates,
         unmatched: [...new Set(unmatched)],
         preview: preview.slice(0, 50),
         summary: { matchedCharges, matchedPayments, chargeAmount, paymentAmount },
@@ -135,6 +198,7 @@ export async function POST(req: NextRequest) {
     // ── Phase 1: Batch insert all charges ──
     const chargeRecords: object[] = []
     const skippedCharges = { count: 0 }
+    let duplicateCharges = 0
     for (const row of rows) {
       if (classify(row.type) !== 'charge') continue
       const amount = toNumber(row.amount)
@@ -151,11 +215,20 @@ export async function POST(req: NextRequest) {
         continue
       }
       const monthYear = monthYearOf(row)
+      const name = chargeName(row.notes, monthYear)
+      const fp = chargeFingerprint(parent.id, amount, monthYear, name)
+      const seen = existingChargeCounts.get(fp) ?? 0
+      if (seen > 0) {
+        existingChargeCounts.set(fp, seen - 1)
+        duplicateCharges++
+        skippedRows.push({ ...row, סיבה: 'כפילות — חוב זהה כבר קיים' })
+        continue
+      }
       affectedParents.add(parent.id)
       chargeRecords.push({
         id: crypto.randomUUID(),
         parent_ids: [parent.id],
-        name: row.notes?.trim() || (monthYear ? `שכ"ל ${monthYear}` : 'שכ"ל — חוב ישן'),
+        name,
         amount: Math.abs(amount),
         balance: Math.abs(amount),
         date: row.date || (monthYear ? firstOfMonth(monthYear) : null) || null,
@@ -196,8 +269,8 @@ export async function POST(req: NextRequest) {
     const balanceUpdates = new Map<string, number>() // ppId → new balance
     const creditUpdates = new Map<string, number>()  // parentId → surplus → credit_balance
     const spilloverRows: SpilloverRowInput[] = []    // visible rows on PPs that received overflow
-    const round2 = (n: number) => Math.round(n * 100) / 100
     let skippedPayments = 0
+    let duplicatePayments = 0
 
     for (const row of rows) {
       if (classify(row.type) !== 'payment') continue
@@ -216,6 +289,15 @@ export async function POST(req: NextRequest) {
       }
       const monthYear = monthYearOf(row)
 
+      const payFp = paymentFingerprint(parent.id, amount, paymentType(row.paymentMethod), monthYear, row.notes || '')
+      const seenPay = existingPaymentCounts.get(payFp) ?? 0
+      if (seenPay > 0) {
+        existingPaymentCounts.set(payFp, seenPay - 1)
+        duplicatePayments++
+        skippedRows.push({ ...row, סיבה: 'כפילות — תשלום זהה כבר קיים' })
+        continue
+      }
+
       // Same cascade as the rest of the system (ppPayments): month-matched PP
       // first, then oldest open; overflow rolls to the next debts (recorded as
       // visible spillover rows) and any leftover becomes parent credit —
@@ -231,7 +313,7 @@ export async function POST(req: NextRequest) {
         id: txId,
         parent_ids: [parent.id],
         amount: Math.abs(amount),
-        type: row.paymentMethod?.trim() || 'תשלום',
+        type: paymentType(row.paymentMethod),
         date: txDate,
         month_year: monthYear,
         notes: row.notes || '',
@@ -299,7 +381,8 @@ export async function POST(req: NextRequest) {
 
     const creditTotal = round2([...creditUpdates.values()].reduce((s, v) => s + v, 0))
     const skipped = skippedCharges.count + skippedPayments
-    return NextResponse.json({ createdPPs, createdPayments, skipped, creditTotal, errors, skippedRows })
+    const duplicates = duplicateCharges + duplicatePayments
+    return NextResponse.json({ createdPPs, createdPayments, skipped, duplicates, creditTotal, errors, skippedRows })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })
   }

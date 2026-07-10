@@ -17,13 +17,13 @@ const FIELDS = [
 
 type FieldKey = (typeof FIELDS)[number]['key']
 
-interface PreviewRow { parentName: string; matchedParent: string | null; kind: string; amount: number; monthYear: string }
+interface PreviewRow { parentName: string; matchedParent: string | null; kind: string; amount: number; monthYear: string; duplicate?: boolean }
 interface DryRunResult {
   dryRun: true; total: number; charges: number; payments: number; unknown: number
-  matched: number; unmatched: string[]; preview: PreviewRow[]
+  matched: number; duplicates?: number; unmatched: string[]; preview: PreviewRow[]
   summary: { matchedCharges: number; matchedPayments: number; chargeAmount: number; paymentAmount: number }
 }
-interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; errors?: string[]; error?: string; skippedRows?: object[] }
+interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; duplicates?: number; errors?: string[]; error?: string; skippedRows?: object[] }
 
 function pad(n: number) { return String(n).padStart(2, '0') }
 function fmtISO(y: number, m: number, d: number) { return `${y}-${pad(m)}-${pad(d)}` }
@@ -210,13 +210,19 @@ export default function OldDebtsImportTab() {
       {preview && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">תצוגה מקדימה</h3>
-          <div className="grid grid-cols-4 gap-2 text-center text-sm">
+          <div className="grid grid-cols-5 gap-2 text-center text-sm">
             <Stat label="סה״כ שורות" value={preview.total} />
             <Stat label="חיובים (PP)" value={preview.charges} />
             <Stat label="תשלומים" value={preview.payments} />
             <Stat label="הורים זוהו" value={`${preview.matched}/${preview.total}`} />
+            <Stat label="כפילויות" value={preview.duplicates ?? 0} />
           </div>
           {preview.unknown > 0 && <p className="text-xs text-amber-600">{preview.unknown} שורות עם סוג לא מזוהה (לא ייובאו)</p>}
+          {(preview.duplicates ?? 0) > 0 && (
+            <p className="text-xs text-orange-600 font-medium">
+              🔁 {preview.duplicates} שורות כבר קיימות במערכת (כפילויות) — הן <b>לא</b> ייובאו שוב
+            </p>
+          )}
           {(() => {
             const stillUnmatched = preview.unmatched.filter(name => !manualMappings[name])
             if (stillUnmatched.length === 0) return null
@@ -259,12 +265,15 @@ export default function OldDebtsImportTab() {
                 {preview.preview.map((r, i) => {
                   const matched = r.matchedParent || manualMappings[r.parentName]?.name
                   return (
-                    <tr key={i} className={matched ? '' : 'bg-red-50'}>
+                    <tr key={i} className={r.duplicate ? 'bg-orange-50 text-gray-400' : matched ? '' : 'bg-red-50'}>
                       <td className="px-2 py-1">{r.parentName}</td>
                       <td className="px-2 py-1">
                         {matched ? matched : <button onClick={() => setParentSelectorOpen(r.parentName)} className="text-red-500 hover:underline">—</button>}
                       </td>
-                      <td className="px-2 py-1">{r.kind === 'charge' ? 'התחייב' : r.kind === 'payment' ? 'תשלום' : '?'}</td>
+                      <td className="px-2 py-1">
+                        {r.kind === 'charge' ? 'התחייב' : r.kind === 'payment' ? 'תשלום' : '?'}
+                        {r.duplicate && <span className="mr-1 px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 text-[10px]">כפילות</span>}
+                      </td>
                       <td className="px-2 py-1 text-left tabular-nums">{r.amount.toLocaleString('he-IL')}</td>
                       <td className="px-2 py-1">{r.monthYear}</td>
                     </tr>
@@ -311,6 +320,7 @@ export default function OldDebtsImportTab() {
             <>
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
                 ✓ נוצרו {result.createdPPs} חובות (PP) ו-{result.createdPayments} תשלומים
+                {result.duplicates ? <span className="text-orange-600 mr-2">· 🔁 {result.duplicates} כפילויות דולגו</span> : null}
                 {result.skipped ? <span className="text-emerald-600 mr-2">· {result.skipped} דולגו</span> : null}
               </div>
               {result.errors && result.errors.length > 0 && (
