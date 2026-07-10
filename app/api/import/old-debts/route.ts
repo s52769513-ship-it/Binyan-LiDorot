@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 
     // ── DRY RUN ──
     if (dryRun) {
-      let charges = 0, payments = 0, matched = 0, duplicates = 0
+      let charges = 0, payments = 0, matched = 0, duplicates = 0, duplicateCharges = 0, duplicatePayments = 0
       let matchedCharges = 0, matchedPayments = 0, chargeAmount = 0, paymentAmount = 0
       const unmatched: string[] = []
       const preview: object[] = []
@@ -155,11 +155,11 @@ export async function POST(req: NextRequest) {
           if (kind === 'charge') {
             const fp = chargeFingerprint(parent.id, amount, monthYear, chargeName(row.notes, monthYear))
             const c = chargeSeen.get(fp) ?? 0
-            if (c > 0) { duplicate = true; chargeSeen.set(fp, c - 1) }
+            if (c > 0) { duplicate = true; duplicateCharges++; chargeSeen.set(fp, c - 1) }
           } else if (kind === 'payment') {
             const fp = paymentFingerprint(parent.id, amount, paymentType(row.paymentMethod), monthYear, row.notes || '')
             const c = paymentSeen.get(fp) ?? 0
-            if (c > 0) { duplicate = true; paymentSeen.set(fp, c - 1) }
+            if (c > 0) { duplicate = true; duplicatePayments++; paymentSeen.set(fp, c - 1) }
           }
         }
         if (duplicate) duplicates++
@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true, total: rows.length, charges, payments,
         unknown: rows.length - charges - payments, matched, duplicates,
+        duplicateCharges, duplicatePayments,
         unmatched: [...new Set(unmatched)],
         preview: preview.slice(0, 50),
         summary: { matchedCharges, matchedPayments, chargeAmount, paymentAmount },

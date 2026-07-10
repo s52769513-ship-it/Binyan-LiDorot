@@ -20,7 +20,7 @@ type FieldKey = (typeof FIELDS)[number]['key']
 interface PreviewRow { parentName: string; matchedParent: string | null; kind: string; amount: number; monthYear: string; duplicate?: boolean }
 interface DryRunResult {
   dryRun: true; total: number; charges: number; payments: number; unknown: number
-  matched: number; duplicates?: number; unmatched: string[]; preview: PreviewRow[]
+  matched: number; duplicates?: number; duplicateCharges?: number; duplicatePayments?: number; unmatched: string[]; preview: PreviewRow[]
   summary: { matchedCharges: number; matchedPayments: number; chargeAmount: number; paymentAmount: number }
 }
 interface ImportResult { createdPPs?: number; createdPayments?: number; skipped?: number; duplicates?: number; errors?: string[]; error?: string; skippedRows?: object[] }
@@ -212,16 +212,16 @@ export default function OldDebtsImportTab() {
           <h3 className="text-sm font-semibold text-gray-700">תצוגה מקדימה</h3>
           <div className="grid grid-cols-6 gap-2 text-center text-sm">
             <Stat label="סה״כ שורות" value={preview.total} />
-            <Stat label="כפילויות" value={preview.duplicates ?? 0} />
-            <Stat label="🆕 שורות חדשות" value={(preview.total - (preview.duplicates ?? 0))} />
-            <Stat label="חיובים (PP)" value={preview.charges} />
-            <Stat label="תשלומים" value={preview.payments} />
+            <Stat label="חיובים סה״כ" value={preview.charges} />
+            <Stat label="תשלומים סה״כ" value={preview.payments} />
+            <Stat label="🆕 חיובים חדשים" value={(preview.charges - (preview.duplicateCharges ?? 0))} />
+            <Stat label="🆕 תשלומים חדשים" value={(preview.payments - (preview.duplicatePayments ?? 0))} />
             <Stat label="הורים זוהו" value={`${preview.matched}/${preview.total}`} />
           </div>
           {preview.unknown > 0 && <p className="text-xs text-amber-600">{preview.unknown} שורות עם סוג לא מזוהה (לא ייובאו)</p>}
           {(preview.duplicates ?? 0) > 0 && (
             <p className="text-xs text-orange-600 font-medium">
-              🔁 {preview.duplicates} שורות כפלויות דולגו — רק ה-{preview.total - (preview.duplicates ?? 0)} החדשות יווצרו בלחיצת &quot;ייבא&quot;
+              🔁 {preview.duplicates} שורות כפלויות דולגו — יווצרו: {preview.charges - (preview.duplicateCharges ?? 0)} חיובים ו-{preview.payments - (preview.duplicatePayments ?? 0)} תשלומים
             </p>
           )}
           {(() => {
@@ -348,17 +348,19 @@ export default function OldDebtsImportTab() {
 
 function ImportSummary({ preview }: { preview: DryRunResult }) {
   const { matchedCharges, matchedPayments, chargeAmount, paymentAmount } = preview.summary ?? {}
+  const newCharges = (matchedCharges ?? 0) - (preview.duplicateCharges ?? 0)
+  const newPayments = (matchedPayments ?? 0) - (preview.duplicatePayments ?? 0)
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2 text-sm">
-      <p className="font-semibold text-blue-900">סיכום היצירה (כולל כל השורות):</p>
+      <p className="font-semibold text-blue-900">סיכום היצירה (לאחר הוצאת כפלויות):</p>
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="bg-white rounded p-2">
-          <div className="text-blue-600 font-medium">{matchedCharges ?? 0} שורות PP</div>
-          <div className="text-gray-600">סה&quot;כ סכום: {(chargeAmount ?? 0).toLocaleString('he-IL')}</div>
+          <div className="text-blue-600 font-medium">{newCharges} שורות PP חדשות</div>
+          <div className="text-gray-400 text-[10px]">(כולל {preview.duplicateCharges ?? 0} כפלויות בקובץ)</div>
         </div>
         <div className="bg-white rounded p-2">
-          <div className="text-green-600 font-medium">{matchedPayments ?? 0} שורות תשלום</div>
-          <div className="text-gray-600">סה&quot;כ סכום: {(paymentAmount ?? 0).toLocaleString('he-IL')}</div>
+          <div className="text-green-600 font-medium">{newPayments} שורות תשלום חדשות</div>
+          <div className="text-gray-400 text-[10px]">(כולל {preview.duplicatePayments ?? 0} כפלויות בקובץ)</div>
         </div>
       </div>
     </div>
