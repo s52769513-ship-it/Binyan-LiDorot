@@ -210,17 +210,18 @@ export default function OldDebtsImportTab() {
       {preview && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">תצוגה מקדימה</h3>
-          <div className="grid grid-cols-5 gap-2 text-center text-sm">
+          <div className="grid grid-cols-6 gap-2 text-center text-sm">
             <Stat label="סה״כ שורות" value={preview.total} />
+            <Stat label="כפילויות" value={preview.duplicates ?? 0} />
+            <Stat label="🆕 שורות חדשות" value={(preview.total - (preview.duplicates ?? 0))} />
             <Stat label="חיובים (PP)" value={preview.charges} />
             <Stat label="תשלומים" value={preview.payments} />
             <Stat label="הורים זוהו" value={`${preview.matched}/${preview.total}`} />
-            <Stat label="כפילויות" value={preview.duplicates ?? 0} />
           </div>
           {preview.unknown > 0 && <p className="text-xs text-amber-600">{preview.unknown} שורות עם סוג לא מזוהה (לא ייובאו)</p>}
           {(preview.duplicates ?? 0) > 0 && (
             <p className="text-xs text-orange-600 font-medium">
-              🔁 {preview.duplicates} שורות כבר קיימות במערכת (כפילויות) — הן <b>לא</b> ייובאו שוב
+              🔁 {preview.duplicates} שורות כפלויות דולגו — רק ה-{preview.total - (preview.duplicates ?? 0)} החדשות יווצרו בלחיצת &quot;ייבא&quot;
             </p>
           )}
           {(() => {
