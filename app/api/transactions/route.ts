@@ -231,8 +231,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, totalIncome, totalExpense })
   } catch (err) {
-    console.error('transactions GET error:', err)
-    return NextResponse.json({ error: 'שגיאה בטעינת תנועות' }, { status: 500 })
+    const detail = (err as { message?: string })?.message ?? String(err)
+    console.error('transactions GET error:', detail)
+    return NextResponse.json({ error: 'שגיאה בטעינת תנועות', detail }, { status: 500 })
   }
 }
 
