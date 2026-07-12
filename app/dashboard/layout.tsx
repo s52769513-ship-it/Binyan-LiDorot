@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: '/dashboard/tuition',     label: 'שכ"ל'        },
   { href: '/dashboard/transactions',label: 'תנועות'      },
   { href: '/dashboard/cash-fund',   label: '💵 קופת מזומנים' },
+  { href: '/dashboard/trash',       label: '🗑️ אשפה'     },
   { href: '/dashboard/salaries',    label: '💼 משכורות'  },
   { href: '/dashboard/women',       label: 'נשים'        },
   { href: '/dashboard/donations',    label: '💚 מגבית'    },

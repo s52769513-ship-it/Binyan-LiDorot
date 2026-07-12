@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { softDelete } from '@/lib/trash'
 
 export async function GET(
   _req: NextRequest,
@@ -85,18 +86,21 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const deletedBy = req.headers.get('x-auth-email') || 'unknown'
     // plannedPaymentId can be passed as fallback query param for older transactions
     // that were created before planned_payment_id was stored on the row
     const fallbackPPId = req.nextUrl.searchParams.get('plannedPaymentId') ?? ''
 
     const { data: tx } = await supabaseAdmin
       .from('transactions')
-      .select('amount, planned_payment_id')
+      .select('*')
       .eq('id', id)
       .single()
 
-    const ppId     = tx?.planned_payment_id || fallbackPPId || null
-    const txAmount = Math.abs(Number(tx?.amount ?? 0))
+    if (!tx) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+
+    const ppId     = tx.planned_payment_id || fallbackPPId || null
+    const txAmount = Math.abs(Number(tx.amount ?? 0))
 
     if (ppId && txAmount > 0) {
       const { data: pp } = await supabaseAdmin
@@ -113,8 +117,7 @@ export async function DELETE(
       }
     }
 
-    const { error } = await supabaseAdmin.from('transactions').delete().eq('id', id)
-    if (error) throw error
+    await softDelete(supabaseAdmin, 'transaction', id, tx, deletedBy)
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
