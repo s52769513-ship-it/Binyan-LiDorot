@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { attributeTxsToPP } from '@/lib/ppAttribution'
 import FilePreviewModal from '@/components/FilePreviewModal'
 import { isCashFundTransaction } from '@/lib/cashFund'
+import { authHeaders } from '@/lib/authHeaders'
 
 export interface Transaction {
   id: string
@@ -253,7 +254,7 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      const res = await fetch(`/api/transactions/${local.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/transactions/${local.id}`, { method: 'DELETE', headers: authHeaders() })
       const data = await res.json()
       if (data.error) { setSaveError(data.error); setDeleting(false); setConfirmDelete(false) }
       else onDelete(local.id)
@@ -445,7 +446,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   const handleDelete = async () => {
     setDeleting(true); setDeleteError('')
     try {
-      const r = await fetch(`/api/transactions/${tx.id}`, { method: 'DELETE' })
+      const r = await fetch(`/api/transactions/${tx.id}`, { method: 'DELETE', headers: authHeaders() })
       const data = await r.json().catch(() => ({}))
       if (data?.error) { setDeleteError(data.error); return }
       onDeleted?.(tx.id)
@@ -743,7 +744,7 @@ export function TransactionRow({ tx, onUpdate, onDelete, onOpenParent }: Props) 
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      await fetch(`/api/transactions/${local.id}`, { method: 'DELETE' })
+      await fetch(`/api/transactions/${local.id}`, { method: 'DELETE', headers: authHeaders() })
       onDelete(local.id)
     } catch { setDeleting(false); setConfirmDelete(false) }
   }

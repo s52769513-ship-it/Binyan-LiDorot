@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recordTypeTableMap, RecordType } from '@/lib/trash'
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -16,26 +17,30 @@ export async function POST(
       .single()
 
     if (fetchError || !deleted) {
-      return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+      return NextResponse.json({ error: 'הרשומה לא נמצאה' }, { status: 404 })
     }
 
-    // בדיקה שהעברה לא חלפה
+    // בדיקה שתקופת השחזור לא חלפה
     if (new Date(deleted.restore_deadline) < new Date()) {
-      return NextResponse.json({ error: 'Restore deadline has passed' }, { status: 410 })
+      return NextResponse.json({ error: 'תקופת השחזור (30 יום) חלפה' }, { status: 410 })
     }
 
-    const { record_type, record_id, data: recordData } = deleted
+    const { record_type, data: recordData } = deleted
+    const table = recordTypeTableMap[record_type as RecordType]
+    if (!table) {
+      return NextResponse.json({ error: `סוג רשומה לא מוכר: ${record_type}` }, { status: 400 })
+    }
 
-    // בהתאם לסוג, החזר למקום המקורי
+    // החזר למקום המקורי (upsert כדי לא להיכשל אם מזהה חזר בינתיים)
     const { error: restoreError } = await supabaseAdmin
-      .from(mapRecordTypeToTable(record_type))
-      .insert(recordData)
+      .from(table)
+      .upsert(recordData, { onConflict: 'id' })
 
     if (restoreError) {
       return NextResponse.json({ error: restoreError.message }, { status: 400 })
     }
 
-    // מחק מטבלת ההשאפה
+    // הסר מטבלת האשפה
     const { error: deleteError } = await supabaseAdmin
       .from('deleted_records')
       .delete()
@@ -45,22 +50,8 @@ export async function POST(
       return NextResponse.json({ error: deleteError.message }, { status: 400 })
     }
 
-    return NextResponse.json({
-      success: true,
-      record: recordData,
-    })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ success: true, record: recordData })
+  } catch (err) {
+    return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
   }
-}
-
-function mapRecordTypeToTable(recordType: string): string {
-  const mapping: { [key: string]: string } = {
-    'transaction': 'transactions',
-    'planned_payment': 'planned_payments',
-    'child': 'children',
-    'parent': 'parents',
-    'salary': 'salaries',
-  }
-  return mapping[recordType] || recordType
 }

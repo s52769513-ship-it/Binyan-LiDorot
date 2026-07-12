@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { authHeaders } from '@/lib/authHeaders'
 
 interface StudentData {
   id: string
@@ -270,7 +271,7 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
   const deleteStudent = async () => {
     if (!student || !confirm(`מחק תלמיד: ${student.name}?`)) return
     try {
-      const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) throw new Error(await res.text())
       onUpdate?.()
       onClose()

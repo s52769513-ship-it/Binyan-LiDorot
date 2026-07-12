@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { authHeaders } from '@/lib/authHeaders'
 import EmployeeCard from '@/components/EmployeeCard'
 import { TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
@@ -627,7 +628,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
     if (!confirm('למחוק תשלום מתוכנן זה? גם תנועות המשויכות אליו יימחקו.')) return
     setDeleting(id)
     try {
-      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() })
       const d = await res.json()
       if (d.error) { alert(d.error); return }
       setRows(prev => prev.filter(r => r.id !== id))

@@ -17,9 +17,10 @@ const RECORD_TYPES = [
   { value: null, label: 'הכל' },
   { value: 'transaction', label: 'תנועות' },
   { value: 'planned_payment', label: 'תשלומים מתוכננים' },
-  { value: 'child', label: 'ילדים' },
+  { value: 'student', label: 'תלמידים' },
   { value: 'parent', label: 'הורים' },
-  { value: 'salary', label: 'משכורות' },
+  { value: 'standing_order', label: 'הוראות קבע' },
+  { value: 'woman', label: 'נשים' },
 ]
 
 const getRecordDisplay = (record: DeletedRecord): string => {
@@ -28,13 +29,15 @@ const getRecordDisplay = (record: DeletedRecord): string => {
     case 'transaction':
       return `${Math.abs(data.amount || 0)} ₪ - ${data.notes || 'ללא הערה'}`
     case 'planned_payment':
-      return `${data.description || 'ללא תיאור'} - ${data.amount || 0} ₪`
-    case 'child':
-      return `${data.name || 'ללא שם'}`
+      return `${data.name || data.description || 'ללא תיאור'} - ${data.amount || 0} ₪`
+    case 'student':
+      return `${data.name || 'ללא שם'}${data.class_name ? ` - ${data.class_name}` : ''}`
     case 'parent':
       return `${data.name || 'ללא שם'}`
-    case 'salary':
-      return `${data.person_name || 'ללא שם'} - ${data.amount || 0} ₪`
+    case 'standing_order':
+      return `${data.bank_name || 'הוראת קבע'}${data.charge_amount ? ` - ${data.charge_amount} ₪` : ''}`
+    case 'woman':
+      return `${data.name || 'ללא שם'}`
     default:
       return JSON.stringify(data).slice(0, 50)
   }
@@ -232,9 +235,10 @@ export default function TrashPage() {
                         <span className={`text-xs font-semibold px-2 py-1 rounded ${
                           record.record_type === 'transaction' ? 'bg-blue-100 text-blue-800' :
                           record.record_type === 'planned_payment' ? 'bg-purple-100 text-purple-800' :
-                          record.record_type === 'child' ? 'bg-green-100 text-green-800' :
+                          record.record_type === 'student' ? 'bg-green-100 text-green-800' :
                           record.record_type === 'parent' ? 'bg-orange-100 text-orange-800' :
-                          record.record_type === 'salary' ? 'bg-pink-100 text-pink-800' :
+                          record.record_type === 'standing_order' ? 'bg-cyan-100 text-cyan-800' :
+                          record.record_type === 'woman' ? 'bg-pink-100 text-pink-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {RECORD_TYPES.find(t => t.value === record.record_type)?.label || record.record_type}

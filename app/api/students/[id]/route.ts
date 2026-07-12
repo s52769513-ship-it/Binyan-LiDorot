@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcAge } from '../route'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
+import { softDelete } from '@/lib/trash'
 
 function detectFramework(className: string): string {
   if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
@@ -133,20 +134,21 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const deletedBy = req.headers.get('x-auth-email') || 'unknown'
 
-    // Get parent_ids before deletion
+    // Get the full row before deletion (for restore) + parent_ids for recalc
     const { data: student } = await supabaseAdmin
-      .from('students').select('parent_ids').eq('id', id).single()
-    const parentIds = (student?.parent_ids as string[]) ?? []
+      .from('students').select('*').eq('id', id).single()
+    if (!student) return NextResponse.json({ error: 'תלמיד לא נמצא' }, { status: 404 })
+    const parentIds = (student.parent_ids as string[]) ?? []
 
-    // Delete the student
-    const { error } = await supabaseAdmin.from('students').delete().eq('id', id)
-    if (error) throw error
+    // Move the student to the trash instead of hard-deleting
+    await softDelete(supabaseAdmin, 'student', id, student, deletedBy)
 
     // Recalculate tuition for each parent
     for (const pid of parentIds) {

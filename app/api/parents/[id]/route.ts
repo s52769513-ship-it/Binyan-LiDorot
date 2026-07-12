@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { tuitionMonthForSalary } from '@/lib/months'
+import { softDelete } from '@/lib/trash'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -392,23 +393,33 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const deletedBy = req.headers.get('x-auth-email') || 'unknown'
     const body = await req.json().catch(() => ({}))
     const { deleteTransactions = false, deletePlannedPayments = false, deleteStandingOrders = false } = body
 
+    // כל פריט מקושר שנמחק בעקבות מחיקת ההורה נשמר גם הוא באשפה (ניתן לשחזור נפרד)
     if (deleteTransactions) {
-      await supabaseAdmin.from('transactions').delete().contains('parent_ids', [id])
+      const { data: txs } = await supabaseAdmin.from('transactions').select('*').contains('parent_ids', [id])
+      for (const tx of txs ?? []) {
+        await softDelete(supabaseAdmin, 'transaction', tx.id as string, tx, deletedBy)
+      }
     }
     if (deletePlannedPayments) {
-      // First unlink transactions linked to these PPs
-      const { data: pps } = await supabaseAdmin.from('planned_payments').select('id').contains('parent_ids', [id])
+      const { data: pps } = await supabaseAdmin.from('planned_payments').select('*').contains('parent_ids', [id])
       const ppIds = (pps ?? []).map(p => p.id as string)
+      // Unlink still-existing transactions from these PPs (if not already trashed above)
       if (ppIds.length > 0 && !deleteTransactions) {
         await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).in('planned_payment_id', ppIds)
       }
-      await supabaseAdmin.from('planned_payments').delete().contains('parent_ids', [id])
+      for (const pp of pps ?? []) {
+        await softDelete(supabaseAdmin, 'planned_payment', pp.id as string, pp, deletedBy)
+      }
     }
     if (deleteStandingOrders) {
-      await supabaseAdmin.from('standing_orders').delete().eq('parent_id', id)
+      const { data: sos } = await supabaseAdmin.from('standing_orders').select('*').eq('parent_id', id)
+      for (const so of sos ?? []) {
+        await softDelete(supabaseAdmin, 'standing_order', so.id as string, so, deletedBy)
+      }
     }
 
     // Remove parent_id from students (don't delete students)
@@ -418,9 +429,11 @@ export async function DELETE(
       await supabaseAdmin.from('students').update({ parent_ids: newIds }).eq('id', s.id)
     }
 
-    // Delete the parent
-    const { error } = await supabaseAdmin.from('parents').delete().eq('id', id)
-    if (error) throw error
+    // שלוף את ההורה המלא ושמור אותו באשפה במקום מחיקה קשה
+    const { data: parent } = await supabaseAdmin.from('parents').select('*').eq('id', id).single()
+    if (!parent) return NextResponse.json({ error: 'הורה לא נמצא' }, { status: 404 })
+
+    await softDelete(supabaseAdmin, 'parent', id, parent, deletedBy)
 
     return NextResponse.json({ success: true })
   } catch (err) {

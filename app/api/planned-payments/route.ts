@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 import { tuitionMonthForSalary } from '@/lib/months'
+import { softDelete } from '@/lib/trash'
 
 export async function GET(req: NextRequest) {
   try {
@@ -236,10 +237,18 @@ export async function DELETE(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'חסר מזהה' }, { status: 400 })
-    // Delete linked transactions first, then the PP
-    await supabaseAdmin.from('transactions').delete().eq('planned_payment_id', id)
-    const { error } = await supabaseAdmin.from('planned_payments').delete().eq('id', id)
-    if (error) throw error
+    const deletedBy = req.headers.get('x-auth-email') || 'unknown'
+
+    // תנועות מקושרות ל-PP הזה עוברות גם הן לאשפה (ניתן לשחזר כל אחת בנפרד)
+    const { data: linkedTxs } = await supabaseAdmin
+      .from('transactions').select('*').eq('planned_payment_id', id)
+    for (const tx of linkedTxs ?? []) {
+      await softDelete(supabaseAdmin, 'transaction', tx.id as string, tx, deletedBy)
+    }
+
+    const { data: pp } = await supabaseAdmin.from('planned_payments').select('*').eq('id', id).single()
+    if (!pp) return NextResponse.json({ error: 'תשלום מתוכנן לא נמצא' }, { status: 404 })
+    await softDelete(supabaseAdmin, 'planned_payment', id, pp, deletedBy)
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(

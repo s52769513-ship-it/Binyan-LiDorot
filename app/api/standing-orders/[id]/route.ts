@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { softDelete } from '@/lib/trash'
 
 function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = null) {
   return {
@@ -70,13 +71,18 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-    const { error } = await supabaseAdmin.from('standing_orders').delete().eq('id', id)
-    if (error) throw error
+    const deletedBy = req.headers.get('x-auth-email') || 'unknown'
+
+    const { data: so } = await supabaseAdmin
+      .from('standing_orders').select('*').eq('id', id).single()
+    if (!so) return NextResponse.json({ error: 'הוראת קבע לא נמצאה' }, { status: 404 })
+
+    await softDelete(supabaseAdmin, 'standing_order', id, so, deletedBy)
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

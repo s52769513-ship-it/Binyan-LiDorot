@@ -6,6 +6,7 @@ import { ParentDetail, PlannedPaymentItem, StandingOrderItem, TransactionItem, W
 import { TransactionRow, TxDetailModal } from '@/components/TransactionCard'
 import type { Transaction } from '@/components/TransactionCard'
 import { attributeTxsToPP } from '@/lib/ppAttribution'
+import { authHeaders } from '@/lib/authHeaders'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
@@ -879,7 +880,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     try {
       const res = await fetch(`/api/parents/${parentId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(deleteChecks),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'שגיאה')
@@ -1308,7 +1309,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             <button
                               onClick={() => {
                                 if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
-                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE', headers: authHeaders() })
                                   .then(r => r.json())
                                   .then(d => {
                                     if (d.error) alert('שגיאה: ' + d.error)
@@ -1354,7 +1355,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             <button
                               onClick={() => {
                                 if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
-                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE' })
+                                fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE', headers: authHeaders() })
                                   .then(r => r.json())
                                   .then(d => {
                                     if (d.error) alert('שגיאה: ' + d.error)
@@ -2074,7 +2075,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={e => { e.stopPropagation(); if (!confirm('למחוק הו"ק זה?')) return; fetch(`/api/standing-orders/${so.id}`, { method: 'DELETE' }).then(() => { setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.filter(x => x.id !== so.id) } : prev); if (selectedSo?.id === so.id) setSelectedSo(null) }) }}
+                          onClick={e => { e.stopPropagation(); if (!confirm('למחוק הו"ק זה?')) return; fetch(`/api/standing-orders/${so.id}`, { method: 'DELETE', headers: authHeaders() }).then(() => { setParent(prev => prev ? { ...prev, standingOrders: prev.standingOrders.filter(x => x.id !== so.id) } : prev); if (selectedSo?.id === so.id) setSelectedSo(null) }) }}
                           className="text-[11px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
                         >מחק</button>
                         <button
@@ -2412,7 +2413,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             e.stopPropagation()
                             if (!confirm('למחוק תשלום זה?')) return
                             const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
-                            fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE' })
+                            fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE', headers: authHeaders() })
                               .then(() => {
                                 setPpTxList(prev => prev.filter(t => t.id !== tx.id))
                                 load()
