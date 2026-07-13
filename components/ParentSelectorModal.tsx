@@ -1,11 +1,16 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState } from 'react'
 
 /**
  * רכיבים משותפים למסכי ייבוא/משיכה (חובות ישנים, משיכת Airtable):
  * מודל בחירת הורה ידני + צ'יפ סטטיסטיקה. גרסה אחת במקום עותקים כפולים.
  */
+
+// נטען עצלנית ומוצג כשכבה קבועה מעל המודל עצמו — כדי לוודא שמדובר באותו
+// אדם לפני שבוחרים אותו, בלי לסגור את חלון הבחירה מאחוריו.
+const EmployeeCard = dynamic(() => import('@/components/EmployeeCard'), { ssr: false })
 
 export interface ParentOption { id: string; name: string; city?: string | null }
 
@@ -17,6 +22,7 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
   onClose: () => void
 }) {
   const [search, setSearch] = useState('')
+  const [viewingId, setViewingId] = useState<string | null>(null)
   const filtered = allParents
     .filter(p => p.name.includes(search) || (p.city ?? '').includes(search))
     .slice(0, 50)
@@ -39,14 +45,25 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.map(p => (
-            <button
+            <div
               key={p.id}
-              onClick={() => onSelect(p.id, p.name)}
-              className="w-full text-right px-4 py-2.5 hover:bg-blue-50 border-b transition flex items-center justify-between gap-2"
+              className="w-full flex items-center justify-between gap-2 border-b hover:bg-blue-50 transition"
             >
-              <span className="text-sm text-gray-800">{p.name}</span>
-              {p.city && <span className="text-xs text-gray-400 shrink-0">{p.city}</span>}
-            </button>
+              <button
+                onClick={() => onSelect(p.id, p.name)}
+                className="flex-1 text-right px-4 py-2.5 flex items-center justify-between gap-2"
+              >
+                <span className="text-sm text-gray-800">{p.name}</span>
+                {p.city && <span className="text-xs text-gray-400 shrink-0">{p.city}</span>}
+              </button>
+              <button
+                onClick={() => setViewingId(p.id)}
+                title="פתח כרטיס הורה"
+                className="px-3 py-2.5 text-gray-400 hover:text-blue-600 shrink-0"
+              >
+                🪪
+              </button>
+            </div>
           ))}
           {filtered.length === 0 && (
             <p className="p-4 text-center text-xs text-gray-400">לא נמצאו הורים תואמים</p>
@@ -61,6 +78,10 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
           </button>
         </div>
       </div>
+
+      {viewingId && (
+        <EmployeeCard parentId={viewingId} onClose={() => setViewingId(null)} />
+      )}
     </div>
   )
 }
