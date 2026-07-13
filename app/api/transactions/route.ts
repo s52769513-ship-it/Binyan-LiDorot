@@ -189,24 +189,40 @@ export async function GET(req: NextRequest) {
       parentMap = Object.fromEntries((pData ?? []).map(p => [p.id, p.name as string]))
     }
 
-    // Fetch distinct months, types, projects for filter dropdowns
-    const [{ data: allMonths }, { data: allTypes }, { data: allProjects }] = await Promise.all([
-      supabaseAdmin.from('transactions').select('month_year').not('month_year', 'is', null).not('month_year', 'eq', ''),
-      supabaseAdmin.from('transactions').select('type').not('type', 'is', null).not('type', 'eq', ''),
-      supabaseAdmin.from('transactions').select('project_names').not('project_names', 'is', null),
-    ])
+    // Distinct months, types, projects for the filter dropdowns — computed in
+    // the database so they cover the whole table. A plain SELECT here gets
+    // silently truncated by PostgREST's row cap, which hid values (e.g. the
+    // "אשראי" payment method) whose rows all fell outside the first ~1000.
+    let rawMonths: string[] = []
+    let rawTypes: string[] = []
+    let rawProjects: string[] = []
+    const { data: optData, error: optError } = await supabaseAdmin.rpc('transactions_filter_options')
+    if (!optError && optData) {
+      const opt = Array.isArray(optData) ? optData[0] : optData
+      rawMonths   = (opt?.months as string[]) ?? []
+      rawTypes    = (opt?.types as string[]) ?? []
+      rawProjects = (opt?.projects as string[]) ?? []
+    } else {
+      // Fallback (RPC not migrated yet): capped SELECTs — may miss rare values
+      const [{ data: allMonths }, { data: allTypes }, { data: allProjects }] = await Promise.all([
+        supabaseAdmin.from('transactions').select('month_year').not('month_year', 'is', null).not('month_year', 'eq', ''),
+        supabaseAdmin.from('transactions').select('type').not('type', 'is', null).not('type', 'eq', ''),
+        supabaseAdmin.from('transactions').select('project_names').not('project_names', 'is', null),
+      ])
+      rawMonths = (allMonths ?? []).map(r => r.month_year).filter(Boolean) as string[]
+      rawTypes  = (allTypes ?? []).map(r => r.type).filter(Boolean) as string[]
+      rawProjects = (allProjects ?? []).flatMap(r => (r.project_names as string[]) ?? [])
+    }
 
-    const months = [...new Set((allMonths ?? []).map(r => r.month_year).filter(Boolean))].sort((a: string, b: string) => {
+    const months = [...new Set(rawMonths)].filter(Boolean).sort((a: string, b: string) => {
       const [am, ay] = a.split('/').map(Number)
       const [bm, by] = b.split('/').map(Number)
       return by !== ay ? by - ay : bm - am
     })
-    const types = [...new Set((allTypes ?? []).map(r => r.type).filter(Boolean))].sort()
+    const types = [...new Set(rawTypes)].filter(Boolean).sort()
     const projectSet = new Set<string>()
-    for (const row of allProjects ?? []) {
-      for (const name of (row.project_names as string[]) ?? []) {
-        if (name) projectSet.add(name)
-      }
+    for (const name of rawProjects) {
+      if (name) projectSet.add(name)
     }
     const projects = [...projectSet].sort((a, b) => {
       if (a === 'בנין לדורות') return -1
