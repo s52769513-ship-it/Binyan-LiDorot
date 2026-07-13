@@ -1,7 +1,13 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
 import { ParentSelectorModal, StatChip as Stat, type ParentOption } from '@/components/ParentSelectorModal'
+
+// Loaded lazily and rendered as a fixed overlay so opening a parent's card
+// sits on top of the import view without unmounting it (the preview, mappings
+// and scroll position all stay put behind it).
+const EmployeeCard = dynamic(() => import('@/components/EmployeeCard'), { ssr: false })
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,6 +78,7 @@ export default function AirtableTransactionsPullTab() {
   const [nameFilter, setNameFilter]     = useState('')
   const [allParents, setAllParents]     = useState<ParentOption[]>([])
   const [selectorOpen, setSelectorOpen] = useState<{ key: string; label: string } | null>(null)
+  const [openParentId, setOpenParentId] = useState<string | null>(null)
   const [lastRun, setLastRun]           = useState<{ lastRun: string | null; lastSummary: string | null }>({ lastRun: null, lastSummary: null })
 
   // Manual mappings: airtableParentId → { id, name } (Supabase parent)
@@ -283,13 +290,23 @@ export default function AirtableTransactionsPullTab() {
                   <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">אין תוצאות</td></tr>
                 )}
                 {filteredPreview.map((r, i) => {
-                  const manual   = r.airtableParentId ? manualMappings[r.airtableParentId] : undefined
-                  const resolved = r.matchedParent ?? manual?.name ?? null
+                  const manual     = r.airtableParentId ? manualMappings[r.airtableParentId] : undefined
+                  const resolved   = r.matchedParent ?? manual?.name ?? null
+                  const resolvedId = r.matchedId ?? manual?.id ?? null
                   return (
                     <tr key={i} className={resolved ? 'hover:bg-gray-50' : 'bg-red-50'}>
                       <td className="px-3 py-1.5">
                         {resolved
-                          ? <span className="text-emerald-700 font-medium">{resolved}</span>
+                          ? (
+                            <button
+                              onClick={() => resolvedId && setOpenParentId(resolvedId)}
+                              disabled={!resolvedId}
+                              title="פתח כרטיס הורה"
+                              className="text-emerald-700 font-medium hover:underline disabled:no-underline disabled:cursor-default"
+                            >
+                              {resolved}
+                            </button>
+                          )
                           : (
                             <button
                               onClick={() => setSelectorOpen({ key: r.airtableParentId ?? '', label: r.donorName })}
@@ -387,6 +404,12 @@ export default function AirtableTransactionsPullTab() {
           }}
           onClose={() => setSelectorOpen(null)}
         />
+      )}
+
+      {/* Parent card — opens as an overlay on top of the import view without
+          closing it, so the preview and any pending mappings stay put behind. */}
+      {openParentId && (
+        <EmployeeCard parentId={openParentId} onClose={() => setOpenParentId(null)} />
       )}
     </div>
   )

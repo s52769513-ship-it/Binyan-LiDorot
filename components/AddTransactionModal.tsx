@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import FilePreviewModal from '@/components/FilePreviewModal'
+import { CASH_FUND_PROJECT } from '@/lib/cashFund'
 
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
 
@@ -77,11 +78,17 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
       .catch(() => {})
   }, [])
 
-  // Always include "משכורת" in the list for הוצאה
+  // Always surface a couple of system categories even before any transaction
+  // has used them yet (the list otherwise comes only from existing rows):
+  // "משכורת" for expenses, and "מזומנים" (קופת מזומנים) always — otherwise
+  // the first-ever cash-fund transaction can never be tagged.
   const SALARY_PROJECT = 'משכורת'
-  const displayProjects = direction === 'הוצאה' && !projects.includes(SALARY_PROJECT)
-    ? [SALARY_PROJECT, ...projects]
-    : projects
+  const displayProjects = (() => {
+    let list = projects
+    if (direction === 'הוצאה' && !list.includes(SALARY_PROJECT)) list = [SALARY_PROJECT, ...list]
+    if (!list.includes(CASH_FUND_PROJECT)) list = [...list, CASH_FUND_PROJECT]
+    return list
+  })()
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
