@@ -15,6 +15,7 @@ interface PreviewRow {
   airtableId:       string
   airtableParentId: string | null
   donorName:        string
+  donorCity:        string | null
   matchedParent:    string | null
   matchedId:        string | null
   amount:           number
@@ -148,9 +149,11 @@ export default function AirtableTransactionsPullTab() {
   }) ?? []
 
   const stillUnmatched = preview?.preview.filter(r => !r.matchedParent && r.airtableParentId && !manualMappings[r.airtableParentId]) ?? []
-  // De-dupe by airtableParentId for the chip list
-  const unmatchedByParentId = new Map<string, string>()
-  for (const r of stillUnmatched) if (r.airtableParentId) unmatchedByParentId.set(r.airtableParentId, r.donorName)
+  // De-dupe by airtableParentId for the chip list. City is included so two
+  // Supabase parents sharing a name (the ambiguous case the name-match pass
+  // deliberately refuses to guess) can be told apart at a glance.
+  const unmatchedByParentId = new Map<string, { name: string; city: string | null }>()
+  for (const r of stillUnmatched) if (r.airtableParentId) unmatchedByParentId.set(r.airtableParentId, { name: r.donorName, city: r.donorCity })
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -226,13 +229,14 @@ export default function AirtableTransactionsPullTab() {
                 הורים שלא זוהו ({unmatchedByParentId.size}) — לחץ לקישור ידני:
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {[...unmatchedByParentId.entries()].map(([airtableParentId, name]) => (
+                {[...unmatchedByParentId.entries()].map(([airtableParentId, { name, city }]) => (
                   <button
                     key={airtableParentId}
-                    onClick={() => setSelectorOpen({ key: airtableParentId, label: name })}
+                    onClick={() => setSelectorOpen({ key: airtableParentId, label: city ? `${name} (${city})` : name })}
                     className="px-2.5 py-1 bg-white border border-red-300 rounded-lg text-xs text-red-700 hover:bg-red-100 transition"
                   >
                     {name}
+                    {city && <span className="text-red-400"> · {city}</span>}
                   </button>
                 ))}
               </div>
@@ -309,10 +313,13 @@ export default function AirtableTransactionsPullTab() {
                           )
                           : (
                             <button
-                              onClick={() => setSelectorOpen({ key: r.airtableParentId ?? '', label: r.donorName })}
+                              onClick={() => setSelectorOpen({
+                                key: r.airtableParentId ?? '',
+                                label: r.donorCity ? `${r.donorName} (${r.donorCity})` : r.donorName,
+                              })}
                               className="text-red-500 hover:underline"
                             >
-                              {r.donorName} — לחץ לקישור
+                              {r.donorName}{r.donorCity && <span className="text-red-400"> · {r.donorCity}</span>} — לחץ לקישור
                             </button>
                           )
                         }

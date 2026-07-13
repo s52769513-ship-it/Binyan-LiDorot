@@ -191,11 +191,14 @@ export async function POST(req: NextRequest) {
 
     const airtableParentNames = new Map<string, string>()
     const airtableParentIdNumbers = new Map<string, string>()
+    const airtableParentCities = new Map<string, string>()
     if (unresolvedAirtableIds.size > 0) {
-      const rawParents = await fetchAirtableRecords(TABLES.PARENTS, { fields: [P.NAME, P.ID_NUMBER] })
+      const rawParents = await fetchAirtableRecords(TABLES.PARENTS, { fields: [P.NAME, P.ID_NUMBER, P.CITY] })
       for (const r of rawParents) {
         if (!unresolvedAirtableIds.has(r.id)) continue
         airtableParentNames.set(r.id, String(r.fields[P.NAME] || ''))
+        const city = String(r.fields[P.CITY] || '').trim()
+        if (city) airtableParentCities.set(r.id, city)
         const idNum = String(r.fields[P.ID_NUMBER] || '').trim()
         if (idNum) airtableParentIdNumbers.set(r.id, idNum)
       }
@@ -297,6 +300,9 @@ export async function POST(req: NextRequest) {
         airtableId:       c.airtableId,
         airtableParentId: c.airtableParentId,
         donorName:        parent?.name ?? (c.airtableParentId ? unmatchedNames.get(c.airtableParentId) ?? c.airtableParentId : '—'),
+        // Only meaningful (and only fetched) for the unmatched case — helps
+        // tell apart several Supabase parents that share the same name.
+        donorCity:        !parent && c.airtableParentId ? airtableParentCities.get(c.airtableParentId) ?? null : null,
         matchedParent:    parent?.name ?? null,
         matchedId:        parent?.id ?? null,
         amount:           c.amount,
