@@ -154,10 +154,10 @@ export async function POST(req: NextRequest) {
     const { candidates, total, excludedOldBinyan } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
-    // Load Supabase parents for direct-ID matching + name resolution
+    // Load Supabase parents for direct-ID matching + id-number/name resolution
     const { data: parents, error: pErr } = await supabaseAdmin
       .from('parents')
-      .select('id, name, first_name, last_name')
+      .select('id, name, first_name, last_name, id_number')
       .limit(10000)
     if (pErr) throw pErr
     const parentIdSet = new Set((parents ?? []).map(p => p.id))
@@ -180,8 +180,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Airtable parent ids that didn't resolve by id — we need their Airtable
-    // display names both to attempt a name match and to show them if they stay
-    // unmatched.
+    // id-number + display name to attempt the fallback matches below, and to
+    // show a name if they stay unmatched.
     const unresolvedAirtableIds = new Set<string>()
     const directResolved = toProcess.map(c => {
       const parent = resolveById(c)
@@ -190,19 +190,41 @@ export async function POST(req: NextRequest) {
     })
 
     const airtableParentNames = new Map<string, string>()
+    const airtableParentIdNumbers = new Map<string, string>()
     if (unresolvedAirtableIds.size > 0) {
-      const rawParents = await fetchAirtableRecords(TABLES.PARENTS, { fields: [P.NAME] })
+      const rawParents = await fetchAirtableRecords(TABLES.PARENTS, { fields: [P.NAME, P.ID_NUMBER] })
       for (const r of rawParents) {
-        if (unresolvedAirtableIds.has(r.id)) airtableParentNames.set(r.id, String(r.fields[P.NAME] || ''))
+        if (!unresolvedAirtableIds.has(r.id)) continue
+        airtableParentNames.set(r.id, String(r.fields[P.NAME] || ''))
+        const idNum = String(r.fields[P.ID_NUMBER] || '').trim()
+        if (idNum) airtableParentIdNumbers.set(r.id, idNum)
       }
     }
 
-    // Step 2 — name match: the Airtable parent record linked on the transaction
+    // Step 2 — ת"ז match: the Airtable parent record linked on the transaction
     // can carry a different id than the synced Supabase parent (re-created /
-    // re-keyed), so an exact-id match misses even when the name is identical —
-    // which is exactly what the manual selector surfaces. Match on normalized
-    // name, but only auto-accept when it resolves to exactly ONE Supabase
-    // parent (ambiguous names are left for manual linking, to avoid guessing).
+    // re-keyed), so an exact-id match misses even when it's really the same
+    // person. ID-number is a stronger signal than name (unique per person,
+    // immune to spelling/nickname variants), so it's tried first — only
+    // auto-accepted when it resolves to exactly ONE Supabase parent.
+    const supByIdNumber = new Map<string, string[]>()
+    for (const p of parents ?? []) {
+      const idNum = String(p.id_number || '').trim()
+      if (!idNum) continue
+      if (!supByIdNumber.has(idNum)) supByIdNumber.set(idNum, [])
+      supByIdNumber.get(idNum)!.push(p.id)
+    }
+    const resolveByIdNumber = (idNumber: string | undefined): { id: string; name: string } | null => {
+      if (!idNumber) return null
+      const ids = supByIdNumber.get(idNumber)
+      if (ids && ids.length === 1) return { id: ids[0], name: parentNameMap.get(ids[0]) ?? '' }
+      return null
+    }
+
+    // Step 3 — name match: same idea, for the (rarer) case ת"ז isn't set on
+    // either side. Match on normalized name, only auto-accepting when it
+    // resolves to exactly ONE Supabase parent (ambiguous names are left for
+    // manual linking, to avoid guessing).
     const supByNormName = new Map<string, string[]>()
     for (const p of parents ?? []) {
       const key = normName(p.name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`)
@@ -218,11 +240,13 @@ export async function POST(req: NextRequest) {
       return null
     }
 
-    // Whatever's STILL unmatched after both passes — for display + dedup skip.
+    // Whatever's STILL unmatched after all passes — for display + dedup skip.
     const unmatchedAirtableIds = new Set<string>()
     const resolvedBase = directResolved.map(({ c, parent }) => {
       if (parent) return { c, parent }
       if (c.airtableParentId) {
+        const byIdNumber = resolveByIdNumber(airtableParentIdNumbers.get(c.airtableParentId))
+        if (byIdNumber) return { c, parent: byIdNumber }
         const byName = resolveByName(airtableParentNames.get(c.airtableParentId) ?? '')
         if (byName) return { c, parent: byName }
         unmatchedAirtableIds.add(c.airtableParentId)
