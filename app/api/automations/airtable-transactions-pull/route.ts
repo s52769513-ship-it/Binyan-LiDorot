@@ -12,7 +12,7 @@ const AUTOMATION_ID = 'airtable-transactions-pull'
 // against transactions already imported by nedarim-credit-hok-pull (which
 // pulls the same standing-order history directly from Nedarim Plus) so the
 // same real-world payment never becomes two transaction rows. See
-// findNedarimDuplicateKey() below for how a match is identified.
+// nedarimDupeKey() below for how a match is identified.
 const NEDARIM_MANAGED_METHODS = ['הו"ק', "הו'ק", 'אשראי']
 function isNedarimManagedMethod(method: string): boolean {
   return NEDARIM_MANAGED_METHODS.some(m => method.includes(m))

@@ -170,11 +170,11 @@ export default function ParentsPage() {
           onClose={() => {
             setSelectedId(null)
             // Refresh the updated parent in the list
-            fetch(`/api/parents?search=${encodeURIComponent(selectedId)}`)
+            fetch(`/api/parents/${selectedId}`)
               .then(r => r.json())
               .then(d => {
-                if (d.data?.length > 0) {
-                  setParents(prev => prev.map(p => p.id === selectedId ? d.data[0] : p))
+                if (!d.error) {
+                  setParents(prev => prev.map(p => p.id === selectedId ? { ...p, ...d } : p))
                 }
               })
               .catch(() => {})

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { TRANSPORT_OPTIONS, calcTransportCost } from '@/lib/transport'
 
 interface Props {
   parentId?: string
@@ -9,12 +10,6 @@ interface Props {
   onSuccess?: (id: string) => void
 }
 
-const TRANSPORT_OPTIONS = ['הלוך', 'חזור שעה 1', 'חזור שעה 4']
-
-function calcTransportCost(t: string[]): number {
-  if (!t.includes('הלוך')) return 0
-  return (t.includes('חזור שעה 1') || t.includes('חזור שעה 4')) ? 130 : 65
-}
 
 interface ClassOption { class_name: string }
 

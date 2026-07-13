@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
+import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 
 async function classFrameworkMap(): Promise<Record<string, string>> {
   const { data } = await supabaseAdmin.from('classes').select('class_name, framework')
@@ -58,8 +59,8 @@ export async function GET(req: NextRequest) {
         className: cn,
         framework,
         status: s.status ?? '',
-        transportation: Array.isArray(s.transportation) ? s.transportation : [],
-        transportationCost: s.transportation_cost ?? 0,
+        transportation: normalizeTransport(s.transportation),
+        transportationCost: calcTransportCost(s.transportation),
         parentIds: Array.isArray(s.parent_ids) ? s.parent_ids : [],
         birthDateGregorian: birthGreg,
         birthDateHebrew: s.birth_date_hebrew ?? '',
@@ -74,12 +75,6 @@ export async function GET(req: NextRequest) {
     console.error('students error:', err)
     return NextResponse.json({ error: 'שגיאה בטעינת תלמידים' }, { status: 500 })
   }
-}
-
-function calcTransportCost(transport: string[]): number {
-  if (!transport.includes('הלוך')) return 0
-  const hasReturn = transport.includes('חזור שעה 1') || transport.includes('חזור שעה 4')
-  return hasReturn ? 130 : 65
 }
 
 export async function POST(req: NextRequest) {
@@ -105,7 +100,8 @@ export async function POST(req: NextRequest) {
     const calcedAge = birthDateGregorian
       ? calcAge(birthDateGregorian)
       : (ageFromBody ? String(ageFromBody) : '')
-    const tc = transportationCost ?? calcTransportCost(Array.isArray(transportation) ? transportation : [])
+    const normTransport = normalizeTransport(transportation)
+    const tc = transportationCost ?? calcTransportCost(normTransport)
 
     const row: Record<string, unknown> = {
       id,
@@ -114,7 +110,7 @@ export async function POST(req: NextRequest) {
       age: calcedAge,
       class_name: className ?? '',
       status: status ?? 'ממתין',
-      transportation: Array.isArray(transportation) ? transportation : [],
+      transportation: normTransport,
       transportation_cost: tc,
       parent_ids: Array.isArray(parentIds) ? parentIds : [],
       synced_at: syncedAt,

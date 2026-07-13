@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { calcAge } from '../route'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
 import { softDelete } from '@/lib/trash'
+import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 
 function detectFramework(className: string): string {
   if (className.includes('תלמוד תורה')) return 'תלמוד תורה'
@@ -51,8 +52,8 @@ export async function GET(
       className: cn,
       framework,
       status: s.status ?? '',
-      transportation: toArray(s.transportation),
-      transportationCost: s.transportation_cost ?? 0,
+      transportation: normalizeTransport(s.transportation),
+      transportationCost: calcTransportCost(s.transportation),
       notes: s.notes ?? '',
       parentIds,
       parents,
@@ -103,6 +104,12 @@ export async function PATCH(
     const update: Record<string, unknown> = {}
     for (const [clientKey, dbKey] of Object.entries(ALLOWED_FIELDS)) {
       if (clientKey in body) update[dbKey] = body[clientKey]
+    }
+    // Whenever transport legs are edited, store the canonical labels and keep the
+    // cost in lockstep so tuition (which reads transportation_cost) stays correct.
+    if ('transportation' in update) {
+      update.transportation = normalizeTransport(update.transportation)
+      update.transportation_cost = calcTransportCost(update.transportation)
     }
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })

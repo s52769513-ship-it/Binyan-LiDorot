@@ -767,12 +767,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   }, [ppTxList, loadingPpTx])
 
   const patch = useCallback(async (fields: Record<string, unknown>) => {
-    await fetch(`/api/parents/${parentId}`, {
+    const res = await fetch(`/api/parents/${parentId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fields),
     })
-    setParent(prev => prev ? { ...prev, ...fields } as ParentDetail : prev)
+    const updated = await res.json()
+    if (updated.error) {
+      console.error('PATCH error:', updated.error)
+      return
+    }
+    setParent(prev => prev ? { ...prev, ...updated } as ParentDetail : prev)
   }, [parentId])
 
   // Load transactions for a selected standing order

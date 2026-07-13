@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/authHeaders'
+import { TRANSPORT_OPTIONS, calcTransportCost, normalizeTransport } from '@/lib/transport'
 
 interface StudentData {
   id: string
@@ -36,14 +37,6 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
 const STATUS_OPTIONS    = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין', 'סיים לימודים']
-const TRANSPORT_OPTIONS = ['הלוך', 'חזור שעה 1', 'חזור שעה 4']
-
-function calcTransportCost(transport: string[]): number {
-  if (!transport.includes('הלוך')) return 0
-  const hasReturn = transport.includes('חזור שעה 1') || transport.includes('חזור שעה 4')
-  return hasReturn ? 130 : 65
-}
-
 /* ─── InlineField (free text / date) ────────────────── */
 function InlineField({
   label, value, onSave, type = 'text', dir = 'rtl', multiline = false,
@@ -192,7 +185,13 @@ export default function StudentCard({ studentId, onClose, onOpenParent, onUpdate
       fetch('/api/classes').then(r => r.json()),
     ])
       .then(([d, cls]) => {
-        if (d.error) setError(d.error); else setStudent(d)
+        if (d.error) setError(d.error)
+        else {
+          // Map legacy transport tokens ("1") onto the canonical leg labels so the
+          // checkboxes reflect reality and the cost is correct (see lib/transport).
+          const transportation = normalizeTransport(d.transportation)
+          setStudent({ ...d, transportation, transportationCost: calcTransportCost(transportation) })
+        }
         if (Array.isArray(cls)) setClasses(cls)
       })
       .catch(() => setError('שגיאה'))

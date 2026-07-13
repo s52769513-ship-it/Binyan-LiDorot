@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
+import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -58,6 +59,15 @@ export async function PATCH(
     }
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })
+
+    // Auto-compute name field when firstName or lastName change
+    if ('first_name' in update || 'last_name' in update) {
+      const { data: parent } = await supabaseAdmin.from('parents').select('first_name, last_name').eq('id', id).single()
+      const firstName = 'first_name' in update ? String(update.first_name || '') : (parent?.first_name || '')
+      const lastName = 'last_name' in update ? String(update.last_name || '') : (parent?.last_name || '')
+      const fullName = [firstName, lastName].filter(Boolean).join(' ')
+      update.name = fullName
+    }
 
     // Auto-adjust offsets when salary changes
     if ('salaryGross' in body) {
@@ -180,7 +190,25 @@ export async function PATCH(
 
     const { error } = await supabaseAdmin.from('parents').update(update).eq('id', id)
     if (error) throw error
-    return NextResponse.json({ success: true })
+
+    // Return the updated parent object to ensure frontend gets computed fields (like name)
+    const { data: updatedParent } = await supabaseAdmin.from('parents').select('*').eq('id', id).single()
+    if (!updatedParent) return NextResponse.json({ error: 'parent not found' }, { status: 404 })
+
+    // Transform snake_case database fields to camelCase for frontend
+    const reverseMap: Record<string, string> = {}
+    for (const [camel, snake] of Object.entries(FIELD_MAP)) {
+      reverseMap[snake] = camel
+    }
+    const result: Record<string, unknown> = {}
+    for (const [dbKey, value] of Object.entries(updatedParent)) {
+      const camelKey = reverseMap[dbKey] || dbKey
+      result[camelKey] = value
+    }
+    // Normalize array fields the frontend always expects as arrays (DB may store null)
+    result.status = Array.isArray(result.status) ? result.status : (result.status ? [result.status] : [])
+    result.role = Array.isArray(result.role) ? result.role : []
+    return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
@@ -232,7 +260,9 @@ export async function GET(
     // ── Calculate tuition dynamically from active students ──────────────────
     const activeStudents = (studentsRes.data ?? []).filter(s => s.status === 'פעיל')
     const activeCount    = activeStudents.length
-    const transportTotal = activeStudents.reduce((sum, s) => sum + (Number(s.transportation_cost) || 0), 0)
+    // Derive from the legs directly so it's correct even for rows whose stored
+    // transportation_cost predates the backfill (see lib/transport).
+    const transportTotal = activeStudents.reduce((sum, s) => sum + calcTransportCost(s.transportation), 0)
     const baseTuition    = activeCount === 0 ? 0 : activeCount > 3 ? activeCount * 450 : activeCount * 500
     const computedTuitionTotal = baseTuition + transportTotal
 
@@ -327,8 +357,8 @@ export async function GET(
         classDepartment: s.class_department ?? s.class_name ?? '',
         framework: frameMap[s.class_name ?? ''] ?? '',
         status: s.status ?? '',
-        transportation: toArray(s.transportation),
-        transportationCost: s.transportation_cost ?? 0,
+        transportation: normalizeTransport(s.transportation),
+        transportationCost: calcTransportCost(s.transportation),
       })),
 
       debts: (debtsRes.data ?? []).map(d => ({

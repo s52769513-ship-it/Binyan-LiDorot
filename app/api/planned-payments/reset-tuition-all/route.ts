@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
 
+// Iterating every parent + recreating a full year of PPs can take a while;
+// without this the Vercel gateway times out mid-run ("שגיאת רשת").
+export const maxDuration = 300
+
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
   const curMonth = today.getMonth() + 1
@@ -51,8 +55,11 @@ export async function POST() {
       .select('id')
 
     const parentIds = (parents ?? []).map(p => p.id)
-    for (const pid of parentIds) {
-      await recalcTuitionForParent(pid)
+    // Run recalc in parallel chunks — sequentially this is the slowest part and
+    // what pushes the request past the gateway timeout.
+    const RECALC_CHUNK = 15
+    for (let i = 0; i < parentIds.length; i += RECALC_CHUNK) {
+      await Promise.all(parentIds.slice(i, i + RECALC_CHUNK).map(pid => recalcTuitionForParent(pid)))
     }
 
     // 3. Recreate PPs for the full Hebrew year (only parents with tuition > 0)
@@ -78,13 +85,15 @@ export async function POST() {
       }
     }
 
-    let created = 0
+    // Build every missing PP up front, then bulk-insert in batches (far fewer
+    // round-trips than one insert per parent-month).
+    const newRows: Record<string, unknown>[] = []
     for (const parent of activeParents ?? []) {
       const amount = Number(parent.tuition_total) || 0
       if (!amount) continue
       for (const { monthYear, date } of months) {
         if (existingSet.has(`${parent.id}|${monthYear}`)) continue
-        const { error } = await supabaseAdmin.from('planned_payments').insert({
+        newRows.push({
           id:         crypto.randomUUID(),
           name:       'שכ"ל',
           pp_type:    'tuition',
@@ -95,8 +104,15 @@ export async function POST() {
           parent_ids: [parent.id],
           synced_at:  '2099-12-31T23:59:59.999Z',
         })
-        if (!error) created++
       }
+    }
+
+    let created = 0
+    const INSERT_CHUNK = 500
+    for (let i = 0; i < newRows.length; i += INSERT_CHUNK) {
+      const { error } = await supabaseAdmin.from('planned_payments').insert(newRows.slice(i, i + INSERT_CHUNK))
+      if (error) throw error
+      created += newRows.slice(i, i + INSERT_CHUNK).length
     }
 
     return NextResponse.json({ deleted, created, parents: parentIds.length })

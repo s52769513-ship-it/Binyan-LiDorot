@@ -83,13 +83,48 @@ export default function TransactionsPage() {
   const [showAdd, setShowAdd]   = useState(false)
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [selectedTx, setSelectedTx] = useState<TxRow | null>(null)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
   const [debouncedSearch, setDebouncedSearch] = useState('')
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 350); return () => clearTimeout(t) }, [search])
 
   const PAGE_SIZE = 50
+
+  const toggleSelected = (id: string) => {
+    const newSelected = new Set(selected)
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
+    setSelected(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selected.size === rows.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(rows.map(r => r.id)))
+    }
+  }
+
+  const deleteSelected = async () => {
+    if (selected.size === 0 || !confirm(`מחיקת ${selected.size} תנועות?`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/transactions/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'שגיאה במחיקה')
+      setSelected(new Set())
+      load()
+    } catch (err) {
+      setError(`שגיאה: ${(err as { message?: string })?.message ?? String(err)}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -120,41 +155,9 @@ export default function TransactionsPage() {
   useRealtimeRefresh(load, 'transactions')
 
   // Clear the multi-select whenever the visible set changes (filters/page/reload)
-  useEffect(() => { setSelectedIds(new Set()) }, [page, debouncedSearch, month, type, project])
+  useEffect(() => { setSelected(new Set()) }, [page, debouncedSearch, month, type, project])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
-
-  const toggleId = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
-  const toggleAll = () => {
-    setSelectedIds(prev => prev.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))
-  }
-
-  const bulkDelete = async () => {
-    if (selectedIds.size === 0) return
-    if (!confirm(`למחוק ${selectedIds.size} תנועות? הן יעברו לאשפה ל-30 יום וניתן לשחזר אותן.`)) return
-    setBulkDeleting(true)
-    try {
-      const res = await fetch('/api/transactions/bulk-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ ids: [...selectedIds] }),
-      })
-      const data = await res.json()
-      if (data.error) { setError(data.error); return }
-      setSelectedIds(new Set())
-      load()
-    } catch {
-      setError('שגיאה במחיקת התנועות')
-    } finally {
-      setBulkDeleting(false)
-    }
-  }
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -185,6 +188,17 @@ export default function TransactionsPage() {
             <p className="text-xs text-gray-500 mb-1">הוצאות</p>
             <p className="text-lg font-bold text-red-600 tabular-nums">−₪<AnimatedNumber value={Math.abs(totalExpense)} /></p>
           </div>
+        </div>
+      )}
+
+      {/* Batch delete bar */}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+          <span className="text-sm text-blue-700 font-medium">נבחרו {selected.size} תנועות</span>
+          <button onClick={deleteSelected} disabled={deleting}
+            className="px-4 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+            {deleting ? 'מוחק...' : 'מחק נבחרות'}
+          </button>
         </div>
       )}
 
@@ -224,21 +238,6 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Bulk actions bar */}
-      {selectedIds.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
-          <span className="text-sm text-blue-800 font-medium">נבחרו {selectedIds.size} תנועות</span>
-          <div className="flex gap-2">
-            <button onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800">בטל בחירה</button>
-            <button onClick={bulkDelete} disabled={bulkDeleting}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-60">
-              🗑️ {bulkDeleting ? 'מוחק...' : `מחק נבחרים (${selectedIds.size})`}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Table */}
       {loading ? (
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
@@ -252,10 +251,10 @@ export default function TransactionsPage() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="text-xs font-semibold text-gray-400 uppercase text-right bg-gray-50 border-b border-gray-100">
-                  <th className="px-4 py-3 w-8">
-                    <input type="checkbox" className="w-4 h-4 cursor-pointer"
-                      checked={rows.length > 0 && selectedIds.size === rows.length}
-                      onChange={toggleAll} />
+                  <th className="px-4 py-3 w-12">
+                    <input type="checkbox" checked={selected.size === rows.length && rows.length > 0}
+                      onChange={toggleSelectAll} title="בחר הכל בעמוד זה"
+                      className="rounded border-gray-300 cursor-pointer" />
                   </th>
                   <th className="px-4 py-3">תאריך</th>
                   <th className="px-4 py-3">הורה</th>
@@ -268,23 +267,22 @@ export default function TransactionsPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map(tx => (
-                  <tr key={tx.id} onClick={() => setSelectedTx(tx)}
-                    className={`hover:bg-blue-50/40 cursor-pointer transition-colors ${selectedIds.has(tx.id) ? 'bg-blue-50/60' : ''}`}>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" className="w-4 h-4 cursor-pointer"
-                        checked={selectedIds.has(tx.id)}
-                        onChange={() => toggleId(tx.id)} />
+                  <tr key={tx.id}
+                    className={`hover:bg-blue-50/40 transition-colors ${selected.has(tx.id) ? 'bg-blue-100/50' : ''}`}>
+                    <td className="px-4 py-3 w-12" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(tx.id)} onChange={() => toggleSelected(tx.id)}
+                        className="rounded border-gray-300 cursor-pointer" />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums whitespace-nowrap">{fmtDate(tx.date)}</td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums whitespace-nowrap cursor-pointer" onClick={() => setSelectedTx(tx)}>{fmtDate(tx.date)}</td>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       {tx.parentName ? (
-                        <button onClick={() => setSelectedParent(tx.parentIds[0])}
+                        <button onClick={e => { e.stopPropagation(); setSelectedParent(tx.parentIds[0]) }}
                           className="text-sm font-medium text-[#1a3a7a] hover:underline">
                           {tx.parentName}
                         </button>
                       ) : <span className="text-sm text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       <div className="flex flex-wrap gap-1">
                         {tx.projectNames.length > 0
                           ? tx.projectNames.map(p => (
@@ -297,12 +295,12 @@ export default function TransactionsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{tx.type || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{tx.monthYear || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate">
+                    <td className="px-4 py-3 text-sm text-gray-600 cursor-pointer" onClick={() => setSelectedTx(tx)}>{tx.type || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => setSelectedTx(tx)}>{tx.monthYear || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400 max-w-[140px] truncate cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       {tx.notes || '—'}{tx.receiptUrl && <span title="יש חשבונית מצורפת" className="mr-1">📎</span>}
                     </td>
-                    <td className="px-4 py-3 text-left">
+                    <td className="px-4 py-3 text-left cursor-pointer" onClick={() => setSelectedTx(tx)}>
                       <span className={`text-sm font-bold tabular-nums ${tx.amount < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                         {tx.amount < 0 ? '−' : '+'}₪{fmt(tx.amount)}
                       </span>
