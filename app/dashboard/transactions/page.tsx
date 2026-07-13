@@ -140,9 +140,13 @@ export default function TransactionsPage() {
     if (!confirm(`למחוק ${selectedIds.size} תנועות? הן יעברו לאשפה ל-30 יום וניתן לשחזר אותן.`)) return
     setBulkDeleting(true)
     try {
-      for (const id of selectedIds) {
-        await fetch(`/api/transactions/${id}`, { method: 'DELETE', headers: authHeaders() })
-      }
+      const res = await fetch('/api/transactions/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
       setSelectedIds(new Set())
       load()
     } catch {

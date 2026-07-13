@@ -11,6 +11,7 @@ interface DeletedRecord {
   deleted_at: string
   restore_deadline: string
   data: any
+  parentNames?: string[]
 }
 
 const RECORD_TYPES = [
@@ -41,6 +42,30 @@ const getRecordDisplay = (record: DeletedRecord): string => {
     default:
       return JSON.stringify(data).slice(0, 50)
   }
+}
+
+// שם ההורה/אדם המשויך לרשומה - מגיע מה-server (parentNames, מיושב מ-parent_ids),
+// חוץ מרשומת הורה עצמה שהשם שלה כבר ב-data.name.
+const getPersonName = (record: DeletedRecord): string => {
+  if (record.record_type === 'parent') return record.data?.name || '—'
+  if (record.record_type === 'student' || record.record_type === 'woman') return record.data?.name || '—'
+  return record.parentNames?.length ? record.parentNames.join(', ') : '—'
+}
+
+const getCategory = (record: DeletedRecord): string => {
+  const data = record.data
+  if (record.record_type === 'transaction' || record.record_type === 'planned_payment') {
+    const names = (data?.project_names as string[]) ?? []
+    return names.length ? names.join(', ') : '—'
+  }
+  return '—'
+}
+
+const getPaymentMethod = (record: DeletedRecord): string => {
+  const data = record.data
+  if (record.record_type === 'transaction') return data?.type || '—'
+  if (record.record_type === 'standing_order') return data?.standing_order_type || data?.bank_name || '—'
+  return '—'
 }
 
 const getDaysUntilPurge = (deadline: string): number => {
@@ -212,6 +237,9 @@ export default function TrashPage() {
                     />
                   </th>
                   <th className="px-4 py-3">סוג</th>
+                  <th className="px-4 py-3">שם</th>
+                  <th className="px-4 py-3">קטגוריה</th>
+                  <th className="px-4 py-3">אמצעי תשלום</th>
                   <th className="px-4 py-3">פרטים</th>
                   <th className="px-4 py-3">מחק על-ידי / מתי</th>
                   <th className="px-4 py-3">ימים עד מחיקה סופית</th>
@@ -244,7 +272,16 @@ export default function TrashPage() {
                           {RECORD_TYPES.find(t => t.value === record.record_type)?.label || record.record_type}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 max-w-[300px] truncate">
+                      <td className="px-4 py-3 text-sm text-gray-700 font-medium max-w-[160px] truncate">
+                        {getPersonName(record)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500 max-w-[140px] truncate">
+                        {getCategory(record)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                        {getPaymentMethod(record)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-[220px] truncate">
                         {getRecordDisplay(record)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">

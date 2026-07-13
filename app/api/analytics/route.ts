@@ -11,12 +11,24 @@ export async function GET(req: NextRequest) {
     let months: string[] = []
 
     if (period === 'all') {
-      const { data: monthRows } = await supabaseAdmin
-        .from('transactions')
-        .select('month_year')
-        .not('month_year', 'is', null)
-        .not('month_year', 'eq', '')
-      const unique = [...new Set((monthRows ?? []).map((r: { month_year: string }) => r.month_year))]
+      // Computed via transactions_filter_options() (TRANSACTIONS_FILTER_OPTIONS_RPC.sql)
+      // rather than a plain SELECT: PostgREST caps a plain row-returning
+      // SELECT at the project's row limit, which silently dropped older
+      // months from the "all-time" view once the table grew past it.
+      let rawMonths: string[] = []
+      const { data: optData, error: optError } = await supabaseAdmin.rpc('transactions_filter_options')
+      if (!optError && optData) {
+        const opt = Array.isArray(optData) ? optData[0] : optData
+        rawMonths = (opt?.months as string[]) ?? []
+      } else {
+        const { data: monthRows } = await supabaseAdmin
+          .from('transactions')
+          .select('month_year')
+          .not('month_year', 'is', null)
+          .not('month_year', 'eq', '')
+        rawMonths = (monthRows ?? []).map((r: { month_year: string }) => r.month_year)
+      }
+      const unique = [...new Set(rawMonths)]
       months = (unique as string[])
         .filter((m: string) => /^\d{2}\/\d{4}$/.test(m))
         .sort((a: string, b: string) => {

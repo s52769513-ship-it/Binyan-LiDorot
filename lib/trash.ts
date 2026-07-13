@@ -54,3 +54,43 @@ export async function softDelete(
 
   if (delError) throw delError
 }
+
+// Same as softDelete but for many rows of the same type in one round trip:
+// a single upsert into deleted_records + a single `.in('id', ids)` delete,
+// instead of N sequential pairs of queries (which is what made bulk deletes
+// from the UI slow — 50 rows meant ~50 sequential request pairs).
+export async function softDeleteMany(
+  supabase: SupabaseClient,
+  recordType: RecordType,
+  records: { id: string; data: unknown }[],
+  deletedBy: string
+) {
+  if (records.length === 0) return
+
+  const now = new Date()
+  const deadline = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+  const { error } = await supabase
+    .from('deleted_records')
+    .upsert(
+      records.map(r => ({
+        record_type: recordType,
+        record_id: r.id,
+        deleted_by: deletedBy,
+        data: r.data,
+        deleted_at: now.toISOString(),
+        restore_deadline: deadline.toISOString(),
+      })),
+      { onConflict: 'record_type,record_id' }
+    )
+
+  if (error) throw error
+
+  const tableName = recordTypeTableMap[recordType]
+  const { error: delError } = await supabase
+    .from(tableName)
+    .delete()
+    .in('id', records.map(r => r.id))
+
+  if (delError) throw delError
+}
