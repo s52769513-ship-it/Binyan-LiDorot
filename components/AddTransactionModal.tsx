@@ -527,28 +527,31 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
                 <div>
-                  <h3 className="font-bold text-blue-900 mb-2">מה זה עושה?</h3>
+                  <h3 className="font-bold text-blue-900 mb-2">מה זו קטגוריית "מזומנים"?</h3>
                   <p className="text-sm text-blue-800">
-                    תנועה זו מעדכנת את קופת המזומנים הישירה של הארגון.
+                    מיועדת להעברה בנקאית לאדם מהימן שמחזיר את הסכום <strong>במזומן</strong> לקופת המוסד.
+                    זו לא הכנסה ולא הוצאה אמיתית — הכסף רק שינה צורה (יתרת בנק ← מזומן ביד).
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-blue-900 mb-2">כיצד זה עובד?</h3>
+                  <h3 className="font-bold text-blue-900 mb-2">חשוב לדעת</h3>
                   <p className="text-sm text-blue-800">
-                    הסכום שתזינו יופרד מחישוב הסכומים הרגילים (הכנסות והוצאות) כדי לנהל את המזומנים בנפרד.
+                    התנועה הזו תירשם כרגיל אבל <strong>לא תשפיע</strong> על סה"כ ההכנסות/הוצאות בדשבורד.
+                    היא <strong>לא</strong> מעדכנת את קופת המזומנים לבד — צריך צעד נוסף ידני.
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-blue-900 mb-2">מה יקרה?</h3>
-                  <ul className="text-sm text-blue-800 space-y-1">
-                    <li>✓ הסכום יתווסף לקופת המזומנים</li>
-                    <li>✓ הוא <strong>לא יופיע</strong> בחישוב הכנסות/הוצאות רגילות</li>
-                    <li>✓ אתה יכול לעקוב אחרי יתרת המזומנים בדשבורד</li>
-                  </ul>
+                  <h3 className="font-bold text-blue-900 mb-2">מה לעשות אחרי השמירה?</h3>
+                  <ol className="text-sm text-blue-800 space-y-1 list-decimal pr-4">
+                    <li>שמרו את התנועה כרגיל.</li>
+                    <li>פתחו אותה שוב (לחיצה על התנועה ברשימת התנועות).</li>
+                    <li>לחצו על הכפתור <strong>"🔁 שכפל לקופת המזומנים"</strong>.</li>
+                    <li>רק אז הסכום ייכנס לקופה והיתרה תתעדכן.</li>
+                  </ol>
                 </div>
               </div>
               <p className="text-xs text-gray-500 text-center">
-                אתה יכול להמשיך להזין את פרטי התנועה לעיל.
+                אפשר להמשיך להזין את פרטי התנועה למעלה.
               </p>
             </div>
             <div className="p-4 border-t border-gray-100">

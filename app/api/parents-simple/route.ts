@@ -5,7 +5,7 @@ export async function GET(_req: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('parents')
-      .select('id, name')
+      .select('id, name, city')
       .order('name', { ascending: true })
       .limit(10000)
 

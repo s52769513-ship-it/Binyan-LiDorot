@@ -7,7 +7,7 @@ import { useState } from 'react'
  * מודל בחירת הורה ידני + צ'יפ סטטיסטיקה. גרסה אחת במקום עותקים כפולים.
  */
 
-export interface ParentOption { id: string; name: string }
+export interface ParentOption { id: string; name: string; city?: string | null }
 
 export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
   /** השם/תווית שעבורם בוחרים הורה (מוצג בכותרת) */
@@ -17,7 +17,9 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
   onClose: () => void
 }) {
   const [search, setSearch] = useState('')
-  const filtered = allParents.filter(p => p.name.includes(search)).slice(0, 50)
+  const filtered = allParents
+    .filter(p => p.name.includes(search) || (p.city ?? '').includes(search))
+    .slice(0, 50)
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" dir="rtl">
@@ -40,9 +42,10 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
             <button
               key={p.id}
               onClick={() => onSelect(p.id, p.name)}
-              className="w-full text-right px-4 py-2.5 hover:bg-blue-50 border-b text-sm text-gray-800 transition"
+              className="w-full text-right px-4 py-2.5 hover:bg-blue-50 border-b transition flex items-center justify-between gap-2"
             >
-              {p.name}
+              <span className="text-sm text-gray-800">{p.name}</span>
+              {p.city && <span className="text-xs text-gray-400 shrink-0">{p.city}</span>}
             </button>
           ))}
           {filtered.length === 0 && (
