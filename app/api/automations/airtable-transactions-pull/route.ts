@@ -3,6 +3,7 @@ import { fetchAirtableRecords, TABLES, P, T, PROJ } from '@/lib/airtable'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
 import { normName } from '@/lib/nameUtils'
+import { fetchAllRows } from '@/lib/fetchAllRows'
 import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 
 export const maxDuration = 300 // batch import + balance recalc can take a while
@@ -154,12 +155,14 @@ export async function POST(req: NextRequest) {
     const { candidates, total, excludedOldBinyan } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
-    // Load Supabase parents for direct-ID matching + id-number/name resolution
-    const { data: parents, error: pErr } = await supabaseAdmin
-      .from('parents')
-      .select('id, name, first_name, last_name, id_number')
-      .limit(10000)
-    if (pErr) throw pErr
+    // Load Supabase parents for direct-ID matching + id-number/name resolution.
+    // Paged fetch (fetchAllRows) — a plain SELECT is capped by PostgREST at
+    // ~1000 rows, which silently dropped parents sorting past the cap and made
+    // the auto-match miss people who definitely exist (e.g. late-alphabet
+    // names like שטיינמעטץ).
+    const parents = await fetchAllRows<{
+      id: string; name: string | null; first_name: string | null; last_name: string | null; id_number: string | null
+    }>(supabaseAdmin, 'parents', 'id, name, first_name, last_name, id_number')
     const parentIdSet = new Set((parents ?? []).map(p => p.id))
     const parentNameMap = new Map((parents ?? []).map(p => [p.id, p.name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim()]))
 

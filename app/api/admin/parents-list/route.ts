@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { fetchAllRows } from '@/lib/fetchAllRows'
 
 // Lightweight list of all parents for the manual-link picker (import students)
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('parents')
-      .select('id, name, first_name, last_name')
-      .order('last_name', { ascending: true })
-    if (error) throw error
-    const parents = (data ?? []).map(p => ({
+    // Paged fetch — a plain SELECT is capped by PostgREST at ~1000 rows,
+    // silently hiding parents sorting past the cap from the picker.
+    const data = await fetchAllRows<{ id: string; name: string | null; first_name: string | null; last_name: string | null }>(
+      supabaseAdmin, 'parents', 'id, name, first_name, last_name', 'last_name')
+    const parents = data.map(p => ({
       id: p.id,
       name: p.name?.trim() || [p.last_name, p.first_name].filter(Boolean).join(' ').trim() || p.id,
     }))

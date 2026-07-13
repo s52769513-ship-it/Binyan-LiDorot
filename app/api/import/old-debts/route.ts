@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { nameSimilarity } from '@/lib/nameUtils'
+import { fetchAllRows } from '@/lib/fetchAllRows'
 import { sortByMonth } from '@/lib/months'
 import { insertSpilloverRows, recalcParentTuitionBalance, type SpilloverRowInput } from '@/lib/ppPayments'
 
@@ -74,12 +75,10 @@ export async function POST(req: NextRequest) {
     const { rows, dryRun = false, parentMappings = {} }: { rows: RawRow[]; dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
     if (!Array.isArray(rows)) return NextResponse.json({ error: 'rows required' }, { status: 400 })
 
-    const { data: parents, error: pErr } = await supabaseAdmin
-      .from('parents')
-      .select('id, name, first_name, last_name')
-      .limit(10000)
-    if (pErr) throw pErr
-    const parentList = (parents ?? []) as { id: string; name: string | null; first_name: string | null; last_name: string | null }[]
+    // Paged fetch — a plain SELECT is capped by PostgREST at ~1000 rows, which
+    // silently hid parents sorting past the cap from name matching here.
+    const parentList = await fetchAllRows<{ id: string; name: string | null; first_name: string | null; last_name: string | null }>(
+      supabaseAdmin, 'parents', 'id, name, first_name, last_name')
 
     // Cache results so each unique name is matched only once
     const matchCache = new Map<string, { id: string; name: string } | null>()

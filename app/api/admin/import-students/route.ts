@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcTransportCost } from '@/lib/transport'
+import { fetchAllRows } from '@/lib/fetchAllRows'
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -60,8 +61,10 @@ export async function POST(req: NextRequest) {
     // G(6)=לידה לועזי  H(7)=כיתה  L(11)=הלוך  M(12)=חזור1  N(13)=חזור2
     // S(18)=סטטוס  T(19)=שם מלא האב (לזיהוי ההורה)  AB(27)=קופ"ח  AC(28)=לימודים קודם
 
-    const { data: allParents } = await supabaseAdmin
-      .from('parents').select('id, first_name, last_name, name')
+    // Paged fetch — a plain SELECT is capped by PostgREST at ~1000 rows,
+    // silently hiding parents sorting past the cap from name matching.
+    const allParents = await fetchAllRows<{ id: string; first_name: string | null; last_name: string | null; name: string | null }>(
+      supabaseAdmin, 'parents', 'id, first_name, last_name, name')
 
     const parentNameMap = new Map<string, string>()  // "lastName|firstName" → parent id
     const parentFullMap = new Map<string, string>()  // full name variants → parent id
