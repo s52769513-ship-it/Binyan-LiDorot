@@ -8,7 +8,15 @@ import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
 const AUTOMATION_ID = 'airtable-transactions-pull'
-const EXCLUDED_PAYMENT_METHODS = ['הו"ק', "הו'ק", 'אשראי']
+// הו"ק/אשראי rows are also pulled from Airtable now, but they're cross-checked
+// against transactions already imported by nedarim-credit-hok-pull (which
+// pulls the same standing-order history directly from Nedarim Plus) so the
+// same real-world payment never becomes two transaction rows. See
+// findNedarimDuplicateKey() below for how a match is identified.
+const NEDARIM_MANAGED_METHODS = ['הו"ק', "הו'ק", 'אשראי']
+function isNedarimManagedMethod(method: string): boolean {
+  return NEDARIM_MANAGED_METHODS.some(m => method.includes(m))
+}
 // Cutoff applied ONLY to "בנין לדורות" transactions (same 04/2026 cutover used
 // across the app) — earlier בנין לדורות rows come from the old-debts import.
 const CUTOFF_DATE = '2026-04-01'
@@ -38,9 +46,10 @@ interface Candidate {
 async function loadCandidates() {
   // Projects live only in Airtable (no Supabase table) — resolved up front so
   // the category can be checked in the filter and shown in the preview.
-  // Filter rules: הו"ק/אשראי are never pulled; every other category is pulled
-  // with NO date limit; "בנין לדורות" alone is pulled only from 04/2026
-  // (inclusive) — earlier periods are handled by the old-debts import.
+  // Filter rules: every category (including הו"ק/אשראי, deduped separately
+  // against nedarim-credit-hok-pull's imports — see isNedarimManagedMethod)
+  // is pulled with NO date limit, except "בנין לדורות" which is pulled only
+  // from 04/2026 (inclusive) — earlier periods are handled by the old-debts import.
   const rawProjects = await fetchAirtableRecords(TABLES.PROJECTS, { fields: [PROJ.NAME] })
   const projectNameMap = new Map(rawProjects.map(r => [r.id, String(r.fields[PROJ.NAME] || '')]))
 
@@ -49,13 +58,9 @@ async function loadCandidates() {
   })
 
   const total = rawTx.length
-  let excludedPaymentMethod = 0
   let excludedOldBinyan = 0
 
   const filtered = rawTx.filter(r => {
-    const method = selectName(r.fields[T.PAYMENT_METHOD])
-    if (EXCLUDED_PAYMENT_METHODS.some(m => method.includes(m))) { excludedPaymentMethod++; return false }
-
     // The date cutoff applies ONLY to בנין לדורות — other categories have no date limit
     const projectIds = (r.fields[T.PROJECT] as string[]) || []
     const isBinyan = projectIds.some(pid =>
@@ -105,7 +110,17 @@ async function loadCandidates() {
     }
   })
 
-  return { candidates, total, excludedPaymentMethod, excludedOldBinyan }
+  return { candidates, total, excludedOldBinyan }
+}
+
+// Builds the matching key used to spot a candidate that's really the same
+// real-world payment as a transaction nedarim-credit-hok-pull already
+// created directly from Nedarim Plus (that automation sets standing_order_id,
+// which Airtable-sourced rows never have). Rounds the amount and truncates
+// the date to the day, since that's all both sources reliably agree on.
+function nedarimDupeKey(parentId: string, amount: number, date: string | null): string {
+  const day = (date ?? '').slice(0, 10)
+  return `${parentId}|${Math.round(Math.abs(amount) * 100)}|${day}`
 }
 
 // ── GET — last run info ──────────────────────────────────────────────────────
@@ -136,7 +151,7 @@ export async function POST(req: NextRequest) {
       parentMappings = {},
     }: { dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
 
-    const { candidates, total, excludedPaymentMethod, excludedOldBinyan } = await loadCandidates()
+    const { candidates, total, excludedOldBinyan } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
 
     // Load Supabase parents for direct-ID matching + name resolution
@@ -164,7 +179,38 @@ export async function POST(req: NextRequest) {
       return null
     }
 
-    const resolved = toProcess.map(c => ({ c, parent: resolveParent(c) }))
+    const resolvedBase = toProcess.map(c => ({ c, parent: resolveParent(c) }))
+
+    // Cross-check הו"ק/אשראי candidates against transactions already imported
+    // by nedarim-credit-hok-pull (identified by standing_order_id being set —
+    // an Airtable-sourced row never has one) so the same real-world payment
+    // doesn't become two rows. Only "new" candidates matter here: a row that
+    // already exists under its Airtable id ('link'/'already-linked') is a
+    // re-sync of a row this same importer created before, not a fresh dupe.
+    const nedarimCandidateParentIds = [...new Set(
+      resolvedBase
+        .filter(({ c, parent }) => parent && c.status === 'new' && isNedarimManagedMethod(c.paymentMethod))
+        .map(({ parent }) => parent!.id)
+    )]
+    const nedarimDupeKeys = new Set<string>()
+    if (nedarimCandidateParentIds.length > 0) {
+      const { data: nedarimRows } = await supabaseAdmin
+        .from('transactions')
+        .select('parent_ids, amount, date')
+        .not('standing_order_id', 'is', null)
+        .overlaps('parent_ids', nedarimCandidateParentIds)
+      for (const row of nedarimRows ?? []) {
+        for (const pid of (row.parent_ids as string[]) ?? []) {
+          nedarimDupeKeys.add(nedarimDupeKey(pid, Number(row.amount) || 0, row.date as string | null))
+        }
+      }
+    }
+    const resolved = resolvedBase.map(({ c, parent }) => ({
+      c, parent,
+      isNedarimDuplicate: !!parent && c.status === 'new' && isNedarimManagedMethod(c.paymentMethod) &&
+        nedarimDupeKeys.has(nedarimDupeKey(parent.id, c.amount, c.date)),
+    }))
+    const skippedNedarimDuplicate = resolved.filter(r => r.isNedarimDuplicate).length
 
     // Resolve display names for unmatched Airtable parent IDs (fetch from Airtable Parents table)
     let unmatchedNames = new Map<string, string>()
@@ -176,7 +222,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (dryRun) {
-      const preview = resolved.map(({ c, parent }) => ({
+      const preview = resolved.map(({ c, parent, isNedarimDuplicate }) => ({
         airtableId:       c.airtableId,
         airtableParentId: c.airtableParentId,
         donorName:        parent?.name ?? (c.airtableParentId ? unmatchedNames.get(c.airtableParentId) ?? c.airtableParentId : '—'),
@@ -189,17 +235,17 @@ export async function POST(req: NextRequest) {
         category:         c.projectNames.join(', '),
         ppType:           ppTypeForProject(c.projectNames.join(' ')),
         notes:            c.notes,
-        status:           c.status,
+        status:           isNedarimDuplicate ? 'nedarim-duplicate' : c.status,
       }))
 
       const matched = preview.filter(p => p.matchedParent).length
       const alreadyLinked = candidates.length - toProcess.length
-      const newCount = toProcess.filter(c => c.status === 'new').length
+      const newCount = resolved.filter(r => r.c.status === 'new' && !r.isNedarimDuplicate).length
       // Only rows whose category actually maps to a debt type (שכ"ל/מגבית)
       // will really be linked — others (משכורות, הוצאות וכו') stay unlinked.
       const linkCount = toProcess.filter(c => c.status === 'link' && ppTypeForProject(c.projectNames.join(' '))).length
       const noPPCount = toProcess.filter(c => !ppTypeForProject(c.projectNames.join(' '))).length
-      const totalAmount = toProcess.reduce((s, c) => s + c.amount, 0)
+      const totalAmount = resolved.filter(r => !r.isNedarimDuplicate).reduce((s, r) => s + r.c.amount, 0)
 
       const actions = [
         newCount > 0 ? `תיצור ${newCount} תנועות חדשות בטבלת transactions` : null,
@@ -207,15 +253,16 @@ export async function POST(req: NextRequest) {
         `תנועות בקטגוריית "בנין לדורות" יקושרו ל-PP שכ"ל, ותנועות "מגבית" ל-PP מגבית — לפי חודש`,
         `תעדכן יתרת ה-PP בהתאם לסכום`,
         noPPCount > 0 ? `${noPPCount} תנועות בקטגוריות אחרות (משכורות / הוצאות וכו') יירשמו ללא קישור ל-PP` : null,
+        skippedNedarimDuplicate > 0 ? `${skippedNedarimDuplicate} תנועות הו"ק/אשראי ידולגו — כבר יובאו דרך Nedarim Plus (nedarim-credit-hok-pull)` : null,
         `תרשום לוג ב-automation_logs`,
       ].filter(Boolean) as string[]
 
       return NextResponse.json({
         dryRun: true,
         total,
-        excludedPaymentMethod,
         excludedOldBinyan,
-        excluded: excludedPaymentMethod + excludedOldBinyan,
+        excluded: excludedOldBinyan,
+        skippedNedarimDuplicate,
         alreadyLinked,
         toProcess: toProcess.length,
         matched,
@@ -232,6 +279,7 @@ export async function POST(req: NextRequest) {
     let created = 0
     let linked = 0
     let skipped = 0
+    let skippedDuplicate = 0
     let totalAmount = 0
 
     // Load open PPs indexed by parent+debt-type.
@@ -262,13 +310,18 @@ export async function POST(req: NextRequest) {
     const linkUpdates: Array<{ id: string; planned_payment_id: string }> = []
     const round2 = (n: number) => Math.round(n * 100) / 100
 
-    for (const { c, parent } of resolved) {
+    for (const { c, parent, isNedarimDuplicate } of resolved) {
       if (!parent) {
         skipped++
         const label = c.airtableParentId ? unmatchedNames.get(c.airtableParentId) ?? c.airtableParentId : '(ללא הורה)'
         errors.push(`לא זוהה הורה: "${label}"`)
         continue
       }
+
+      // Already imported by nedarim-credit-hok-pull directly from Nedarim
+      // Plus — skip entirely (no row, no PP-balance change) to avoid
+      // double-counting the same real-world payment.
+      if (isNedarimDuplicate) { skippedDuplicate++; continue }
 
       // Same selection as the shared cascade: preferred month first, then oldest.
       // Debt type follows the transaction's project (דמי מגבית → donation PP).
@@ -357,15 +410,15 @@ export async function POST(req: NextRequest) {
         run_at:        new Date().toISOString(),
         dry_run:       false,
         status:        'success',
-        summary:       `תנועות Airtable: נוצרו ${created} · קושרו ${linked} · דולגו ${skipped} · ₪${totalAmount.toLocaleString('he-IL')}`,
-        details:       { created, linked, skipped, totalAmount },
+        summary:       `תנועות Airtable: נוצרו ${created} · קושרו ${linked} · דולגו ${skipped} · כפילויות Nedarim ${skippedDuplicate} · ₪${totalAmount.toLocaleString('he-IL')}`,
+        details:       { created, linked, skipped, skippedDuplicate, totalAmount },
       })
     } catch { /* best-effort */ }
 
     return NextResponse.json({
-      created, linked, skipped, errors, totalAmount,
-      excluded: excludedPaymentMethod + excludedOldBinyan,
-      excludedPaymentMethod, excludedOldBinyan,
+      created, linked, skipped, skippedDuplicate, errors, totalAmount,
+      excluded: excludedOldBinyan,
+      excludedOldBinyan,
     })
   } catch (err) {
     return NextResponse.json({ error: String((err as { message?: string })?.message ?? err) }, { status: 500 })

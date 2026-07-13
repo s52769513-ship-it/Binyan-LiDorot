@@ -18,7 +18,7 @@ interface PreviewRow {
   category:         string
   ppType:           'tuition' | 'donation' | null
   notes:            string
-  status:           'new' | 'link' | 'already-linked'
+  status:           'new' | 'link' | 'already-linked' | 'nedarim-duplicate'
 }
 
 const PP_TYPE_LABEL: Record<'tuition' | 'donation', string> = {
@@ -30,8 +30,8 @@ interface DryRunResult {
   dryRun:      true
   total:       number
   excluded:    number
-  excludedPaymentMethod: number
   excludedOldBinyan: number
+  skippedNedarimDuplicate: number
   alreadyLinked: number
   toProcess:   number
   matched:     number
@@ -46,8 +46,8 @@ interface ImportResult {
   created?:     number
   linked?:      number
   skipped?:     number
+  skippedDuplicate?: number
   excluded?:    number
-  excludedPaymentMethod?: number
   excludedOldBinyan?: number
   totalAmount?: number
   errors?:      string[]
@@ -60,6 +60,7 @@ const STATUS_LABEL: Record<PreviewRow['status'], string> = {
   new:  'תיווצר',
   link: 'תקושר',
   'already-linked': 'כבר מקושרת',
+  'nedarim-duplicate': 'ידולג — כבר יובא מ-Nedarim',
 }
 
 // ── Main tab ──────────────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ export default function AirtableTransactionsPullTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">משיכת תנועות כספיות מ-Airtable</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            מושך את כל התנועות מטבלת התנועות ב-Airtable שאינן הו&quot;ק ואינן אשראי (אלה מטופלים באוטומציות ייעודיות). תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. <b>רק</b> תנועות בקטגוריית &quot;בנין לדורות&quot; מקושרות ל-PP שכ&quot;ל, ורק תנועות &quot;מגבית&quot; מקושרות ל-PP מגבית — כל קטגוריה אחרת (משכורות, הוצאות וכו&apos;) נכנסת בלי קישור לשום תשלום מתוכנן.
+            מושך את כל התנועות מטבלת התנועות ב-Airtable, כולל הו&quot;ק ואשראי — אלה מוצלבות מול תנועות שכבר יובאו ישירות מ-Nedarim Plus (אוטומציית nedarim-credit-hok-pull) לפי הורה+סכום+תאריך, כדי שאותו תשלום לא יירשם פעמיים. תנועות בקטגוריית &quot;בנין לדורות&quot; נמשכות רק מ-04/2026 ואילך — מה שלפני מטופל בייבוא חובות ישנים. <b>רק</b> תנועות בקטגוריית &quot;בנין לדורות&quot; מקושרות ל-PP שכ&quot;ל, ורק תנועות &quot;מגבית&quot; מקושרות ל-PP מגבית — כל קטגוריה אחרת (משכורות, הוצאות וכו&apos;) נכנסת בלי קישור לשום תשלום מתוכנן.
           </p>
           {lastRun.lastRun && (
             <p className="text-xs text-gray-400 mt-1">
@@ -186,7 +187,7 @@ export default function AirtableTransactionsPullTab() {
           {/* Stats */}
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
             <Stat label="סה״כ ב-Airtable" value={preview.total}          />
-            <Stat label="סונן (הו״ק/אשראי)" value={preview.excludedPaymentMethod} color="amber" />
+            <Stat label="כפילות Nedarim (הו״ק/אשראי)" value={preview.skippedNedarimDuplicate} color="amber" />
             <Stat label="סונן (בנין לדורות לפני 04/2026)" value={preview.excludedOldBinyan} color="amber" />
             <Stat label="כבר מקושרות" value={preview.alreadyLinked}     color="gray"  />
             <Stat label="לטיפול"      value={preview.toProcess}         color="blue"  />
@@ -358,6 +359,7 @@ export default function AirtableTransactionsPullTab() {
             ✓ נוצרו <strong>{result.created}</strong> תנועות חדשות · קושרו <strong>{result.linked}</strong> תנועות קיימות
             {result.totalAmount ? <span> · ₪{result.totalAmount.toLocaleString('he-IL')}</span> : null}
             {result.skipped ? <span className="text-emerald-600"> · {result.skipped} דולגו</span> : null}
+            {result.skippedDuplicate ? <span className="text-amber-600"> · {result.skippedDuplicate} כפילויות Nedarim דולגו</span> : null}
           </div>
           {result.errors && result.errors.length > 0 && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 max-h-40 overflow-y-auto">
