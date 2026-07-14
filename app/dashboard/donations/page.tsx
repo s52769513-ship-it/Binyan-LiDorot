@@ -74,6 +74,24 @@ export default function DonationsPage() {
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
 
+  // Reset-donation-all state
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetResult, setResetResult] = useState<{ deleted: number; relinked: number; parents: number } | null>(null)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetError, setResetError] = useState('')
+
+  const executeReset = async () => {
+    setResetLoading(true); setResetConfirm(false); setResetResult(null); setResetError('')
+    try {
+      const res = await fetch('/api/planned-payments/reset-donation-all', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setResetError(data.error); return }
+      setResetResult(data)
+      load()
+    } catch { setResetError('שגיאת רשת') }
+    finally { setResetLoading(false) }
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -122,6 +140,28 @@ export default function DonationsPage() {
           >
             ⬆ ייבוא CSV
           </button>
+          {!resetConfirm ? (
+            <button
+              onClick={() => setResetConfirm(true)}
+              disabled={resetLoading}
+              className="px-3 py-2 text-sm font-semibold rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {resetLoading ? '...' : '🔄 איפוס PP מגבית'}
+            </button>
+          ) : (
+            <span className="flex items-center gap-2">
+              <span className="text-xs text-amber-700">למחוק ולקשר מחדש?</span>
+              <button onClick={executeReset} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700">אשר</button>
+              <button onClick={() => setResetConfirm(false)} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">ביטול</button>
+            </span>
+          )}
+          {resetResult && (
+            <span className="text-sm text-emerald-700 font-medium">
+              ✅ נמחקו {resetResult.deleted} · קושרו {resetResult.relinked} ({resetResult.parents} הורים)
+              <button onClick={() => setResetResult(null)} className="mr-2 text-xs text-gray-400 underline">סגור</button>
+            </span>
+          )}
+          {resetError && <span className="text-sm text-red-600">{resetError}</span>}
         </div>
       </div>
 
