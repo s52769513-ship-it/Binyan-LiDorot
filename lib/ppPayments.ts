@@ -219,14 +219,18 @@ export async function applyPaymentToParentPPs(opts: {
   }
 }
 
-/** parents.tuition_balance = סכום יתרות כל ה-PP שאינם משכורת (אמת מה-PPs). */
+/**
+ * parents.tuition_balance = סכום יתרות ה-PP של שכ"ל בלבד (אמת מה-PPs).
+ * מחריגים גם salary וגם donation — חוב מגבית הוא חוב נפרד ואסור שינפח את
+ * "יתרת שכ"ל". pp_type ריק (PP ישן מ-Airtable) נספר — אלה שכ"ל.
+ */
 export async function recalcParentTuitionBalance(parentId: string): Promise<void> {
   const { data: allPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('balance, pp_type')
     .contains('parent_ids', [parentId])
   const tuitionBalance = (allPPs ?? [])
-    .filter(p => p.pp_type !== 'salary')
+    .filter(p => p.pp_type !== 'salary' && p.pp_type !== 'donation')
     .reduce((s, p) => s + Math.max(0, Number(p.balance ?? 0)), 0)
   await supabaseAdmin.from('parents')
     .update({ tuition_balance: round2(tuitionBalance) })

@@ -50,14 +50,16 @@ export async function recalcTuitionForParent(parentId: string): Promise<void> {
     }
   }
 
-  // Recompute tuition_balance from ALL PP balances (ground truth, not delta)
+  // Recompute tuition_balance from PP balances (ground truth, not delta).
+  // Excludes salary AND donation — מגבית debt is tracked separately and must
+  // not inflate "יתרת שכ"ל". Empty pp_type (legacy Airtable PPs) counts as tuition.
   const { data: allPPs } = await supabaseAdmin
     .from('planned_payments')
     .select('balance, pp_type')
     .contains('parent_ids', [parentId])
 
   const tuitionBalance = (allPPs ?? [])
-    .filter(p => p.pp_type !== 'salary')
+    .filter(p => p.pp_type !== 'salary' && p.pp_type !== 'donation')
     .reduce((s, p) => s + Math.max(0, Number(p.balance ?? 0)), 0)
 
   await supabaseAdmin.from('parents').update({

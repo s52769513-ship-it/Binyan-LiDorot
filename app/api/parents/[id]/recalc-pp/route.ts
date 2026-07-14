@@ -165,8 +165,9 @@ export async function recalcPPs(parentId: string) {
     .select('balance, pp_type')
     .contains('parent_ids', [parentId])
 
+  // Excludes salary AND donation — מגבית debt must not inflate יתרת שכ"ל
   const tuitionBalance = (finalPPs ?? [])
-    .filter(p => p.pp_type !== 'salary')
+    .filter(p => p.pp_type !== 'salary' && p.pp_type !== 'donation')
     .reduce((s, p) => s + Number(p.balance ?? 0), 0)
 
   // מאחד לשדה אחד ומאפס את pp_credit הישן
