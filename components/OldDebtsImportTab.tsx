@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { ParentSelectorModal, StatChip as Stat, type ParentOption } from '@/components/ParentSelectorModal'
 
@@ -66,20 +66,22 @@ export default function OldDebtsImportTab() {
     try { localStorage.setItem('oldDebtsManualMappings', JSON.stringify(manualMappings)) } catch {}
   }, [manualMappings])
 
-  useEffect(() => {
-    const fetchParents = async () => {
-      try {
-        const res = await fetch('/api/parents-simple')
-        if (res.ok) {
-          const parents = await res.json()
-          setAllParents(Array.isArray(parents) ? parents : [])
-        }
-      } catch (e) {
-        console.error('Failed to fetch parents:', e)
+  // Re-fetchable so a parent added after mount (e.g. just created to link an
+  // unmatched row to) shows up without reloading the page.
+  const loadParents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/parents-simple')
+      if (res.ok) {
+        const parents = await res.json()
+        setAllParents(Array.isArray(parents) ? parents : [])
       }
+    } catch (e) {
+      console.error('Failed to fetch parents:', e)
     }
-    fetchParents()
   }, [])
+
+  useEffect(() => { loadParents() }, [loadParents])
+  useEffect(() => { if (parentSelectorOpen) loadParents() }, [parentSelectorOpen, loadParents])
 
   const onFile = async (file: File) => {
     setFileName(file.name); setPreview(null); setResult(null)
@@ -305,6 +307,7 @@ export default function OldDebtsImportTab() {
         <ParentSelectorModal
           label={parentSelectorOpen}
           allParents={allParents}
+          onRefresh={loadParents}
           onSelect={(parentId, parentName) => {
             setManualMappings(m => ({ ...m, [parentSelectorOpen]: { id: parentId, name: parentName } }))
             setParentSelectorOpen(null)

@@ -14,15 +14,24 @@ const EmployeeCard = dynamic(() => import('@/components/EmployeeCard'), { ssr: f
 
 export interface ParentOption { id: string; name: string; city?: string | null }
 
-export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
+export function ParentSelectorModal({ label, allParents, onSelect, onClose, onRefresh }: {
   /** השם/תווית שעבורם בוחרים הורה (מוצג בכותרת) */
   label: string
   allParents: ParentOption[]
   onSelect: (id: string, name: string) => void
   onClose: () => void
+  /** אם מסופק — מוצג כפתור לרענון רשימת ההורים (למשל אחרי הוספת הורה חדש) */
+  onRefresh?: () => Promise<unknown> | void
 }) {
   const [search, setSearch] = useState('')
   const [viewingId, setViewingId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    if (!onRefresh) return
+    setRefreshing(true)
+    try { await onRefresh() } finally { setRefreshing(false) }
+  }
   // Guard nulls — a parent row with no name must not crash the whole list
   // (one bad row used to blank the modal, making manual linking impossible).
   const filtered = allParents
@@ -33,9 +42,21 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" dir="rtl">
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[28rem] flex flex-col">
         <div className="p-4 border-b">
-          <p className="text-sm font-semibold text-gray-700 mb-3">
-            בחר הורה עבור: <span className="text-blue-600">{label}</span>
-          </p>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold text-gray-700">
+              בחר הורה עבור: <span className="text-blue-600">{label}</span>
+            </p>
+            {onRefresh && (
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title="רענן רשימת הורים (למשל אחרי הוספת הורה חדש)"
+                className="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {refreshing ? '…מרענן' : '↻ רענן'}
+              </button>
+            )}
+          </div>
           <input
             type="text"
             placeholder="חפש הורה…"

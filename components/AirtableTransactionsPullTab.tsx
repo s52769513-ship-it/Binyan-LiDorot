@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ParentSelectorModal, StatChip as Stat, type ParentOption } from '@/components/ParentSelectorModal'
 
 // Loaded lazily and rendered as a fixed overlay so opening a parent's card
@@ -169,12 +169,21 @@ export default function AirtableTransactionsPullTab() {
     try { localStorage.setItem('airtableTxManualTxMappings', JSON.stringify(manualTxMappings)) } catch {}
   }, [manualTxMappings])
 
-  useEffect(() => {
-    fetch('/api/parents-simple')
+  // The Supabase parent list is cached client-side; re-fetch it on demand so a
+  // parent added *after* this tab mounted (e.g. the user just created one to
+  // link an unmatched transaction to) shows up without a full page reload.
+  const loadParents = useCallback(() => {
+    return fetch('/api/parents-simple')
       .then(r => r.json())
       .then(d => setAllParents(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [])
+
+  useEffect(() => { loadParents() }, [loadParents])
+
+  // Refresh the list every time the link selector opens, so newly-added
+  // parents are always available to pick.
+  useEffect(() => { if (selectorOpen) loadParents() }, [selectorOpen, loadParents])
 
   useEffect(() => {
     fetch('/api/automations/airtable-transactions-pull')
@@ -575,6 +584,7 @@ export default function AirtableTransactionsPullTab() {
         <ParentSelectorModal
           label={selectorOpen.label}
           allParents={allParents}
+          onRefresh={loadParents}
           onSelect={(id, name) => {
             if (selectorOpen.kind === 'tx') {
               setManualTxMappings(m => ({ ...m, [selectorOpen.key]: { id, name } }))
