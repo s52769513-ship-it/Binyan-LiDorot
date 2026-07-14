@@ -150,7 +150,17 @@ export async function POST(req: NextRequest) {
     const {
       dryRun = false,
       parentMappings = {},
-    }: { dryRun?: boolean; parentMappings?: Record<string, string> } = await req.json()
+      transactionMappings = {},
+    }: {
+      dryRun?: boolean
+      // Airtable parent-record id → Supabase parent id (applies to every
+      // transaction of that donor)
+      parentMappings?: Record<string, string>
+      // Airtable transaction id → Supabase parent id — for transactions that
+      // have NO parent link in Airtable at all, which can only be linked
+      // per-transaction
+      transactionMappings?: Record<string, string>
+    } = await req.json()
 
     const { candidates, total, excludedOldBinyan } = await loadCandidates()
     const toProcess = candidates.filter(c => c.status !== 'already-linked')
@@ -167,9 +177,15 @@ export async function POST(req: NextRequest) {
     const parentNameMap = new Map((parents ?? []).map(p => [p.id, p.name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim()]))
 
     // ── Resolve parent for each candidate ──
-    // Step 1 — direct id: manual mapping first, then a same-id match against
-    // the synced Supabase parents.
+    // Step 1 — direct id: per-transaction manual mapping first (the only way
+    // to link a transaction that has no Airtable parent at all), then the
+    // per-donor manual mapping, then a same-id match against the synced
+    // Supabase parents.
     const resolveById = (c: Candidate): { id: string; name: string } | null => {
+      const txMappedId = transactionMappings[c.airtableId]
+      if (txMappedId && parentIdSet.has(txMappedId)) {
+        return { id: txMappedId, name: parentNameMap.get(txMappedId) ?? '' }
+      }
       if (!c.airtableParentId) return null
       if (parentMappings[c.airtableParentId]) {
         const mappedId = parentMappings[c.airtableParentId]
@@ -318,8 +334,29 @@ export async function POST(req: NextRequest) {
         status:           isNedarimDuplicate ? 'nedarim-duplicate' : c.status,
       }))
 
-      const matched = preview.filter(p => p.matchedParent).length
+      // Matched = rows that will actually be imported/linked — a resolved
+      // parent alone isn't enough, nedarim-duplicates are skipped anyway.
+      const matched = preview.filter(p => p.matchedParent && p.status !== 'nedarim-duplicate').length
       const alreadyLinked = candidates.length - toProcess.length
+
+      // Already-linked rows, so the "כבר מקושרות" stat can show its actual
+      // rows on click (they're excluded from processing but not from view).
+      const previewLinked = candidates.filter(c => c.status === 'already-linked').map(c => ({
+        airtableId:       c.airtableId,
+        airtableParentId: c.airtableParentId,
+        donorName:        (c.airtableParentId ? parentNameMap.get(c.airtableParentId) : null) ?? '—',
+        donorCity:        null as string | null,
+        matchedParent:    (c.airtableParentId ? parentNameMap.get(c.airtableParentId) : null) ?? null,
+        matchedId:        c.airtableParentId && parentIdSet.has(c.airtableParentId) ? c.airtableParentId : null,
+        amount:           c.amount,
+        date:             c.date,
+        monthYear:        c.monthYear,
+        paymentMethod:    c.paymentMethod,
+        category:         c.projectNames.join(', '),
+        ppType:           ppTypeForProject(c.projectNames.join(' ')),
+        notes:            c.notes,
+        status:           'already-linked' as const,
+      }))
       const newCount = resolved.filter(r => r.c.status === 'new' && !r.isNedarimDuplicate).length
       // Only rows whose category actually maps to a debt type (שכ"ל/מגבית)
       // will really be linked — others (משכורות, הוצאות וכו') stay unlinked.
@@ -349,6 +386,7 @@ export async function POST(req: NextRequest) {
         noPPCount,
         unmatched: [...new Set(preview.filter(p => !p.matchedParent).map(p => p.donorName))],
         preview,
+        previewLinked,
         totalAmount,
         actions,
       })

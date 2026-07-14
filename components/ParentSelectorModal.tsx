@@ -23,8 +23,10 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
 }) {
   const [search, setSearch] = useState('')
   const [viewingId, setViewingId] = useState<string | null>(null)
+  // Guard nulls — a parent row with no name must not crash the whole list
+  // (one bad row used to blank the modal, making manual linking impossible).
   const filtered = allParents
-    .filter(p => p.name.includes(search) || (p.city ?? '').includes(search))
+    .filter(p => (p.name ?? '').includes(search) || (p.city ?? '').includes(search))
     .slice(0, 50)
 
   return (
@@ -50,10 +52,10 @@ export function ParentSelectorModal({ label, allParents, onSelect, onClose }: {
               className="w-full flex items-center justify-between gap-2 border-b hover:bg-blue-50 transition"
             >
               <button
-                onClick={() => onSelect(p.id, p.name)}
+                onClick={() => onSelect(p.id, p.name || p.id)}
                 className="flex-1 text-right px-4 py-2.5 flex items-center justify-between gap-2"
               >
-                <span className="text-sm text-gray-800">{p.name}</span>
+                <span className="text-sm text-gray-800">{p.name || '(ללא שם)'}</span>
                 {p.city && <span className="text-xs text-gray-400 shrink-0">{p.city}</span>}
               </button>
               <button
@@ -94,13 +96,25 @@ const STAT_COLORS: Record<string, string> = {
   blue:  'bg-blue-50',
 }
 
-export function StatChip({ label, value, color = 'gray' }: {
+export function StatChip({ label, value, color = 'gray', onClick }: {
   label: string
   value: string | number
   color?: string
+  /** When provided, the chip becomes a button that opens a detail view */
+  onClick?: () => void
 }) {
+  const cls = `${STAT_COLORS[color] ?? STAT_COLORS.gray} rounded-lg py-2 text-center w-full`
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} title="לחץ לצפייה בשורות"
+        className={`${cls} hover:ring-2 hover:ring-blue-300 transition cursor-pointer`}>
+        <div className="text-lg font-bold text-gray-800">{value}</div>
+        <div className="text-[11px] text-gray-500">{label}</div>
+      </button>
+    )
+  }
   return (
-    <div className={`${STAT_COLORS[color] ?? STAT_COLORS.gray} rounded-lg py-2 text-center`}>
+    <div className={cls}>
       <div className="text-lg font-bold text-gray-800">{value}</div>
       <div className="text-[11px] text-gray-500">{label}</div>
     </div>
