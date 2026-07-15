@@ -29,22 +29,18 @@ export async function GET(req: NextRequest) {
       const words = q.split(/\s+/).filter(w => w.length > 0)
 
       if (words.length === 1) {
-        // חיפוש יחיד: חפש בכל השדות
+        // מילה אחת: חיפוש רחב בכל השדות (שם/עיר/טלפון/ת"ז)
         query = query.or(
           `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
-        )
-      } else if (words.length === 2) {
-        // שני מילים: שתיהן חייבות להתאים יחד לשם פרטי+משפחה (בכל סדר) —
-        // אחרת מילה אחת בלבד ("לוי") תתאים גם לתת-מחרוזת בשם ארוך יותר ("לויפער")
-        const [word1, word2] = words
-        query = query.or(
-          `and(first_name.ilike.%${word1}%,last_name.ilike.%${word2}%),and(first_name.ilike.%${word2}%,last_name.ilike.%${word1}%),name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
         )
       } else {
-        // יותר מ-שתי מילים: חיפוש רגיל
-        query = query.or(
-          `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
-        )
+        // כמה מילים: כל מילה חייבת להופיע באחד משדות השם (שם מלא / פרטי /
+        // משפחה) — בכל סדר, בלי קשר למילים נוספות באמצע, ובלי קשר אם היא בשם
+        // הפרטי או המשפחה. כל קריאת .or() נוספת מצטרפת ב-AND ב-PostgREST, כך
+        // שהתוצאה = (מילה1 נמצאת) AND (מילה2 נמצאת) AND ...
+        for (const w of words) {
+          query = query.or(`name.ilike.%${w}%,first_name.ilike.%${w}%,last_name.ilike.%${w}%`)
+        }
       }
     }
 
