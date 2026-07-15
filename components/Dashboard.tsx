@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
+import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
@@ -646,13 +647,16 @@ export default function Dashboard() {
   const [monthlyModal, setMonthlyModal] = useState<MonthlyModalType | null>(null)
   const [cashflowCell, setCashflowCell] = useState<CashflowCellTarget | null>(null)
 
-  const load = () => {
-    setLoading(true); setError('')
+  // silent=true skips the loading skeleton so live realtime refreshes just
+  // update the numbers in place instead of flashing the whole dashboard.
+  const load = (silent = false) => {
+    if (!silent) setLoading(true)
+    setError('')
     fetch('/api/summary')
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d) })
-      .catch(() => setError('שגיאה בחיבור לשרת'))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!silent) setError('שגיאה בחיבור לשרת') })
+      .finally(() => { if (!silent) setLoading(false) })
   }
   useEffect(() => { load() }, [])
 
@@ -673,6 +677,15 @@ export default function Dashboard() {
       .catch(() => {})
       .finally(() => setCashflowLoading(false))
   }
+
+  // Live updates: refresh the summary (and the active analytics/cashflow view)
+  // whenever a transaction, planned payment, or parent changes anywhere —
+  // silent so the numbers update in place without a loading flash.
+  useRealtimeRefresh(() => {
+    load(true)
+    if (view === 'analytics') loadAnalytics(period)
+    if (view === 'cashflow')  loadCashflow()
+  }, ['transactions', 'planned_payments', 'parents'])
 
   useEffect(() => {
     if (view === 'analytics') loadAnalytics(period)
@@ -745,7 +758,7 @@ export default function Dashboard() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
-          <button onClick={load} className="text-red-600 underline">נסה שוב</button>
+          <button onClick={() => load()} className="text-red-600 underline">נסה שוב</button>
           <span>{error}</span>
         </div>
       )}
