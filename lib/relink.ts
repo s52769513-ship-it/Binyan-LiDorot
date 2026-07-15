@@ -3,6 +3,7 @@ import { sortByMonth } from '@/lib/months'
 import {
   insertSpilloverRows,
   recalcParentTuitionBalance,
+  updateParentCredits,
   ppTypeForProject,
   SPILLOVER_NOTES_PREFIX,
   type PayablePPType,
@@ -150,10 +151,7 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
     ))
   }
   await insertSpilloverRows(spillovers)
-  await supabaseAdmin.from('parents').update({
-    credit_balance: creditTuition,
-    donation_credit_balance: creditDonation,
-  }).eq('id', parentId)
+  await updateParentCredits(parentId, { tuition: creditTuition, donation: creditDonation })
   await recalcParentTuitionBalance(parentId)
 
   return {

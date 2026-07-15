@@ -242,6 +242,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
   const [showAddDonationPP, setShowAddDonationPP] = useState(false)
+  const donationRecalcRef = useRef<string | null>(null)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
@@ -280,6 +281,29 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   useEffect(() => {
     setAmountDraft(String(parent.monthlyDonation || ''))
   }, [parent.monthlyDonation])
+
+  // Self-check for hidden donation credit on open: overpayments sitting on
+  // already-linked transactions (or donation payments imported before their
+  // PP existed) don't surface on their own. Run the donation recalc once per
+  // parent; if it changed anything, refresh so the credit KPI + balances show.
+  useEffect(() => {
+    if (donationRecalcRef.current === parent.id) return
+    if (!hasDonation && !hasDonationSO) return
+    donationRecalcRef.current = parent.id
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/parents/${parent.id}/recalc-donation-pp`, { method: 'POST' })
+        const d = await r.json().catch(() => ({}))
+        // Refresh only when the recalc actually re-linked something or the
+        // resulting credit differs from what the card already shows.
+        const creditChanged = Math.abs((d?.leftoverCredit ?? 0) - (parent.donationCreditBalance ?? 0)) > 0.01
+        if (d && (d.newlyLinked || d.unlinkedWrong || creditChanged)) {
+          loadPPs()
+          onUpdate()
+        }
+      } catch { /* best-effort */ }
+    })()
+  }, [parent.id, parent.donationCreditBalance, hasDonation, hasDonationSO, loadPPs, onUpdate])
 
   useEffect(() => {
     loadPPs()

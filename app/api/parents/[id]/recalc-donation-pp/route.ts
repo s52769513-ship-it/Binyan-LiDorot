@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import {
+  insertSpilloverRows,
+  updateParentCredits,
+  SPILLOVER_NOTES_PREFIX,
+  type SpilloverRowInput,
+} from '@/lib/ppPayments'
+
+const UNDEFINED_COLUMN = '42703'
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 /**
  * POST /api/parents/[id]/recalc-donation-pp
- * גרסה מקבילה ל-recalc-pp אך לחוב מגבית בלבד — שני סוגי החוב לעולם לא
- * מתערבבים (זיכוי מגבית לא יחול על שכ"ל, ולהפך). ראה recalc-pp/route.ts
- * להשוואה מלאה של הצעדים.
- *   0. ניתוק תנועות שקושרו בטעות לתשלומי מגבית (לא מפרויקט "דמי מגבית")
- *   1. קישור תנועות מגבית חופשיות לתשלומים מתוכננים לפי חודש (הישן ביותר קודם)
- *   2. יישום זיכוי מגבית קיים על תשלומים פתוחים (הישן ביותר קודם)
- *   3. חישוב מחדש של יתרה בכל תשלום מגבית מקושר
+ * ריענון חוב מגבית בלבד — גרסה מקבילה ל-relinkParent אך ממוקדת מגבית, כדי
+ * לא לגעת בשכ"ל. שני סוגי החוב לעולם לא מתערבבים.
+ *
+ * מבצע איפוס-והרצה-מחדש מלא (לא רק קישור תנועות חופשיות): כך גם עודף מתנועה
+ * שכבר הייתה מקושרת (למשל שני תשלומי 520 על PP של 1000 = 40 עודף) נתפס
+ * כזיכוי, בדיוק כמו בכפתור "ריענון". הפעולה אידמפוטנטית — מוחקת קודם את שורות
+ * הזיכוי/הגלישה שהיא עצמה יצרה, ולכן בטוחה להרצה חוזרת ואוטומטית.
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: parentId } = await params
@@ -23,135 +32,137 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function recalcDonationPPs(parentId: string) {
-  // ── שלב 0: ניתוק תנועות שגויות ─────────────────────────────────────────
+  // ── שלב 0: מחיקת שורות זיכוי/גלישה מגבית שנוצרו בעבר (משוחזרות בהרצה) ──
+  //    כל שורות המגבית האוטומטיות מזוהות ע"י project 'דמי מגבית' + סימון:
+  //    source_transaction_id (גלישה), notes בתחילית הגלישה, או 'זיכוי שמור' ישן.
+  const delBySource = await supabaseAdmin
+    .from('transactions')
+    .delete()
+    .contains('parent_ids', [parentId])
+    .contains('project_names', ['דמי מגבית'])
+    .not('source_transaction_id', 'is', null)
+  if (delBySource.error && delBySource.error.code !== UNDEFINED_COLUMN) throw delBySource.error
+
+  const delByNotes = await supabaseAdmin
+    .from('transactions')
+    .delete()
+    .contains('parent_ids', [parentId])
+    .contains('project_names', ['דמי מגבית'])
+    .like('notes', `${SPILLOVER_NOTES_PREFIX}%`)
+  if (delByNotes.error) throw delByNotes.error
+
+  const delLegacyCredit = await supabaseAdmin
+    .from('transactions')
+    .delete()
+    .contains('parent_ids', [parentId])
+    .contains('project_names', ['דמי מגבית'])
+    .eq('notes', 'זיכוי שמור')
+  if (delLegacyCredit.error) throw delLegacyCredit.error
+
+  // ── שלב 1: ניתוק תנועות שקושרו בטעות ל-PP מגבית (לא מפרויקט "דמי מגבית") ──
   const { data: donationPPIds } = await supabaseAdmin
     .from('planned_payments')
     .select('id')
     .contains('parent_ids', [parentId])
     .eq('pp_type', 'donation')
-
   const ppIdList = (donationPPIds ?? []).map(p => p.id as string)
   let unlinkedWrong = 0
 
   if (ppIdList.length > 0) {
     const { data: wrongTxs } = await supabaseAdmin
       .from('transactions')
-      .select('id, amount, planned_payment_id')
+      .select('id')
       .in('planned_payment_id', ppIdList)
       .not('project_names', 'cs', '{"דמי מגבית"}')
-      .gt('amount', 0)
-
     for (const tx of wrongTxs ?? []) {
-      const { data: pp } = await supabaseAdmin
-        .from('planned_payments').select('balance, amount').eq('id', tx.planned_payment_id).single()
-      if (pp) {
-        const restored = Math.min(Number(pp.amount), Number(pp.balance) + Number(tx.amount))
-        await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', tx.planned_payment_id)
-      }
       await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
       unlinkedWrong++
     }
   }
 
-  // ── טעינת תשלומים פתוחים לפי סדר חודש ──────────────────────────────────
-  const { data: rawPPs } = await supabaseAdmin
+  // ── שלב 2: טעינת כל ה-PP מגבית, איפוס יתרה לסכום המלא (בזיכרון) ─────────
+  const { data: ppsRaw } = await supabaseAdmin
     .from('planned_payments')
-    .select('id, amount, balance, month_year, pp_type')
+    .select('id, amount, month_year')
     .contains('parent_ids', [parentId])
     .eq('pp_type', 'donation')
-    .gt('balance', 0)
+  const pps = sortByMonth(ppsRaw ?? [], true).map(p => ({
+    id: p.id as string,
+    amount: Number(p.amount) || 0,
+    balance: Number(p.amount) || 0,
+    month_year: (p.month_year as string) ?? '',
+  }))
 
-  const openPPs = sortByMonth(rawPPs ?? [], true).map(p => ({ ...p, balance: Number(p.balance), amount: Number(p.amount) }))
-
-  // ── טעינת תנועות מגבית חופשיות ─────────────────────────────────────────
-  const { data: rawTxs } = await supabaseAdmin
+  // ── שלב 3: כל תנועות המגבית החיוביות (מקושרות או חופשיות), הישן ביותר קודם ─
+  const { data: txs } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, month_year, date')
+    .select('id, amount, date, month_year, planned_payment_id')
     .contains('parent_ids', [parentId])
     .contains('project_names', ['דמי מגבית'])
-    .is('planned_payment_id', null)
     .gt('amount', 0)
     .order('date', { ascending: true })
 
-  let leftover = 0
+  const spillovers: SpilloverRowInput[] = []
+  const linkUpdates: { id: string; planned_payment_id: string | null }[] = []
+  let credit = 0
+  let newlyLinked = 0
 
-  // ── שלב 1: קישור תנועות לתשלום המתאים לפי חודש ─────────────────────────
-  for (const tx of rawTxs ?? []) {
-    let remaining = Number(tx.amount)
+  for (const tx of txs ?? []) {
+    const wasLinked = tx.planned_payment_id != null
+    const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
+    const open = pps.filter(p => p.balance > 0)
+    // קודם PP של אותו חודש; אחרת ה-PP שהיה מקושר (אם עדיין פתוח); אחרת הוותיק
+    const monthMatch = open.find(p => p.month_year === tx.month_year)
+    const stickyLink = linked && linked.balance > 0 ? linked : undefined
+    const preferred = monthMatch ?? stickyLink
+    const cascade = preferred ? [preferred, ...open.filter(p => p.id !== preferred.id)] : open
 
-    const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
-    const firstOpen  = openPPs.findIndex(p => p.balance > 0)
-    const ppIdx = monthMatch >= 0 ? monthMatch : firstOpen
-    if (ppIdx < 0) { leftover += remaining; continue }
-
-    const pp    = openPPs[ppIdx]
-    const apply = Math.min(remaining, pp.balance)
-    pp.balance  = Math.round((pp.balance - apply) * 100) / 100
-    remaining   = Math.round((remaining - apply) * 100) / 100
-
-    await supabaseAdmin.from('transactions').update({ planned_payment_id: pp.id }).eq('id', tx.id)
-    leftover += remaining
-  }
-
-  // ── שלב 2: עודף תנועות → הוספה לזיכוי מגבית ────────────────────────────
-  const { data: parentRow } = await supabaseAdmin
-    .from('parents')
-    .select('donation_credit_balance')
-    .eq('id', parentId)
-    .single()
-
-  let credit = Number(parentRow?.donation_credit_balance ?? 0) + leftover
-
-  // ── שלב 3: יישום זיכוי על תשלומים פתוחים (יוצר תנועת זיכוי אמיתית) ────
-  const today = new Date().toISOString().split('T')[0]
-  if (credit > 0) {
-    for (const pp of openPPs) {
-      if (pp.balance <= 0 || credit <= 0) continue
-      const apply = Math.min(credit, pp.balance)
-      pp.balance = Math.round((pp.balance - apply) * 100) / 100
-      credit     = Math.round((credit - apply) * 100) / 100
-      await supabaseAdmin.from('transactions').insert({
-        id:                 crypto.randomUUID(),
-        amount:             apply,
-        planned_payment_id: pp.id,
-        parent_ids:         [parentId],
-        date:               today,
-        month_year:         pp.month_year ?? '',
-        notes:              'זיכוי שמור',
-        type:               'זיכוי',
-        project_ids:        [],
-        project_names:      ['דמי מגבית'],
-        synced_at:          '2099-12-31T23:59:59.999Z',
-      })
+    const primaryId = cascade[0]?.id ?? null
+    if ((tx.planned_payment_id ?? null) !== primaryId) {
+      linkUpdates.push({ id: tx.id as string, planned_payment_id: primaryId })
+      if (!wasLinked && primaryId) newlyLinked++
     }
+
+    let remaining = Math.abs(Number(tx.amount))
+    for (const pp of cascade) {
+      if (remaining <= 0) break
+      const apply = Math.min(remaining, pp.balance)
+      pp.balance = round2(pp.balance - apply)
+      remaining = round2(remaining - apply)
+      if (apply > 0 && pp.id !== primaryId) {
+        spillovers.push({
+          parentId,
+          ppId: pp.id,
+          ppMonthYear: pp.month_year,
+          ppType: 'donation',
+          amount: apply,
+          sourceTxId: tx.id as string,
+          sourceLabel: (tx.month_year as string) || (tx.date as string) || null,
+          date: (tx.date as string) || null,
+        })
+      }
+    }
+    credit = round2(credit + remaining)
   }
 
-  // ── שלב 4: חישוב מחדש של יתרה לפי תנועות מקושרות ───────────────────────
-  const { data: allDonationPPs } = await supabaseAdmin
-    .from('planned_payments')
-    .select('id, amount')
-    .contains('parent_ids', [parentId])
-    .eq('pp_type', 'donation')
-
-  for (const pp of allDonationPPs ?? []) {
-    const { data: txs } = await supabaseAdmin
-      .from('transactions')
-      .select('amount')
-      .eq('planned_payment_id', pp.id)
-      .gt('amount', 0)
-    const paid    = (txs ?? []).reduce((s, t) => s + Number(t.amount), 0)
-    const balance = Math.max(0, Number(pp.amount) - paid)
-    await supabaseAdmin.from('planned_payments').update({ balance }).eq('id', pp.id)
+  // ── שלב 4: שמירה — קישורים, יתרות, שורות גלישה, זיכוי מגבית ─────────────
+  for (const u of linkUpdates) {
+    await supabaseAdmin.from('transactions').update({ planned_payment_id: u.planned_payment_id }).eq('id', u.id)
   }
-
-  // ── שלב 5: עדכון זיכוי מגבית של ההורה ──────────────────────────────────
-  await supabaseAdmin.from('parents').update({
-    donation_credit_balance: Math.max(0, credit),
-  }).eq('id', parentId)
+  for (let i = 0; i < pps.length; i += 50) {
+    await Promise.all(pps.slice(i, i + 50).map(pp =>
+      supabaseAdmin.from('planned_payments').update({ balance: pp.balance }).eq('id', pp.id)
+    ))
+  }
+  await insertSpilloverRows(spillovers)
+  await updateParentCredits(parentId, { donation: Math.max(0, credit) })
 
   return {
-    unlinkedMatched: (rawTxs ?? []).length,
+    ppsReset: pps.length,
+    txsProcessed: (txs ?? []).length,
+    newlyLinked,
     unlinkedWrong,
+    spilloverCreated: spillovers.length,
     leftoverCredit: Math.max(0, credit),
   }
 }

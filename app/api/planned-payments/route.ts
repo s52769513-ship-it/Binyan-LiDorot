@@ -222,12 +222,15 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
-    // Apply existing stored credit (of the matching debt type) to the new PP
+    // Apply existing stored credit (of the matching debt type) to the new PP.
+    // Awaited (not fire-and-forget) so the caller's reload reflects a PP that
+    // has already consumed any stored credit — otherwise a new PP shows its
+    // full balance until something else triggers a recalc.
     const parentIdsList = Array.isArray(parentIds) ? parentIds : []
     if (resolvedPPType !== 'salary') {
       const recalc = resolvedPPType === 'donation' ? recalcDonationPPs : recalcPPs
       for (const pid of parentIdsList) {
-        void recalc(pid).catch(() => {})
+        try { await recalc(pid) } catch { /* best-effort */ }
       }
     }
 

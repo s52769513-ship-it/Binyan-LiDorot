@@ -34,7 +34,35 @@ export const SPILLOVER_NOTES_PREFIX = 'זיכוי מעודף תשלום'
 const FAR_FUTURE = '2099-12-31T23:59:59.999Z'
 // 42703 = SQL undefined column (select/filter); PGRST204 = PostgREST schema
 // cache miss on insert/update payload keys — both mean the column is missing
-const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204'])
+export const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204'])
+
+/**
+ * מעדכן זיכוי שכ"ל וזיכוי מגבית בעמודות הנפרדות. אם עמודת המגבית עדיין לא
+ * נמצאת ב-schema cache של PostgREST (מיגרציה שרק הורצה) — לא מפיל את כל
+ * העדכון אלא כותב לפחות את זיכוי השכ"ל, כדי ששכ"ל לא יישבר בגלל המגבית.
+ */
+export async function updateParentCredits(
+  parentId: string,
+  opts: { tuition?: number; donation?: number },
+): Promise<void> {
+  const payload: Record<string, number> = {}
+  if (opts.tuition != null) payload.credit_balance = opts.tuition
+  if (opts.donation != null) payload.donation_credit_balance = opts.donation
+  if (Object.keys(payload).length === 0) return
+
+  const { error } = await supabaseAdmin.from('parents').update(payload).eq('id', parentId)
+  if (error && MISSING_COLUMN_CODES.has(error.code) && 'donation_credit_balance' in payload) {
+    // donation_credit_balance טרם ב-cache — כותבים בלעדיו
+    const { donation_credit_balance, ...rest } = payload
+    void donation_credit_balance
+    if (Object.keys(rest).length > 0) {
+      const { error: e2 } = await supabaseAdmin.from('parents').update(rest).eq('id', parentId)
+      if (e2) throw e2
+    }
+  } else if (error) {
+    throw error
+  }
+}
 
 export interface SpilloverRowInput {
   parentId: string
@@ -203,12 +231,13 @@ export async function applyPaymentToParentPPs(opts: {
 
   // זיכוי שכ"ל וזיכוי מגבית נשמרים בעמודות נפרדות — עודף מתשלום שכ"ל לעולם
   // לא יחול על חוב מגבית, ולהפך
-  const creditColumn = ppType === 'donation' ? 'donation_credit_balance' : 'credit_balance'
   if (remaining > 0) {
+    const creditColumn = ppType === 'donation' ? 'donation_credit_balance' : 'credit_balance'
     const { data: parent } = await supabaseAdmin
       .from('parents').select(creditColumn).eq('id', opts.parentId).single()
     const newCredit = round2(Number((parent as Record<string, unknown> | null)?.[creditColumn] ?? 0) + remaining)
-    await supabaseAdmin.from('parents').update({ [creditColumn]: newCredit }).eq('id', opts.parentId)
+    await updateParentCredits(opts.parentId,
+      ppType === 'donation' ? { donation: newCredit } : { tuition: newCredit })
   }
 
   await recalcParentTuitionBalance(opts.parentId)
