@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getSchedulable } from '@/lib/automationSchedule'
+import { SpecificDatesScheduler } from './SpecificDatesScheduler'
 
 /* Defaults shown before a saved setting exists — must match what the cron
    actually uses (lib/automationSchedule registry), otherwise the UI displays
@@ -790,6 +791,13 @@ function AutomationCard({ def, enabled, onToggleEnabled }: {
 
       {/* ── Schedule bar (not shown for manual-only automations) ── */}
       {!MANUAL_ONLY_IDS.has(def.id) && <ScheduleBar autoId={def.id} enabled={enabled} />}
+
+      {/* ── Specific dates scheduler (not shown for manual-only automations) ── */}
+      {!MANUAL_ONLY_IDS.has(def.id) && (
+        <div className={`px-6 py-4 border-b border-gray-100 ${enabled ? 'bg-blue-50' : 'bg-gray-50 opacity-50 pointer-events-none'}`} dir="rtl">
+          <SpecificDatesScheduler automationId={def.id} />
+        </div>
+      )}
 
       {/* ── Flow diagram (always visible) ── */}
       <div className={`px-6 py-5 border-b border-gray-100 overflow-x-auto ${!enabled ? 'opacity-40' : ''}`} dir="ltr">

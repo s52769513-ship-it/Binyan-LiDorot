@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import {
-  SCHEDULABLE, getSchedulable, israelClock, readConfig, isDue,
-  monthYearOf, type SchedulableAutomation, type ScheduleClock,
+  SCHEDULABLE, getSchedulable, israelClock, readConfig, isDue, isSpecificDateDue,
+  monthYearOf, type SchedulableAutomation, type ScheduleClock, type SpecificDateSchedule,
 } from '@/lib/automationSchedule'
 
 declare const process: { env: Record<string, string | undefined> }
@@ -96,22 +96,45 @@ export async function GET(req: NextRequest) {
     .limit(1)
     .maybeSingle()
 
+  // Fetch all specific-date schedules for today
+  const { data: specificDates } = await supabaseAdmin
+    .from('automation_specific_dates')
+    .select('*')
+    .or(`scheduled_date.eq.${clock.year}-${String(clock.month).padStart(2, '0')}-${String(clock.day).padStart(2, '0')}`)
+
   const results: Record<string, unknown> = {}
 
   for (const a of SCHEDULABLE) {
     const cfg = readConfig(settings, a)
-    if (!isDue(cfg, clock)) {
+
+    // Check recurring schedule first
+    let shouldRun = isDue(cfg, clock)
+    let runReason = 'recurring'
+
+    // Check specific dates
+    if (!shouldRun && specificDates) {
+      const specificSchedule = specificDates.find(s => s.automation_id === a.id) as SpecificDateSchedule | undefined
+      if (specificSchedule && isSpecificDateDue(specificSchedule, clock)) {
+        shouldRun = true
+        runReason = 'specific-date'
+      }
+    }
+
+    if (!shouldRun) {
       results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : `not due (day ${cfg.day}, today is day ${clock.day})` }
       continue
     }
+
+    // Check guard regardless of reason
     if (await alreadyRanThisMonth(a.id, monthKey)) {
       results[a.id] = { skipped: true, reason: 'already ran this month' }
       continue
     }
+
     try {
       const result = await runAutomation(base, a, clock)
-      await writeGuard(a.id, monthKey, clock, result)
-      results[a.id] = { ran: true, result }
+      await writeGuard(a.id, monthKey, clock, { ...result, reason: runReason })
+      results[a.id] = { ran: true, result, reason: runReason }
     } catch (err) {
       results[a.id] = { error: String((err as { message?: string })?.message ?? err) }
     }

@@ -170,3 +170,25 @@ export function readConfig(
     enabled: rawEnabled !== false, // missing → enabled
   }
 }
+
+// ── Specific-date scheduling ────────────────────────────────────────────────
+
+export interface SpecificDateSchedule {
+  id: string
+  automationId: string
+  scheduledDate: string // YYYY-MM-DD
+  hour: number
+  enabled: boolean
+}
+
+/**
+ * Decide whether an automation's specific date is due at the given Israel clock.
+ */
+export function isSpecificDateDue(
+  schedule: SpecificDateSchedule,
+  clock: ScheduleClock,
+): boolean {
+  if (!schedule.enabled) return false
+  const clockDate = `${clock.year}-${pad2(clock.month)}-${pad2(clock.day)}`
+  return clockDate === schedule.scheduledDate
+}
