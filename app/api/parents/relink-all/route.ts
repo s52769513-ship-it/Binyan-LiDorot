@@ -3,6 +3,17 @@ import { relinkParent } from '@/lib/relink'
 
 export const maxDuration = 300 // ריצה על כל ההורים יכולה לקחת דקות
 
+/** שגיאות Supabase הן אובייקטים ללא toString — String(err) נותן "[object Object]".
+ *  מחלץ הודעה קריאה (message/details/code) כדי שהלוג יהיה שימושי. */
+function errText(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === 'object') {
+    const e = err as { message?: string; details?: string; hint?: string; code?: string }
+    return e.message || e.details || e.hint || e.code || JSON.stringify(err)
+  }
+  return String(err)
+}
+
 /**
  * POST /api/parents/relink-all
  * מריץ ריענון (relinkParent) על כל הורה שיש לו תשלומים מתוכננים שאינם
@@ -53,7 +64,7 @@ export async function POST() {
             })
           } catch (err) {
             failed++
-            send({ type: 'progress', current: i + 1, total: parentIds.length, parentName: name, skipped: true, reason: String(err) })
+            send({ type: 'progress', current: i + 1, total: parentIds.length, parentName: name, skipped: true, reason: errText(err) })
           }
         }
 
@@ -71,7 +82,7 @@ export async function POST() {
 
         send({ type: 'complete', applied: done, skipped: failed, totalSpill, totalCredit })
       } catch (err) {
-        send({ type: 'error', message: String(err) })
+        send({ type: 'error', message: errText(err) })
       } finally {
         controller.close()
       }

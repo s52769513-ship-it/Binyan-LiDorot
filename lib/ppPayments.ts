@@ -51,17 +51,26 @@ export async function updateParentCredits(
   if (Object.keys(payload).length === 0) return
 
   const { error } = await supabaseAdmin.from('parents').update(payload).eq('id', parentId)
-  if (error && MISSING_COLUMN_CODES.has(error.code) && 'donation_credit_balance' in payload) {
-    // donation_credit_balance טרם ב-cache — כותבים בלעדיו
-    const { donation_credit_balance, ...rest } = payload
-    void donation_credit_balance
-    if (Object.keys(rest).length > 0) {
-      const { error: e2 } = await supabaseAdmin.from('parents').update(rest).eq('id', parentId)
-      if (e2) throw e2
-    }
-  } else if (error) {
-    throw error
+  if (!error) return
+
+  // אם העדכון נכשל וכלל את עמודת המגבית — לא מפילים את כל הריענון בגלל עמודה
+  // שאולי עוד לא ב-schema cache. מנסים שוב בלי המגבית (משאירים לפחות שכ"ל).
+  // חשוב: לא בודקים קוד שגיאה ספציפי — צורת השגיאה של PostgREST משתנה, וכל
+  // כישלון שקשור למגבית חייב להתנוון בחן ולא לזרוק.
+  if ('donation_credit_balance' in payload && 'credit_balance' in payload) {
+    const { error: e2 } = await supabaseAdmin
+      .from('parents')
+      .update({ credit_balance: payload.credit_balance })
+      .eq('id', parentId)
+    if (e2) throw e2
+    return
   }
+  // רק שכ"ל, או רק מגבית — אם נכשל, זורקים (אין למה להתנוון)
+  if ('donation_credit_balance' in payload && !('credit_balance' in payload)) {
+    // עדכון מגבית-בלבד נכשל (עמודה חסרה) — מתעלמים בשקט עד שהמיגרציה תיקלט
+    return
+  }
+  throw error
 }
 
 export interface SpilloverRowInput {
