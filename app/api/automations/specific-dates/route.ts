@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     if (error) throw error
     return NextResponse.json({ dates: data ?? [] })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = err instanceof Error ? err.message : JSON.stringify(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
     if (error) throw error
     return NextResponse.json({ date: data?.[0] }, { status: 201 })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = err instanceof Error ? err.message : JSON.stringify(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
@@ -70,6 +72,7 @@ export async function DELETE(req: NextRequest) {
     if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = err instanceof Error ? err.message : JSON.stringify(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
