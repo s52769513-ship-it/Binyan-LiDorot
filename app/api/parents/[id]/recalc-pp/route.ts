@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { TUITION_START_DATE } from '@/lib/cutoffs'
 
 /**
  * POST /api/parents/[id]/recalc-pp
@@ -56,6 +57,19 @@ export async function recalcPPs(parentId: string) {
       await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
       unlinkedWrong++
     }
+
+    // ניתוק תנועות בנין לדורות ישנות (לפני 04/2026) שמקושרות ל-PP שכ"ל —
+    // היסטוריות, לא אמורות להיספר. שלב 4 יחשב את היתרה מחדש בלעדיהן.
+    const { data: oldLinked } = await supabaseAdmin
+      .from('transactions')
+      .select('id')
+      .in('planned_payment_id', ppIdList)
+      .contains('project_names', ['בנין לדורות'])
+      .lt('date', TUITION_START_DATE)
+    for (const tx of oldLinked ?? []) {
+      await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
+      unlinkedWrong++
+    }
   }
 
   // ── טעינת תשלומים פתוחים לפי סדר חודש ──────────────────────────────────
@@ -77,6 +91,7 @@ export async function recalcPPs(parentId: string) {
     .contains('project_names', ['בנין לדורות'])
     .is('planned_payment_id', null)
     .gt('amount', 0)
+    .gte('date', TUITION_START_DATE)   // תנועות לפני 04/2026 היסטוריות — לא מקושרות
     .order('date', { ascending: true })
 
   let leftover = 0

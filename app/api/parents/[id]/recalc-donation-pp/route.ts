@@ -7,6 +7,7 @@ import {
   SPILLOVER_NOTES_PREFIX,
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
+import { isTxBeforeStart } from '@/lib/cutoffs'
 
 const UNDEFINED_COLUMN = '42703'
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -109,6 +110,11 @@ export async function recalcDonationPPs(parentId: string) {
 
   for (const tx of txs ?? []) {
     const wasLinked = tx.planned_payment_id != null
+    // תנועת מגבית לפני 06/2026 — היסטורית, לא מקושרת ולא נזקפת. מנתקים אם מקושרת.
+    if (isTxBeforeStart('donation', tx.date as string | null)) {
+      if (wasLinked) linkUpdates.push({ id: tx.id as string, planned_payment_id: null })
+      continue
+    }
     const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
     const open = pps.filter(p => p.balance > 0)
     // קודם PP של אותו חודש; אחרת ה-PP שהיה מקושר (אם עדיין פתוח); אחרת הוותיק

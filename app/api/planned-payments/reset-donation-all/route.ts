@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { DONATION_START_DATE } from '@/lib/cutoffs'
 
 // Iterating every parent + re-linking all transactions can take a while;
 // without this the Vercel gateway times out mid-run ("שגיאת רשת").
@@ -72,6 +73,7 @@ export async function POST() {
         .contains('project_names', ['דמי מגבית'])
         .is('planned_payment_id', null)
         .gt('amount', 0)
+        .gte('date', DONATION_START_DATE)   // מגבית לפני 06/2026 היסטורית — לא מקושרת
         .order('date', { ascending: true })
 
       // Link transactions to PPs with cascade

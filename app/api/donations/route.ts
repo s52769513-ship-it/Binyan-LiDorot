@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { ppBeforeStart } from '@/lib/cutoffs'
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,6 +29,8 @@ export async function GET(req: NextRequest) {
 
     const ppMap: Record<string, { id: string; amount: number; balance: number }> = {}
     for (const pp of pps ?? []) {
+      // מגבית לפני 06/2026 היסטורית — לא מוצגת
+      if (ppBeforeStart('donation', { month_year: pp.month_year as string | null })) continue
       for (const pid of (pp.parent_ids as string[]) ?? []) {
         ppMap[pid] = { id: pp.id, amount: Number(pp.amount), balance: Number(pp.balance) }
       }

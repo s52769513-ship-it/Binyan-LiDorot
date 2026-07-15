@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
 import { calcTransportCost, normalizeTransport } from '@/lib/transport'
+import { ppBeforeStart } from '@/lib/cutoffs'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -369,15 +370,21 @@ export async function GET(
         createdTime: d.created_time ?? '',
       })),
 
-      plannedPayments: (plannedRes.data ?? []).map(pp => ({
-        id: pp.id,
-        name: pp.name ?? '',
-        ppType: (pp.pp_type ?? (pp.name === 'משכורת' ? 'salary' : 'tuition')) as string,
-        amount: pp.amount ?? 0,
-        date: pp.date ?? '',
-        monthYear: pp.month_year ?? '',
-        balance: pp.balance ?? 0,
-      })),
+      plannedPayments: (plannedRes.data ?? [])
+        // הסתרת PP היסטוריים: שכ"ל לפני 04/2026, מגבית לפני 06/2026 (משכורת תמיד מוצג)
+        .filter(pp => {
+          const t = (pp.pp_type ?? (pp.name === 'משכורת' ? 'salary' : 'tuition')) as string
+          return !ppBeforeStart(t, { date: pp.date, month_year: pp.month_year })
+        })
+        .map(pp => ({
+          id: pp.id,
+          name: pp.name ?? '',
+          ppType: (pp.pp_type ?? (pp.name === 'משכורת' ? 'salary' : 'tuition')) as string,
+          amount: pp.amount ?? 0,
+          date: pp.date ?? '',
+          monthYear: pp.month_year ?? '',
+          balance: pp.balance ?? 0,
+        })),
 
       transactions: (transactionsRes.data ?? []).map(tx => ({
         id: tx.id,

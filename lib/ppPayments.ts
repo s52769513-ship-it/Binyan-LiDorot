@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { isTxBeforeStart } from '@/lib/cutoffs'
 
 /**
  * לוגיקה אחודה להחלת תשלום על תשלומים מתוכננים של הורה.
@@ -211,6 +212,12 @@ export async function applyPaymentToParentPPs(opts: {
   const amount = Math.abs(Number(opts.amount)) || 0
   const ppType = opts.ppType === undefined ? 'tuition' : opts.ppType
   if (!ppType) return { ppId: null, ppMonthYear: null, ppBalance: null, applied: 0, leftover: amount }
+
+  // תשלום שכ"ל בתאריך לפני 04/2026 / מגבית לפני 06/2026 — היסטורי, לא מקושר
+  // ולא נזקף כזיכוי (התנועה עצמה עדיין נרשמת אצל הקורא, בלי planned_payment_id).
+  if (isTxBeforeStart(ppType, opts.source?.date)) {
+    return { ppId: null, ppMonthYear: null, ppBalance: null, applied: 0, leftover: 0 }
+  }
 
   const targets = orderTargets(await fetchOpenPPs(opts.parentId, ppType), opts.preferredMonthYear)
   const first = targets[0] ?? null

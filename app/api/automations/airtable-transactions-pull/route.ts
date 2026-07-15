@@ -5,6 +5,7 @@ import { sortByMonth } from '@/lib/months'
 import { normName } from '@/lib/nameUtils'
 import { fetchAllRows } from '@/lib/fetchAllRows'
 import { recalcParentTuitionBalance, ppTypeForProject } from '@/lib/ppPayments'
+import { isTxBeforeStart } from '@/lib/cutoffs'
 
 export const maxDuration = 300 // batch import + balance recalc can take a while
 
@@ -445,10 +446,12 @@ export async function POST(req: NextRequest) {
       // Debt type follows the transaction's project (דמי מגבית → donation PP).
       // Only income applies to PPs — expenses are recorded but not linked.
       const rowPPType = ppTypeForProject(c.projectNames.join(' '))
+      // תנועה היסטורית (שכ"ל לפני 04/2026 / מגבית לפני 06/2026) — נרשמת בלי קישור/זיכוי
+      const historic = isTxBeforeStart(rowPPType, c.date)
       const parentPPs = (ppByParent.get(`${parent.id}|${rowPPType}`) ?? []).filter(p => p.balance > 0)
       const monthMatch = parentPPs.find(p => p.month_year === c.monthYear)
       const ordered = monthMatch ? [monthMatch, ...parentPPs.filter(p => p !== monthMatch)] : parentPPs
-      const target = c.amount > 0 ? (ordered[0] ?? null) : null
+      const target = c.amount > 0 && !historic ? (ordered[0] ?? null) : null
 
       if (target) {
         let remaining = c.amount

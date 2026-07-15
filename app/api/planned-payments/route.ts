@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
 import { recalcDonationPPs } from '@/app/api/parents/[id]/recalc-donation-pp/route'
+import { ppBeforeStart } from '@/lib/cutoffs'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
 
@@ -32,10 +33,19 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query
     if (error) throw error
 
+    // הסתרת PP היסטוריים מהתצוגה: שכ"ל לפני 04/2026, מגבית לפני 06/2026.
+    // מדלגים על הסינון כששולפים PP יחיד לפי id (למשל פתיחת רשומה ספציפית).
+    const rows = idFilter
+      ? (data ?? [])
+      : (data ?? []).filter(p => {
+          const t = (p.pp_type ?? (p.name === 'משכורת' ? 'salary' : 'tuition')) as string
+          return !ppBeforeStart(t, { date: p.date as string | null, month_year: p.month_year as string | null })
+        })
+
     // Optionally join parent names
     let parentMap: Record<string, string> = {}
     if (withParentNames) {
-      const allParentIds = [...new Set((data ?? []).flatMap(p => (p.parent_ids as string[]) ?? []))]
+      const allParentIds = [...new Set(rows.flatMap(p => (p.parent_ids as string[]) ?? []))]
       if (allParentIds.length > 0) {
         const { data: pData } = await supabaseAdmin.from('parents').select('id, name').in('id', allParentIds)
         parentMap = Object.fromEntries((pData ?? []).map(p => [p.id, p.name as string]))
@@ -43,7 +53,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(
-      (data ?? []).map(p => {
+      rows.map(p => {
         const ids = (p.parent_ids as string[]) ?? []
         const parentName = withParentNames ? (ids.map(id => parentMap[id]).filter(Boolean).join(', ') || '') : undefined
         return {

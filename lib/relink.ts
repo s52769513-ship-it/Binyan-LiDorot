@@ -9,6 +9,7 @@ import {
   type PayablePPType,
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
+import { isTxBeforeStart } from '@/lib/cutoffs'
 
 const UNDEFINED_COLUMN = '42703'
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -103,6 +104,13 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
       ? (linked?.pp_type ?? 'tuition')
       : ppTypeForProject((tx.project_names as string[] | null)?.join(' '))
     if (!poolType) continue
+
+    // תנועה שכ"ל לפני 04/2026 / מגבית לפני 06/2026 — היסטורית, לא מקושרת ולא
+    // נזקפת כזיכוי. אם הייתה מקושרת בעבר — מנתקים.
+    if (isTxBeforeStart(poolType, tx.date as string | null)) {
+      if (tx.planned_payment_id != null) linkUpdates.push({ id: tx.id as string, planned_payment_id: null })
+      continue
+    }
     processed++
 
     const open = pps.filter(p => p.balance > 0 && p.pp_type === poolType)
