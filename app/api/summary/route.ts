@@ -306,19 +306,27 @@ export async function GET() {
     const overdueAmount = (overdueRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
     const overdueCount = (overdueRes.data ?? []).length
 
-    // Combine legacy pp_credit + tuition credit_balance + donation credit into
-    // one number per parent (the top-level "saved credits" KPI covers both debts)
+    // Per parent: tuition credit (legacy pp_credit + credit_balance) and
+    // donation credit kept separate, plus a combined total. The two debt
+    // types never share credit, so the dashboard can show the split.
     const ppCreditList = (ppCreditRes.data ?? [])
-      .map(p => ({
-        id: p.id as string,
-        name: p.name as string,
-        ppCredit: (Number(p.pp_credit) || 0)
+      .map(p => {
+        const tuitionCredit = (Number(p.pp_credit) || 0)
           + (Number((p as { credit_balance?: number }).credit_balance) || 0)
-          + (Number((p as { donation_credit_balance?: number }).donation_credit_balance) || 0),
-      }))
+        const donationCredit = Number((p as { donation_credit_balance?: number }).donation_credit_balance) || 0
+        return {
+          id: p.id as string,
+          name: p.name as string,
+          tuitionCredit,
+          donationCredit,
+          ppCredit: tuitionCredit + donationCredit,
+        }
+      })
       .filter(p => p.ppCredit > 0)
       .sort((a, b) => b.ppCredit - a.ppCredit)
-    const ppCreditTotal = ppCreditList.reduce((s, p) => s + p.ppCredit, 0)
+    const ppCreditTotal         = ppCreditList.reduce((s, p) => s + p.ppCredit, 0)
+    const ppCreditTuitionTotal  = ppCreditList.reduce((s, p) => s + p.tuitionCredit, 0)
+    const ppCreditDonationTotal = ppCreditList.reduce((s, p) => s + p.donationCredit, 0)
 
     const overdueAlerts = (overdueRes.data ?? []).slice(0, 10).map(r => {
       const pids = (r.parent_ids as string[]) ?? []
@@ -362,7 +370,9 @@ export async function GET() {
       salaryDebtCount,
       overdueAmount:    Math.round(overdueAmount),
       overdueCount,
-      ppCreditTotal:    Math.round(ppCreditTotal),
+      ppCreditTotal:         Math.round(ppCreditTotal),
+      ppCreditTuitionTotal:  Math.round(ppCreditTuitionTotal),
+      ppCreditDonationTotal: Math.round(ppCreditDonationTotal),
       ppCreditList,
       overdueAlerts,
       salaryAlerts,

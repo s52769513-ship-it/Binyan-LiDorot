@@ -72,7 +72,9 @@ interface DashboardData {
   overdueAmount: number
   overdueCount: number
   ppCreditTotal: number
-  ppCreditList: { id: string; name: string; ppCredit: number }[]
+  ppCreditTuitionTotal: number
+  ppCreditDonationTotal: number
+  ppCreditList: { id: string; name: string; ppCredit: number; tuitionCredit: number; donationCredit: number }[]
   overdueAlerts: { id: string; parentId: string; parentName: string; balance: number; date: string; monthYear: string }[]
   salaryAlerts: { parentId: string; parentName: string; balance: number; monthYear: string }[]
 }
@@ -707,6 +709,11 @@ export default function Dashboard() {
     key: p.id,
     name: p.name,
     amount: p.ppCredit,
+    // Show how the credit splits between the two (always-separate) debt types
+    sub: [
+      p.tuitionCredit  > 0 ? `שכ"ל ₪${fmt(p.tuitionCredit)}`  : null,
+      p.donationCredit > 0 ? `מגבית ₪${fmt(p.donationCredit)}` : null,
+    ].filter(Boolean).join(' · '),
     parentId: p.id,
     amountColor: '#10b981',
   }))
@@ -870,6 +877,12 @@ export default function Dashboard() {
                   </div>
                   <div className="text-xl font-bold tabular-nums text-emerald-700 leading-none">
                     <span className="text-xs font-normal text-gray-400">₪</span>{fmt(d?.ppCreditTotal ?? 0)}
+                  </div>
+                  {/* Split by debt type — the two are always kept separate */}
+                  <div className="flex items-center gap-2 text-[10px] tabular-nums">
+                    <span className="text-gray-500">שכ&quot;ל <span className="font-semibold text-gray-700">₪{fmt(d?.ppCreditTuitionTotal ?? 0)}</span></span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-500">מגבית <span className="font-semibold text-emerald-700">₪{fmt(d?.ppCreditDonationTotal ?? 0)}</span></span>
                   </div>
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full progress-shimmer" style={{ width: d && (d.ppCreditTotal ?? 0) > 0 ? '50%' : '0%', background: '#10b981' }} />
