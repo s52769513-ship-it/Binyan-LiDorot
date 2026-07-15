@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-interface SpecificDateSchedule {
+interface SpecificDateScheduleRow {
   id: string
   automation_id: string
   scheduled_date: string
@@ -11,7 +11,7 @@ interface SpecificDateSchedule {
 }
 
 export function SpecificDatesScheduler({ automationId }: { automationId: string }) {
-  const [dates, setDates] = useState<SpecificDateSchedule[]>([])
+  const [dates, setDates] = useState<SpecificDateScheduleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [newDate, setNewDate] = useState('')
   const [newHour, setNewHour] = useState('08')

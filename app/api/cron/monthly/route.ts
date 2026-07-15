@@ -97,10 +97,20 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
 
   // Fetch all specific-date schedules for today
-  const { data: specificDates } = await supabaseAdmin
+  const todayIso = `${clock.year}-${String(clock.month).padStart(2, '0')}-${String(clock.day).padStart(2, '0')}`
+  const { data: rawSpecificDates } = await supabaseAdmin
     .from('automation_specific_dates')
     .select('*')
-    .or(`scheduled_date.eq.${clock.year}-${String(clock.month).padStart(2, '0')}-${String(clock.day).padStart(2, '0')}`)
+    .eq('scheduled_date', todayIso)
+
+  // Map database row names to interface names
+  const specificDates: SpecificDateSchedule[] | null = rawSpecificDates?.map((row: any) => ({
+    id: row.id,
+    automationId: row.automation_id,
+    scheduledDate: row.scheduled_date,
+    hour: row.hour,
+    enabled: row.enabled,
+  })) ?? null
 
   const results: Record<string, unknown> = {}
 
@@ -113,7 +123,7 @@ export async function GET(req: NextRequest) {
 
     // Check specific dates
     if (!shouldRun && specificDates) {
-      const specificSchedule = specificDates.find(s => s.automation_id === a.id) as SpecificDateSchedule | undefined
+      const specificSchedule = specificDates.find(s => s.automationId === a.id)
       if (specificSchedule && isSpecificDateDue(specificSchedule, clock)) {
         shouldRun = true
         runReason = 'specific-date'
