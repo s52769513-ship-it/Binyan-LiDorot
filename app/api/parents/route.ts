@@ -26,9 +26,25 @@ export async function GET(req: NextRequest) {
 
     if (search.trim()) {
       const q = search.trim()
-      query = query.or(
-        `name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
-      )
+      const words = q.split(/\s+/).filter(w => w.length > 0)
+
+      if (words.length === 1) {
+        // חיפוש יחיד: חפש בכל השדות
+        query = query.or(
+          `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
+        )
+      } else if (words.length === 2) {
+        // שני מילים: חפש בשם פרטי + משפחה בשני הסדרים
+        const [word1, word2] = words
+        query = query.or(
+          `and(first_name.ilike.%${word1}%,last_name.ilike.%${word2}%),and(first_name.ilike.%${word2}%,last_name.ilike.%${word1}%),name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
+        )
+      } else {
+        // יותר מ-שתי מילים: חיפוש רגיל
+        query = query.or(
+          `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
+        )
+      }
     }
 
     if (status) {
