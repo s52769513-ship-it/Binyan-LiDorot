@@ -106,11 +106,12 @@ export async function GET() {
         .lt('date', todayStr)
         .order('date', { ascending: true }),
 
-      // New: parents with credit (either legacy pp_credit or merged credit_balance)
+      // New: parents with credit — legacy pp_credit, tuition credit_balance,
+      // or the separate donation_credit_balance (all shown together here)
       supabase
         .from('parents')
-        .select('id, name, pp_credit, credit_balance')
-        .or('pp_credit.gt.0,credit_balance.gt.0')
+        .select('id, name, pp_credit, credit_balance, donation_credit_balance')
+        .or('pp_credit.gt.0,credit_balance.gt.0,donation_credit_balance.gt.0')
         .limit(30),
 
       // Employees count (parents with salary)
@@ -305,12 +306,15 @@ export async function GET() {
     const overdueAmount = (overdueRes.data ?? []).reduce((s, r) => s + (Number(r.balance) || 0), 0)
     const overdueCount = (overdueRes.data ?? []).length
 
-    // Combine legacy pp_credit + merged credit_balance into one number per parent
+    // Combine legacy pp_credit + tuition credit_balance + donation credit into
+    // one number per parent (the top-level "saved credits" KPI covers both debts)
     const ppCreditList = (ppCreditRes.data ?? [])
       .map(p => ({
         id: p.id as string,
         name: p.name as string,
-        ppCredit: (Number(p.pp_credit) || 0) + (Number((p as { credit_balance?: number }).credit_balance) || 0),
+        ppCredit: (Number(p.pp_credit) || 0)
+          + (Number((p as { credit_balance?: number }).credit_balance) || 0)
+          + (Number((p as { donation_credit_balance?: number }).donation_credit_balance) || 0),
       }))
       .filter(p => p.ppCredit > 0)
       .sort((a, b) => b.ppCredit - a.ppCredit)
