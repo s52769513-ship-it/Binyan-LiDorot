@@ -12,6 +12,7 @@ import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
 const ReportModal            = dynamic(() => import('./ReportModal'),            { ssr: false })
+const TypeMultiSelect        = dynamic(() => import('./TypeMultiSelect'),        { ssr: false })
 import { DebtModal }         from './DebtModal'
 
 /* ─── helpers ──────────────────────────────────────── */
@@ -1209,6 +1210,14 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         : <span className="text-gray-300 italic text-xs">לא הוזן</span>
                       }
                     </div>
+                  </div>
+                  {/* סוג — בחירה מרובה, ניתן לעריכה + יצירת סוג חדש */}
+                  <div className="px-4 py-2.5">
+                    <TypeMultiSelect
+                      label="סוג"
+                      selected={parent.personType ?? []}
+                      onChange={next => patch({ personType: next })}
+                    />
                   </div>
                   {parent.teacherClassIds.length > 0 && (
                     <div className="px-4 py-2.5">

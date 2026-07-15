@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import TypeMultiSelect from './TypeMultiSelect'
 
 interface Props {
   onClose: () => void
@@ -17,6 +18,7 @@ export default function AddParentModal({ onClose, onSuccess }: Props) {
     notes: '',
   })
   const [status, setStatus] = useState(['פעיל'])
+  const [personType, setPersonType] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -32,7 +34,7 @@ export default function AddParentModal({ onClose, onSuccess }: Props) {
       const res = await fetch('/api/parents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, status }),
+        body: JSON.stringify({ ...form, status, personType }),
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
@@ -89,6 +91,8 @@ export default function AddParentModal({ onClose, onSuccess }: Props) {
               ))}
             </div>
           </div>
+
+          <TypeMultiSelect selected={personType} onChange={setPersonType} label="סוג" />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">הערות</label>

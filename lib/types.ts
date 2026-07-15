@@ -108,6 +108,7 @@ export interface ParentDetail extends ParentSummary {
   beneficiaryName: string
   homePhone: string
   role: string[]
+  personType: string[]
   synagogue: string
   bankName: string
   bankBranch: number | null

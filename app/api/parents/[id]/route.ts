@@ -10,7 +10,7 @@ const FIELD_MAP: Record<string, string> = {
   motherName: 'mother_name', fatherPhone: 'father_phone',
   motherPhone: 'mother_phone', email: 'email',
   address: 'address', building: 'building', city: 'city',
-  notes: 'notes', status: 'status',
+  notes: 'notes', status: 'status', personType: 'person_type',
   tuitionTotal: 'tuition_total', tuitionBalance: 'tuition_balance',
   birthDate: 'birth_date',
   // Personal fields
@@ -210,6 +210,7 @@ export async function PATCH(
     // Normalize array fields the frontend always expects as arrays (DB may store null)
     result.status = Array.isArray(result.status) ? result.status : (result.status ? [result.status] : [])
     result.role = Array.isArray(result.role) ? result.role : []
+    result.personType = Array.isArray(result.personType) ? result.personType : (result.personType ? [result.personType] : [])
     return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
@@ -296,6 +297,7 @@ export async function GET(
       building: p.building ?? '',
       city: p.city ?? '',
       status: toArray(p.status),
+      personType: toArray(p.person_type),
       childrenCount: activeCount,
       tuitionTotal: computedTuitionTotal,
       tuitionBalance: computedBalance,

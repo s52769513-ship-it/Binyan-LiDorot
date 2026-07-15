@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 
 const PAGE_SIZE = 50
 
@@ -175,7 +176,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { firstName, lastName, motherName, fatherPhone, motherPhone, email, address, building, city, status, notes } = body
+    const { firstName, lastName, motherName, fatherPhone, motherPhone, email, address, building, city, status, personType, notes } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: 'שם פרטי ושם משפחה הם שדות חובה' }, { status: 400 })
@@ -198,6 +199,7 @@ export async function POST(req: NextRequest) {
       building:    building || '',
       city:        city    || '',
       status:      Array.isArray(status) ? status : (status ? [status] : ['פעיל']),
+      person_type: Array.isArray(personType) ? personType : (personType ? [personType] : []),
       notes:       notes   || '',
       children_count: 0,
       tuition_total:  0,
@@ -205,7 +207,15 @@ export async function POST(req: NextRequest) {
       synced_at: syncedAt,
     }
     const { error } = await supabaseAdmin.from('parents').insert(row)
-    if (error) throw error
+    if (error && MISSING_COLUMN_CODES.has(error.code)) {
+      // person_type טרם ב-schema cache (מיגרציה שלא הורצה) — יוצרים בלעדיו
+      const { person_type, ...rest } = row
+      void person_type
+      const { error: e2 } = await supabaseAdmin.from('parents').insert(rest)
+      if (e2) throw e2
+    } else if (error) {
+      throw error
+    }
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
