@@ -36,6 +36,9 @@ export async function PATCH(req: NextRequest) {
     if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = err instanceof Error ? err.message
+      : (err && typeof err === 'object' && 'message' in err) ? String((err as { message: unknown }).message)
+      : JSON.stringify(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
