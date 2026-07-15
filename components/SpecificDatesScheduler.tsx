@@ -16,6 +16,7 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
   const [newDate, setNewDate] = useState('')
   const [newHour, setNewHour] = useState('08')
   const [adding, setAdding] = useState(false)
+  const [error, setError] = useState('')
 
   const loadDates = async () => {
     try {
@@ -36,6 +37,7 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
   const addDate = async () => {
     if (!newDate) return
     setAdding(true)
+    setError('')
     try {
       const r = await fetch('/api/automations/specific-dates', {
         method: 'POST',
@@ -46,13 +48,17 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
           hour: Number(newHour),
         }),
       })
-      if (r.ok) {
-        const d = await r.json()
-        setDates(p => [...p, d.date].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date)))
-        setNewDate('')
-        setNewHour('08')
+      const data = await r.json()
+      if (!r.ok) {
+        setError(data.error || 'שגיאה בהוספת תאריך')
+        return
       }
+      setDates(p => [...p, data.date].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date)))
+      setNewDate('')
+      setNewHour('08')
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'שגיאה בהוספת תאריך'
+      setError(msg)
       console.error('Failed to add date:', err)
     } finally {
       setAdding(false)
@@ -79,11 +85,15 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !enabled }),
       })
-      if (r.ok) {
-        const updated = await r.json()
-        setDates(p => p.map(d => d.id === id ? updated.date : d))
+      const data = await r.json()
+      if (!r.ok) {
+        setError(data.error || 'שגיאה בעדכון')
+        return
       }
+      setDates(p => p.map(d => d.id === id ? data.date : d))
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'שגיאה בעדכון'
+      setError(msg)
       console.error('Failed to toggle date:', err)
     }
   }
@@ -95,11 +105,15 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hour }),
       })
-      if (r.ok) {
-        const updated = await r.json()
-        setDates(p => p.map(d => d.id === id ? updated.date : d))
+      const data = await r.json()
+      if (!r.ok) {
+        setError(data.error || 'שגיאה בעדכון שעה')
+        return
       }
+      setDates(p => p.map(d => d.id === id ? data.date : d))
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'שגיאה בעדכון שעה'
+      setError(msg)
       console.error('Failed to update hour:', err)
     }
   }
@@ -107,6 +121,12 @@ export function SpecificDatesScheduler({ automationId }: { automationId: string 
   return (
     <div className="space-y-3" dir="rtl">
       <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">תאריכים ספציפיים</p>
+
+      {error && (
+        <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Add new date */}
       <div className="flex items-center gap-2 flex-wrap">
