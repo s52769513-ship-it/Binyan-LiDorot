@@ -482,6 +482,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                   <th className="px-3 py-2 text-left">סכום</th>
                   <th className="px-3 py-2 text-left">יתרה</th>
                   <th className="px-3 py-2 text-center">סטטוס</th>
+                  <th className="px-2 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -493,7 +494,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                   return (
                     <Fragment key={pp.id}>
                     <tr onClick={() => toggleExpand(pp.id)}
-                      className="cursor-pointer hover:bg-gray-50 transition-colors">
+                      className="cursor-pointer hover:bg-gray-50 transition-colors group">
                       <td className="px-3 py-2 font-medium text-gray-700">
                         <span className={`inline-block text-gray-400 ml-1 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
                         {pp.monthYear}
@@ -509,10 +510,26 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-600">פתוח</span>
                         )}
                       </td>
+                      <td className="px-2 py-2 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!confirm(`למחוק תשלום מתוכנן: ${pp.name || pp.monthYear}?`)) return
+                            fetch(`/api/planned-payments/${pp.id}`, { method: 'DELETE', headers: authHeaders() })
+                              .then(r => r.json())
+                              .then(d => {
+                                if (d.error) alert('שגיאה: ' + d.error)
+                                else loadPPs()
+                              })
+                          }}
+                          className="p-1 text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-all"
+                          title="מחיקה"
+                        >🗑</button>
+                      </td>
                     </tr>
                     {isOpen && (
                       <tr className="bg-gray-50/60">
-                        <td colSpan={4} className="px-3 py-2">
+                        <td colSpan={5} className="px-3 py-2">
                           {loadingTx === pp.id ? (
                             <div className="text-[11px] text-gray-400">טוען תשלומים...</div>
                           ) : txs && txs.length > 0 ? (
