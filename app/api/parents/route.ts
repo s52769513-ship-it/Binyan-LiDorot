@@ -34,11 +34,11 @@ export async function GET(req: NextRequest) {
           `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
         )
       } else if (words.length === 2) {
-        // שני מילים: חפש בשם פרטי + משפחה בשני הסדרים
+        // שני מילים: שתיהן חייבות להתאים יחד לשם פרטי+משפחה (בכל סדר) —
+        // אחרת מילה אחת בלבד ("לוי") תתאים גם לתת-מחרוזת בשם ארוך יותר ("לויפער")
         const [word1, word2] = words
-        // Search for both words in any name field + full phrase matching
         query = query.or(
-          `first_name.ilike.%${word1}%,last_name.ilike.%${word1}%,first_name.ilike.%${word2}%,last_name.ilike.%${word2}%,name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
+          `and(first_name.ilike.%${word1}%,last_name.ilike.%${word2}%),and(first_name.ilike.%${word2}%,last_name.ilike.%${word1}%),name.ilike.%${q}%,city.ilike.%${q}%,father_phone.ilike.%${q}%,mother_phone.ilike.%${q}%,id_number.ilike.%${q}%`
         )
       } else {
         // יותר מ-שתי מילים: חיפוש רגיל
