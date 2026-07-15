@@ -17,6 +17,8 @@ export default function ParentsPage() {
   const [page, setPage]                 = useState(0)
   const [search, setSearch]             = useState('')
   const [filterStatus, setFilterStatus]   = useState('')
+  const [filterType, setFilterType]       = useState('')
+  const [typeOptions, setTypeOptions]     = useState<string[]>([])
   const [filterDebt, setFilterDebt]       = useState<FilterDebt>('all')
   const [filterCity, setFilterCity]       = useState('')
   const [filterHasChildren, setFilterHasChildren] = useState(false)
@@ -44,6 +46,7 @@ export default function ParentsPage() {
       page: String(page), search: debouncedSearch,
       status: filterStatus, debt: filterDebt,
       sort: sortField, dir: sortDir,
+      ...(filterType ? { personType: filterType } : {}),
       ...(filterCity ? { city: filterCity } : {}),
       ...(filterHasChildren ? { hasChildren: 'true' } : {}),
       ...(filterDeductTuition ? { deductTuition: 'true' } : {}),
@@ -59,10 +62,18 @@ export default function ParentsPage() {
       })
       .catch(() => setError('שגיאה בטעינת הורים'))
       .finally(() => setLoading(false))
-  }, [page, debouncedSearch, filterStatus, filterDebt, sortField, sortDir, filterCity, filterHasChildren, filterDeductTuition, filterHasGaps])
+  }, [page, debouncedSearch, filterStatus, filterType, filterDebt, sortField, sortDir, filterCity, filterHasChildren, filterDeductTuition, filterHasGaps])
 
   useEffect(() => { loadParents() }, [loadParents])
   useRealtimeRefresh(loadParents, ['parents', 'transactions', 'planned_payments'])
+
+  // Load the "type" (סוג) options for the filter (defaults + custom values)
+  useEffect(() => {
+    fetch('/api/parents/types')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d?.types)) setTypeOptions(d.types) })
+      .catch(() => {})
+  }, [])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -134,6 +145,32 @@ export default function ParentsPage() {
           </button>
         )}
       </div>
+
+      {/* Type (סוג) filter chips */}
+      {typeOptions.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center" dir="rtl">
+          <span className="text-xs text-gray-400 ml-1">סוג:</span>
+          <button
+            onClick={() => { setFilterType(''); setPage(0) }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !filterType ? 'bg-[#1a3a7a] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            הכל
+          </button>
+          {typeOptions.map(t => (
+            <button
+              key={t}
+              onClick={() => { setFilterType(filterType === t ? '' : t); setPage(0) }}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                filterType === t ? 'bg-[#1a3a7a] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">

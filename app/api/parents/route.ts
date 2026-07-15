@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const page   = Math.max(0, parseInt(searchParams.get('page') ?? '0'))
     const search = searchParams.get('search') ?? ''
     const status      = searchParams.get('status') ?? ''
+    const personType  = searchParams.get('personType') ?? ''
     const debt        = searchParams.get('debt') ?? 'all'
     const city        = searchParams.get('city') ?? ''
     const hasChildren   = searchParams.get('hasChildren') === 'true'
@@ -47,6 +48,10 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       query = query.contains('status', [status])
+    }
+
+    if (personType) {
+      query = query.contains('person_type', [personType])
     }
 
     if (debt === 'debt') {
