@@ -5,9 +5,10 @@ import { supabaseAdmin } from '@/lib/supabase'
 // Update a specific date schedule (hour, enabled status)
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await req.json()
     const { hour, enabled } = body
 
@@ -19,7 +20,7 @@ export async function PATCH(
     const { data, error } = await supabaseAdmin
       .from('automation_specific_dates')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
 
     if (error) throw error
