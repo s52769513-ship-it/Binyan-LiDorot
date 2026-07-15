@@ -134,20 +134,25 @@ export interface ScheduleConfig { day: number; hour: number; enabled: boolean }
 /**
  * Decide whether an automation is due at the given Israel clock.
  *
- * Matches on day-of-month only. The configured hour is intentionally NOT
- * enforced here: on Vercel's Hobby plan the cron ticks once a day at a fixed
- * time, so gating on "clock.hour >= cfg.hour" would mean any hour later than
- * that single tick can never be satisfied — the automation would silently be
- * skipped for the entire month, every month. The hour is still stored (and
- * shown in the UI) so it's ready to be enforced once an hourly tick is
- * available (Vercel Pro). The caller must additionally enforce
- * once-per-month via an idempotency guard.
+ * Honors both the chosen day AND hour using a "catch-up" comparison: due once
+ * the clock has reached the scheduled (day, hour) within the month. With an
+ * hourly tick (the GitHub Actions workflow, .github/workflows/hourly-cron.yml)
+ * this fires exactly at the chosen hour; if a tick is delayed or missed, the
+ * next tick still satisfies the >= condition so the run isn't lost. The caller
+ * MUST enforce once-per-month via an idempotency guard (alreadyRanThisMonth),
+ * otherwise every later tick that month would re-run it.
+ *
+ * This also stays safe under Vercel's single daily tick (kept as a backup):
+ * a late-hour automation simply catches up on the next day's tick rather than
+ * being silently skipped for the whole month.
  */
 export function isDue(cfg: ScheduleConfig, clock: ScheduleClock): boolean {
   if (!cfg.enabled) return false
   // Clamp the target day to the month length (e.g. day 31 in a 30-day month).
   const targetDay = Math.min(cfg.day, daysInMonth(clock.year, clock.month))
-  return clock.day === targetDay
+  if (clock.day < targetDay) return false
+  if (clock.day === targetDay && clock.hour < cfg.hour) return false
+  return true
 }
 
 /** Read a ScheduleConfig from a flat settings object for one automation. */
