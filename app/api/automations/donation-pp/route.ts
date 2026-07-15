@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recalcDonationPPs } from '@/app/api/parents/[id]/recalc-donation-pp/route'
 
 function emit(ctrl: ReadableStreamDefaultController, enc: TextEncoder, ev: object) {
   ctrl.enqueue(enc.encode(JSON.stringify(ev) + '\n'))
@@ -136,6 +137,8 @@ export async function POST(req: NextRequest) {
               // Airtable sync's prune step (which deletes stale rows).
               synced_at:  '2099-12-31T23:59:59.999Z',
             })
+            // חוב מגבית חדש בודק אם יש זיכוי מגבית שמור ולוקח אותו לעצמו
+            void recalcDonationPPs(donor.id).catch(() => {})
           }
 
           e({ type: 'progress', parentName: donor.name, ppCreated: true, amount: donor.amount })

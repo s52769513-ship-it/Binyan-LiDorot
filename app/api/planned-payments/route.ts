@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
+import { recalcDonationPPs } from '@/app/api/parents/[id]/recalc-donation-pp/route'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
 
@@ -178,11 +179,12 @@ export async function PATCH(req: NextRequest) {
       } catch { /* offset recalc is best-effort */ }
     }
 
-    // Recalc credits for affected parents when tuition PP changes
+    // Recalc credits for affected parents when a payable PP changes
     if (existing.pp_type !== 'salary') {
       const pids = (existing.parent_ids as string[]) ?? []
+      const recalc = existing.pp_type === 'donation' ? recalcDonationPPs : recalcPPs
       for (const pid of pids) {
-        void recalcPPs(pid).catch(() => {})
+        void recalc(pid).catch(() => {})
       }
     }
 
@@ -205,11 +207,12 @@ export async function POST(req: NextRequest) {
     // Use far-future synced_at so prune_stale_rows (Airtable sync) never deletes local records
     const syncedAt = '2099-12-31T23:59:59.999Z'
 
+    const resolvedPPType = ppType ?? (name === 'משכורת' ? 'salary' : 'tuition')
     const row = {
       id,
       amount: Number(amount),
       name: name || '',
-      pp_type: ppType ?? (name === 'משכורת' ? 'salary' : 'tuition'),
+      pp_type: resolvedPPType,
       date: date || null,
       month_year: monthYear || '',
       balance: Number(amount),   // new planned payment → full amount is balance
@@ -219,10 +222,13 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
-    // Apply existing credit_balance to new PP (and recalc tuition_balance)
+    // Apply existing stored credit (of the matching debt type) to the new PP
     const parentIdsList = Array.isArray(parentIds) ? parentIds : []
-    for (const pid of parentIdsList) {
-      void recalcPPs(pid).catch(() => {})
+    if (resolvedPPType !== 'salary') {
+      const recalc = resolvedPPType === 'donation' ? recalcDonationPPs : recalcPPs
+      for (const pid of parentIdsList) {
+        void recalc(pid).catch(() => {})
+      }
     }
 
     return NextResponse.json({ success: true, id })

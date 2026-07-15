@@ -201,11 +201,14 @@ export async function applyPaymentToParentPPs(opts: {
   }
   await insertSpilloverRows(spillovers)
 
+  // זיכוי שכ"ל וזיכוי מגבית נשמרים בעמודות נפרדות — עודף מתשלום שכ"ל לעולם
+  // לא יחול על חוב מגבית, ולהפך
+  const creditColumn = ppType === 'donation' ? 'donation_credit_balance' : 'credit_balance'
   if (remaining > 0) {
     const { data: parent } = await supabaseAdmin
-      .from('parents').select('credit_balance').eq('id', opts.parentId).single()
-    const newCredit = round2(Number(parent?.credit_balance ?? 0) + remaining)
-    await supabaseAdmin.from('parents').update({ credit_balance: newCredit }).eq('id', opts.parentId)
+      .from('parents').select(creditColumn).eq('id', opts.parentId).single()
+    const newCredit = round2(Number((parent as Record<string, unknown> | null)?.[creditColumn] ?? 0) + remaining)
+    await supabaseAdmin.from('parents').update({ [creditColumn]: newCredit }).eq('id', opts.parentId)
   }
 
   await recalcParentTuitionBalance(opts.parentId)

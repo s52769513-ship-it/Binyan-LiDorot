@@ -3,7 +3,9 @@ import { sortByMonth } from '@/lib/months'
 import {
   insertSpilloverRows,
   recalcParentTuitionBalance,
+  ppTypeForProject,
   SPILLOVER_NOTES_PREFIX,
+  type PayablePPType,
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
 
@@ -13,24 +15,37 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 export interface RelinkStats {
   ppsReset: number
   txsProcessed: number
+  newlyLinked: number
   spilloverCreated: number
   spilloverTotal: number
+  /** סכום זיכוי כולל (שכ"ל + מגבית) — לתאימות לאחור */
   credit: number
+  creditTuition: number
+  creditDonation: number
+}
+
+interface PoolPP {
+  id: string
+  amount: number
+  balance: number
+  month_year: string
+  pp_type: PayablePPType | null
 }
 
 /**
- * ריענון הורה — הרצה מחדש של כל התנועות המקושרות:
+ * ריענון הורה — הרצה מחדש של כל התנועות המשויכות לחוב (מקושרות וגם כאלה
+ * שמעולם לא קושרו):
  * 1. מוחק שורות "זיכוי מעודף תשלום" שנוצרו בעבר (משוחזרות מחדש בהרצה)
- * 2. מאפס יתרות של כל ה-PP שאינם משכורת ואת יתרת הזכות
- * 3. מריץ כל תנועה מקושרת בסדר כרונולוגי: ה-PP המקושר קודם, גלישה
- *    לוותיקים באותו סוג חוב (שכ"ל↔שכ"ל, מגבית↔מגבית — לא מערבבים),
- *    וכל גלישה נרשמת כשורת "זיכוי מעודף תשלום" גלויה על ה-PP שקיבל אותה
- * 4. עודף סופי → יתרת זכות של ההורה; עדכון tuition_balance
+ * 2. מאפס יתרות של כל ה-PP שאינם משכורת ואת יתרות הזכות (שכ"ל + מגבית בנפרד)
+ * 3. מריץ כל תנועה (מקושרת או חופשית) בסדר כרונולוגי: קודם PP של אותו חודש
+ *    (אם פתוח), אחרת ה-PP שהייתה מקושרת אליו כבר (אם עדיין פתוח), אחרת
+ *    הפתוח הוותיק ביותר — גלישה נשארת בתוך אותו סוג חוב (שכ"ל↔שכ"ל,
+ *    מגבית↔מגבית — לא מערבבים), וכל גלישה נרשמת כשורת "זיכוי מעודף תשלום"
+ *    גלויה על ה-PP שקיבל אותה
+ * 4. עודף סופי → יתרת זכות מתאימה (credit_balance / donation_credit_balance)
  */
 export async function relinkParent(parentId: string): Promise<RelinkStats> {
   // 1. Delete previously generated spillover rows — the replay recreates them.
-  //    Match both the source_transaction_id marker (new rows) and the notes
-  //    prefix (legacy rows created before the column existed).
   const delBySource = await supabaseAdmin
     .from('transactions')
     .delete()
@@ -51,35 +66,55 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
     .contains('parent_ids', [parentId])
     .neq('pp_type', 'salary')
   if (ppErr) throw ppErr
-  const pps = sortByMonth(ppsRaw ?? [], true).map(p => ({
+  const pps: PoolPP[] = sortByMonth(ppsRaw ?? [], true).map(p => ({
     id: p.id as string,
     amount: Number(p.amount) || 0,
     balance: Number(p.amount) || 0,
     month_year: (p.month_year as string) ?? '',
-    pp_type: (p.pp_type as string) ?? null,
+    pp_type: (p.pp_type as PayablePPType | null) ?? null,
   }))
 
-  // 3. Linked positive transactions, oldest first (spillover rows are gone)
+  // 3. All positive transactions (linked or not), oldest first — a
+  //    transaction never linked before (e.g. a donation payment that
+  //    arrived before its PP existed) gets picked up and linked here too.
   const { data: txs, error: txErr } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, date, month_year, planned_payment_id')
+    .select('id, amount, date, month_year, planned_payment_id, project_names')
     .contains('parent_ids', [parentId])
-    .not('planned_payment_id', 'is', null)
     .gt('amount', 0)
     .order('date', { ascending: true })
   if (txErr) throw txErr
 
   const spillovers: SpilloverRowInput[] = []
-  let credit = 0
+  const linkUpdates: { id: string; planned_payment_id: string | null }[] = []
+  let creditTuition = 0
+  let creditDonation = 0
+  let newlyLinked = 0
+  let processed = 0
 
   for (const tx of txs ?? []) {
-    const linked = pps.find(p => p.id === tx.planned_payment_id)
-    // הגלישה נשארת בתוך אותו סוג חוב; תנועה שה-PP שלה לא בבריכה (נמחק) — שכ"ל
-    const poolType = linked?.pp_type ?? 'tuition'
+    const wasLinked = tx.planned_payment_id != null
+    const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
+    // תנועה שכבר הייתה מקושרת: סוג החוב נקבע לפי ה-PP עצמו (מקור אמת).
+    // תנועה חופשית: סוג החוב נקבע לפי הפרויקט שלה — קטגוריה שאינה
+    // שכ"ל/מגבית (משכורות, הוצאות וכו') נשארת בלי קישור, כמו בכל שאר הקוד.
+    const poolType: PayablePPType | null = wasLinked
+      ? (linked?.pp_type ?? 'tuition')
+      : ppTypeForProject((tx.project_names as string[] | null)?.join(' '))
+    if (!poolType) continue
+    processed++
+
     const open = pps.filter(p => p.balance > 0 && p.pp_type === poolType)
-    const cascade = linked && linked.balance > 0
-      ? [linked, ...open.filter(p => p.id !== linked.id)]
-      : open
+    const monthMatch = open.find(p => p.month_year === tx.month_year)
+    const stickyLink = linked && linked.balance > 0 ? linked : undefined
+    const preferred = monthMatch ?? stickyLink
+    const cascade = preferred ? [preferred, ...open.filter(p => p.id !== preferred.id)] : open
+
+    const primaryId = cascade[0]?.id ?? null
+    if ((tx.planned_payment_id ?? null) !== primaryId) {
+      linkUpdates.push({ id: tx.id as string, planned_payment_id: primaryId })
+      if (!wasLinked && primaryId) newlyLinked++
+    }
 
     let remaining = Math.abs(Number(tx.amount))
     for (const pp of cascade) {
@@ -87,7 +122,7 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
       const apply = Math.min(remaining, pp.balance)
       pp.balance = round2(pp.balance - apply)
       remaining = round2(remaining - apply)
-      if (apply > 0 && pp.id !== tx.planned_payment_id) {
+      if (apply > 0 && pp.id !== primaryId) {
         spillovers.push({
           parentId,
           ppId: pp.id,
@@ -100,24 +135,35 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
         })
       }
     }
-    credit = round2(credit + remaining)
+
+    if (poolType === 'donation') creditDonation = round2(creditDonation + remaining)
+    else creditTuition = round2(creditTuition + remaining)
   }
 
-  // 4. Persist: PP balances (batched), spillover rows, credit, tuition balance
+  // 4. Persist: link corrections, PP balances (batched), spillover rows, credits
+  for (const u of linkUpdates) {
+    await supabaseAdmin.from('transactions').update({ planned_payment_id: u.planned_payment_id }).eq('id', u.id)
+  }
   for (let i = 0; i < pps.length; i += 50) {
     await Promise.all(pps.slice(i, i + 50).map(pp =>
       supabaseAdmin.from('planned_payments').update({ balance: pp.balance }).eq('id', pp.id)
     ))
   }
   await insertSpilloverRows(spillovers)
-  await supabaseAdmin.from('parents').update({ credit_balance: credit }).eq('id', parentId)
+  await supabaseAdmin.from('parents').update({
+    credit_balance: creditTuition,
+    donation_credit_balance: creditDonation,
+  }).eq('id', parentId)
   await recalcParentTuitionBalance(parentId)
 
   return {
     ppsReset: pps.length,
-    txsProcessed: (txs ?? []).length,
+    txsProcessed: processed,
+    newlyLinked,
     spilloverCreated: spillovers.length,
     spilloverTotal: round2(spillovers.reduce((s, r) => s + r.amount, 0)),
-    credit,
+    credit: round2(creditTuition + creditDonation),
+    creditTuition,
+    creditDonation,
   }
 }

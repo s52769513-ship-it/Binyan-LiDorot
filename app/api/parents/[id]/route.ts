@@ -44,6 +44,7 @@ const FIELD_MAP: Record<string, string> = {
   salaryAfterTuition:    'salary_after_tuition',
   creditBalance:         'credit_balance',
   ppCredit:              'pp_credit',
+  donationCreditBalance: 'donation_credit_balance',
 }
 
 export async function PATCH(
@@ -330,6 +331,7 @@ export async function GET(
       salaryGross: p.salary_gross ?? 0,
       salaryNet: p.salary_after_tuition ?? 0,
       ppCredit: (Number(p.pp_credit ?? 0)) + (Number(p.credit_balance ?? 0)),
+      donationCreditBalance: Number(p.donation_credit_balance ?? 0),
       birthDate: p.birth_date ?? '',
       monthlyDonation: Number(p.monthly_donation) || 0,
       deductDonation: p.deduct_donation === true,

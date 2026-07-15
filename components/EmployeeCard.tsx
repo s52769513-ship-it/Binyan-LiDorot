@@ -241,6 +241,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean }[]>>({})
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
+  const [showAddDonationPP, setShowAddDonationPP] = useState(false)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
@@ -342,6 +343,19 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
           <p className="text-xl font-bold text-red-600">{fmt2(totalOpen)}</p>
         </div>
       </div>
+
+      {/* Donation credit badge — נפרד לגמרי מזיכוי שכ"ל, מתעדכן אוטומטית
+          ומיושם על חוב מגבית חדש ברגע שהוא נוצר */}
+      {(parent.donationCreditBalance ?? 0) > 0 && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+          <span className="text-emerald-600 text-lg">💚</span>
+          <div>
+            <p className="text-xs text-emerald-500">זיכוי מגבית שמור</p>
+            <p className="text-sm font-bold text-emerald-700">{fmt2(parent.donationCreditBalance)} יוחל אוטומטית על החוב הבא</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">דמי מגבית</span>
@@ -443,7 +457,15 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
       </div>
 
       <div>
-        <p className="text-xs font-semibold text-gray-500 mb-2">תשלומים מתוכננים — מגבית</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500">תשלומים מתוכננים — מגבית</p>
+          <button
+            onClick={() => setShowAddDonationPP(true)}
+            className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 transition-colors"
+          >
+            + הוסף PP מגבית
+          </button>
+        </div>
         {loadingPPs ? (
           <div className="space-y-1">{[1,2,3].map(i=><div key={i} className="h-8 bg-gray-100 rounded animate-pulse"/>)}</div>
         ) : donationPPs.length === 0 ? (
@@ -540,6 +562,18 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
             loadPPs()
             loadPpTxs(ppId)
           }}
+        />
+      )}
+
+      {showAddDonationPP && (
+        <AddPlannedPaymentModal
+          parentId={parent.id}
+          parentName={parent.name}
+          initialName="דמי מגבית"
+          initialAmount={parent.monthlyDonation || undefined}
+          ppType="donation"
+          onClose={() => setShowAddDonationPP(false)}
+          onSuccess={() => { setShowAddDonationPP(false); loadPPs(); onUpdate() }}
         />
       )}
     </div>

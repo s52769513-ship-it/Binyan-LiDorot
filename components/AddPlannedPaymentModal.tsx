@@ -8,6 +8,8 @@ interface Props {
   initialName?: string
   initialAmount?: number
   initialMonthYear?: string
+  /** מתויג ל-pp_type מפורש (למשל 'donation') — אחרת נגזר לפי השם בשרת */
+  ppType?: string
   onClose: () => void
   onSuccess?: () => void
 }
@@ -21,7 +23,7 @@ function getMonthYear(dateStr: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-export default function AddPlannedPaymentModal({ parentId, parentName, initialName, initialAmount, initialMonthYear, onClose, onSuccess }: Props) {
+export default function AddPlannedPaymentModal({ parentId, parentName, initialName, initialAmount, initialMonthYear, ppType, onClose, onSuccess }: Props) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
   const currentMonthYear = `${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`
@@ -72,7 +74,7 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
       const res = await fetch('/api/planned-payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amtNum, name, date, monthYear, parentIds: pid ? [pid] : [] }),
+        body: JSON.stringify({ amount: amtNum, name, date, monthYear, parentIds: pid ? [pid] : [], ...(ppType ? { ppType } : {}) }),
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }

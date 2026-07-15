@@ -130,6 +130,7 @@ export interface ParentDetail extends ParentSummary {
   salaryGross: number
   salaryNet: number
   ppCredit: number
+  donationCreditBalance: number
   birthDate: string
   monthlyDonation: number
   deductDonation: boolean
