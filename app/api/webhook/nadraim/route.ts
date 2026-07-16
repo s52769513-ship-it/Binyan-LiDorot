@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
+import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject, MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 
 // Nadraim currency codes: 1 = ILS, 2 = USD
 async function convertToILS(amount: number, currency: string): Promise<{ amount: number; currencyNote: string }> {
@@ -22,16 +22,17 @@ async function convertToILS(amount: number, currency: string): Promise<{ amount:
   }
 }
 
-function parseNadraimDate(dateStr: string): { date: string; monthYear: string } {
+function parseNadraimDate(dateStr: string): { date: string; monthYear: string; time: string } {
   // Format: "28/05/2026 11:07:56"
-  const [datePart] = String(dateStr).split(' ')
+  const [datePart, timePart] = String(dateStr).split(' ')
   const [dd, mm, yyyy] = datePart.split('/')
+  const time = timePart ? timePart.slice(0, 5) : '' // "HH:MM"
   if (!dd || !mm || !yyyy) {
     const today = new Date().toISOString().split('T')[0]
     const [y, m] = today.split('-')
-    return { date: today, monthYear: `${m}/${y}` }
+    return { date: today, monthYear: `${m}/${y}`, time }
   }
-  return { date: `${yyyy}-${mm}-${dd}`, monthYear: `${mm}/${yyyy}` }
+  return { date: `${yyyy}-${mm}-${dd}`, monthYear: `${mm}/${yyyy}`, time }
 }
 
 function fixUnescapedQuotes(text: string): string {
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
     const { amount, currencyNote } = await convertToILS(rawAmount, String(Currency ?? '1'))
 
     // 2. Date
-    const { date, monthYear } = parseNadraimDate(TransactionTime)
+    const { date, monthYear, time } = parseNadraimDate(TransactionTime)
 
     // 3. Find or create parent by Zeout (ת"ז)
     let parentId: string | null = null
@@ -245,11 +246,12 @@ export async function POST(req: NextRequest) {
       ...(billingParentId && billingParentId !== parentId ? [billingParentId] : []),
     ]))
 
-    const { error: txErr } = await supabaseAdmin.from('transactions').insert({
+    const txRow = {
       id:                 txId,
       amount,
       type:               txType,
       date,
+      time,
       month_year:         monthYear,
       notes,
       parent_ids:         txParentIds,
@@ -258,8 +260,17 @@ export async function POST(req: NextRequest) {
       planned_payment_id: linkedPPId,
       standing_order_id:  standingOrderDbId,
       synced_at:          '2099-12-31T23:59:59.999Z',
-    })
-    if (txErr) throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
+    }
+    const { error: txErr } = await supabaseAdmin.from('transactions').insert(txRow)
+    if (txErr && MISSING_COLUMN_CODES.has(txErr.code)) {
+      // time עמודה טרם ב-schema cache (TRANSACTION_TIME_MIGRATION.sql לא הורצה) — יוצרים בלעדיה
+      const { time: _time, ...rest } = txRow
+      void _time
+      const { error: txErr2 } = await supabaseAdmin.from('transactions').insert(rest)
+      if (txErr2) throw new Error(`יצירת תנועה נכשלה: ${txErr2.message}`)
+    } else if (txErr) {
+      throw new Error(`יצירת תנועה נכשלה: ${txErr.message}`)
+    }
 
     // 7. (PP balances already updated by applyPaymentToParentPPs above)
 

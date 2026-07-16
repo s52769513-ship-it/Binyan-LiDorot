@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { insertSpilloverRows } from '@/lib/ppPayments'
+import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+
+const fmtILS = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
 const PAGE_SIZE = 50
 
@@ -75,7 +79,7 @@ export async function GET(req: NextRequest) {
     if (plannedPaymentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names')
         .eq('planned_payment_id', plannedPaymentId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -84,6 +88,7 @@ export async function GET(req: NextRequest) {
         amount:       Number(t.amount) || 0,
         type:         String(t.type || ''),
         date:         String(t.date || ''),
+        time:         String(t.time || ''),
         monthYear:    String(t.month_year || ''),
         notes:        String(t.notes || ''),
         parentIds:    (t.parent_ids as string[]) ?? [],
@@ -96,7 +101,7 @@ export async function GET(req: NextRequest) {
     if (standingOrderId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id')
         .eq('standing_order_id', standingOrderId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -105,6 +110,7 @@ export async function GET(req: NextRequest) {
         amount:           Number(t.amount) || 0,
         type:             String(t.type || ''),
         date:             String(t.date || ''),
+        time:             String(t.time || ''),
         monthYear:        String(t.month_year || ''),
         notes:            String(t.notes || ''),
         parentIds:        (t.parent_ids as string[]) ?? [],
@@ -126,7 +132,7 @@ export async function GET(req: NextRequest) {
     if (parentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names')
         .contains('parent_ids', [parentId])
         .order('date', { ascending: false })
         .limit(500)
@@ -134,7 +140,7 @@ export async function GET(req: NextRequest) {
       const { totalIncome, totalExpense } = await totalsFor({ parentIds: [parentId] })
       return NextResponse.json({
         data: (data ?? []).map(t => ({
-          id: t.id, amount: t.amount, type: t.type, date: t.date,
+          id: t.id, amount: t.amount, type: t.type, date: t.date, time: t.time ?? '',
           monthYear: t.month_year, notes: t.notes ?? '',
           parentIds: t.parent_ids ?? [], projectNames: t.project_names ?? [],
         })),
@@ -155,7 +161,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
+      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -235,6 +241,7 @@ export async function GET(req: NextRequest) {
       amount:       Number(t.amount) || 0,
       type:         String(t.type || ''),
       date:         String(t.date || ''),
+      time:         String(t.time || ''),
       monthYear:    String(t.month_year || ''),
       notes:        String(t.notes || ''),
       parentIds:    (t.parent_ids as string[]) ?? [],
@@ -283,6 +290,11 @@ export async function POST(req: NextRequest) {
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
+
+    void logActivityForParents(row.parent_ids, {
+      actor: actorFromRequest(req), action: 'create',
+      summary: `נוספה תנועה: ${row.type || 'ללא סוג'} · ${fmtILS(row.amount)}${row.notes ? ` · ${row.notes}` : ''}`,
+    })
 
     // Update planned payment balance if linked; store surplus as credit on parent
     if (plannedPaymentId) {

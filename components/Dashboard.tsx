@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
@@ -627,6 +627,71 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
 type ViewMode = 'current' | 'cashflow' | 'analytics'
 type AnalyticsPeriod = '6' | '12' | 'all'
 
+// Supplier fixed-payment expenses for a chosen month — total + per-supplier
+// breakdown. Based on recurring_payment_runs (each supplier counted once, so
+// credit-card bills like בזק aren't double-counted against the aggregate
+// card-owner payment). Self-contained: its own month state + fetch.
+function SupplierExpensesSection() {
+  const curMY = () => { const d = new Date(); return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` }
+  const [month, setMonth] = useState(curMY())
+  const [runs, setRuns]   = useState<{ id: string; supplierName: string; amountDue: number; amountPaid: number; paymentMethod: string; status: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  const myToInp = (my: string) => { const [m, y] = my.split('/'); return `${y}-${m}` }
+  const inpToMY = (v: string) => { const [y, m] = v.split('-'); return `${m}/${y}` }
+
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`/api/recurring-payments/runs?month=${encodeURIComponent(month)}`)
+      .then(r => r.json())
+      .then(d => setRuns(d.runs ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [month])
+  useEffect(() => { load() }, [load])
+  useRealtimeRefresh(load, ['recurring_payment_runs'])
+
+  const total = runs.reduce((s, r) => s + r.amountDue, 0)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[11px] font-semibold text-gray-500">הוצאות ספקים — {month}</div>
+        <input type="month" value={myToInp(month)} onChange={e => setMonth(inpToMY(e.target.value))}
+          className="text-[11px] px-2 py-1 rounded border border-gray-200 focus:outline-none" />
+      </div>
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+          <span className="text-xs font-semibold text-gray-700">סה&quot;כ ספקים</span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums">{fmtIL(total)}</span>
+        </div>
+        {loading ? (
+          <div className="p-3 space-y-1.5">{[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}</div>
+        ) : runs.length === 0 ? (
+          <div className="p-4 text-center text-xs text-gray-400">אין הוצאות ספקים לחודש זה</div>
+        ) : (
+          <table className="w-full text-xs">
+            <tbody>
+              {runs.map(r => (
+                <tr key={r.id} className="border-b border-gray-50 last:border-0">
+                  <td className="px-3 py-1.5 text-gray-700">{r.supplierName}</td>
+                  <td className="px-3 py-1.5 text-gray-400">{r.paymentMethod}</td>
+                  <td className="px-3 py-1.5 text-center">
+                    {r.status === 'done'
+                      ? <span className="text-emerald-600">שולם ✓</span>
+                      : <span className="text-amber-600">ממתין</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-left tabular-nums text-gray-700">{fmtIL(r.amountDue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const [data, setData]             = useState<DashboardData | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -892,6 +957,9 @@ export default function Dashboard() {
               </>
             )}
           </div>
+
+          {/* Supplier (fixed-payment) expenses this month */}
+          <SupplierExpensesSection />
 
           {/* Department breakdown */}
           {(loading || (d?.departmentStats && d.departmentStats.length > 0)) && (

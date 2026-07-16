@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import TaskBell from '@/components/TaskBell'
 
 const NAV_LINKS = [
   { href: '/dashboard',             label: 'דשבורד'      },
@@ -10,8 +11,8 @@ const NAV_LINKS = [
   { href: '/dashboard/students',    label: 'תלמידים'     },
   { href: '/dashboard/tuition',     label: 'שכ"ל'        },
   { href: '/dashboard/transactions',label: 'תנועות'      },
+  { href: '/dashboard/fixed-payments', label: '🧾 תשלומים קבועים' },
   { href: '/dashboard/cash-fund',   label: '💵 קופת מזומנים' },
-  { href: '/dashboard/trash',       label: '🗑️ אשפה'     },
   { href: '/dashboard/salaries',    label: '💼 משכורות'  },
   { href: '/dashboard/women',       label: 'נשים'        },
   { href: '/dashboard/donations',    label: '💚 מגבית'    },
@@ -133,6 +134,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Controls */}
           <div className="flex items-center gap-2 shrink-0 pr-1">
+            <TaskBell variant="topbar" />
             <button onClick={toggleNavMode}
               title="עבור לסרגל צד"
               className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-colors">
@@ -200,10 +202,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Toggle to topbar */}
-        <div className="px-3 pt-2 border-t border-white/10">
+        {/* Bell + toggle to topbar */}
+        <div className="px-3 pt-2 border-t border-white/10 space-y-1">
+          <TaskBell variant="sidebar" />
           <button onClick={toggleNavMode}
-            className="w-full text-[10px] px-2 py-1.5 rounded border border-white/20 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors text-right mb-1">
+            className="w-full text-[10px] px-2 py-1.5 rounded border border-white/20 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors text-right">
             ▲ עבור לסרגל עליון
           </button>
         </div>

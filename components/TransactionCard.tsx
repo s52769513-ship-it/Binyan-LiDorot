@@ -11,6 +11,7 @@ export interface Transaction {
   amount: number
   type: string
   date: string
+  time?: string
   monthYear: string
   notes: string
   projectNames: string[]
@@ -63,6 +64,15 @@ function fmt(n: number) {
   return new Intl.NumberFormat('he-IL', {
     style: 'currency', currency: 'ILS', maximumFractionDigits: 0,
   }).format(n)
+}
+
+// Foreign-currency payments (Nadarim Plus USD) get converted to ILS at
+// insert time; the original amount/rate is embedded as free text in notes,
+// e.g. "(75 USD × 3.070)" — parse it back out to show a currency badge.
+function detectCurrency(notes: string): { icon: string; label: string; original: string } {
+  const m = notes.match(/\(([\d.]+)\s*USD[^)]*\)/)
+  if (m) return { icon: '$', label: 'דולר', original: `${m[1]} USD` }
+  return { icon: '₪', label: 'שקל', original: '' }
 }
 
 const TX_TYPES = ['הו"ק', 'נדרים', 'העברה בנקאית', 'מזומן', 'שיק', 'זיכוי', 'קיזוז משכר לימוד', 'קיזוז ממשכורת', 'אחר']
@@ -237,7 +247,7 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
     try {
       const res = await fetch(`/api/transactions/${local.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(fields),
       })
       const data = await res.json()
@@ -355,6 +365,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   const [deleting, setDeleting]   = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [previewReceipt, setPreviewReceipt] = useState(false)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+  const [receiptError, setReceiptError] = useState('')
   const [cashFundStatus, setCashFundStatus] = useState<'checking' | 'none' | 'duplicated'>('checking')
   const [duplicating, setDuplicating] = useState(false)
   const [duplicateError, setDuplicateError] = useState('')
@@ -378,7 +390,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
     setDuplicating(true); setDuplicateError('')
     try {
       const r = await fetch('/api/cash-fund/duplicate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ sourceTransactionId: tx.id }),
       })
       const data = await r.json()
@@ -418,6 +430,43 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
     setDraft(d => ({ ...d, date: newDate, monthYear: dateToMonthYear(newDate) }))
   }
 
+  // Upload/replace an invoice/receipt on any transaction. Uploads to storage
+  // then persists receipt_url immediately (independent of the שמור button).
+  const handleReceiptChange = async (file: File | null) => {
+    setReceiptError('')
+    if (!file) return
+    setUploadingReceipt(true)
+    try {
+      const form = new FormData()
+      form.set('file', file)
+      const res = await fetch('/api/transactions/upload-receipt', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error) { setReceiptError(data.error); return }
+      await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ receipt_url: data.url }),
+      })
+      setDraft(d => ({ ...d, receiptUrl: data.url }))
+      onSaved?.({ ...draft, receiptUrl: data.url })
+    } catch {
+      setReceiptError('שגיאה בהעלאת הקובץ')
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
+
+  const removeReceipt = async () => {
+    setReceiptError('')
+    try {
+      await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ receipt_url: '' }),
+      })
+      setDraft(d => ({ ...d, receiptUrl: '' }))
+      onSaved?.({ ...draft, receiptUrl: '' })
+    } catch { setReceiptError('שגיאה') }
+  }
+
   const save = async () => {
     setSaving(true)
     try {
@@ -436,7 +485,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
       if (Object.keys(body).length === 0) { onClose(); return }
       const r = await fetch(`/api/transactions/${tx.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
       })
       if (r.ok) { onSaved?.(draft); onClose() }
@@ -460,6 +509,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
   const currentType = TX_TYPES.includes(draft.type) ? draft.type : draft.type
   const currentProject = draft.projectNames?.[0] ?? ''
+  const currency = detectCurrency(tx.notes)
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -491,11 +541,48 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </div>
           )}
 
+          {/* Direction toggle — הכנסה/הוצאה */}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button"
+              onClick={() => setDraft(d => ({ ...d, amount: Math.abs(d.amount) }))}
+              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                draft.amount >= 0
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+              }`}>
+              ↙ הכנסה
+            </button>
+            <button type="button"
+              onClick={() => setDraft(d => ({ ...d, amount: -Math.abs(d.amount) }))}
+              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                draft.amount < 0
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-red-400'
+              }`}>
+              ↗ הוצאה
+            </button>
+          </div>
+
           {/* Amount */}
           <div className="flex justify-between items-center gap-3">
-            <input type="number" value={draft.amount}
-              onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
-              className="text-xl font-bold text-emerald-700 w-32 border-b-2 border-emerald-300 focus:border-emerald-500 focus:outline-none bg-transparent text-left" />
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={Math.abs(draft.amount)}
+                onChange={e => {
+                  const abs = Math.abs(Number(e.target.value))
+                  setDraft(d => ({ ...d, amount: d.amount < 0 ? -abs : abs }))
+                }}
+                className={`text-xl font-bold w-32 border-b-2 focus:outline-none bg-transparent text-left ${
+                  draft.amount < 0
+                    ? 'text-red-600 border-red-300 focus:border-red-500'
+                    : 'text-emerald-700 border-emerald-300 focus:border-emerald-500'
+                }`} />
+              <span
+                className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0"
+                title={currency.original ? `שולם ב${currency.label} (${currency.original}), הומר לשקלים` : 'שקל'}
+              >
+                {currency.icon}
+              </span>
+            </div>
             <span className="text-xs text-gray-400 shrink-0">סכום</span>
           </div>
 
@@ -520,6 +607,14 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
               className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
             <span className="text-xs text-gray-400 shrink-0">תאריך</span>
           </div>
+
+          {/* Time — only known for transactions from Nadarim Plus */}
+          {tx.time && (
+            <div className="flex justify-between items-center gap-3">
+              <span className="text-sm text-gray-500 tabular-nums">{tx.time}</span>
+              <span className="text-xs text-gray-400 shrink-0">שעה</span>
+            </div>
+          )}
 
           {/* Month — read-only, auto from date */}
           <div className="flex justify-between items-center gap-3">
@@ -576,14 +671,31 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </div>
           )}
 
-          {/* Receipt/invoice — opens in an in-page preview, not a new tab */}
-          {tx.receiptUrl && (
-            <div className="flex justify-between items-center gap-3">
-              <button onClick={() => setPreviewReceipt(true)}
-                className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
-              <span className="text-xs text-gray-400 shrink-0">חשבונית</span>
+          {/* Receipt/invoice — upload / view / replace / remove (all transactions) */}
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1 min-w-0">
+              {draft.receiptUrl ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={() => setPreviewReceipt(true)}
+                    className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
+                  <label className="text-xs text-[#1a3a7a] hover:underline cursor-pointer">
+                    {uploadingReceipt ? 'מעלה...' : 'החלף'}
+                    <input type="file" accept="image/*,.pdf" className="hidden"
+                      onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
+                  </label>
+                  <button onClick={removeReceipt} className="text-xs text-red-400 hover:text-red-600">הסר</button>
+                </div>
+              ) : (
+                <label className="inline-flex items-center gap-1.5 text-sm text-[#1a3a7a] border border-dashed border-[#1a3a7a]/40 rounded-lg px-3 py-1.5 hover:bg-[#1a3a7a]/5 cursor-pointer">
+                  <span>{uploadingReceipt ? 'מעלה...' : '📎 העלה חשבונית / מסמך'}</span>
+                  <input type="file" accept="image/*,.pdf" className="hidden"
+                    onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
+                </label>
+              )}
+              {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
             </div>
-          )}
+            <span className="text-xs text-gray-400 shrink-0 mt-1.5">חשבונית</span>
+          </div>
 
           {/* Notes */}
           <div className="flex justify-between items-start gap-3">
@@ -714,8 +826,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
           )}
         </div>
       </div>
-      {previewReceipt && tx.receiptUrl && (
-        <FilePreviewModal url={tx.receiptUrl} onClose={() => setPreviewReceipt(false)} />
+      {previewReceipt && draft.receiptUrl && (
+        <FilePreviewModal url={draft.receiptUrl} onClose={() => setPreviewReceipt(false)} />
       )}
     </div>
   )
@@ -734,7 +846,7 @@ export function TransactionRow({ tx, onUpdate, onDelete, onOpenParent }: Props) 
     try {
       await fetch(`/api/transactions/${local.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(fields),
       })
       onUpdate(next)

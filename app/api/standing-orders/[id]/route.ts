@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
+import { actorFromRequest, logActivity } from '@/lib/activityLog'
 
 function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = null) {
   return {
@@ -64,6 +65,11 @@ export async function PATCH(
 
     if (error) throw error
 
+    void logActivity({
+      parentId: data.parent_id as string, actor: actorFromRequest(req), action: 'update',
+      summary: `עודכנה הוראת קבע (${data.standing_order_type || ''}): ${Object.keys(update).join(', ')}`,
+    })
+
     return NextResponse.json(mapSo(data, (data.linked_parent as { name?: string } | null)))
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
@@ -83,6 +89,12 @@ export async function DELETE(
     if (!so) return NextResponse.json({ error: 'הוראת קבע לא נמצאה' }, { status: 404 })
 
     await softDelete(supabaseAdmin, 'standing_order', id, so, deletedBy)
+
+    void logActivity({
+      parentId: so.parent_id as string, actor: deletedBy, action: 'delete',
+      summary: `נמחקה הוראת קבע: ${so.standing_order_type || ''}${so.project_name ? ` · ${so.project_name}` : ''}`,
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

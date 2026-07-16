@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
 import { TUITION_START_DATE } from '@/lib/cutoffs'
+import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
 
 /**
  * POST /api/parents/[id]/recalc-pp
@@ -86,7 +87,7 @@ export async function recalcPPs(parentId: string) {
   // ── טעינת תנועות חופשיות של בנין לדורות ────────────────────────────────
   const { data: rawTxs } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, month_year, date')
+    .select('id, amount, month_year, date, notes')
     .contains('parent_ids', [parentId])
     .contains('project_names', ['בנין לדורות'])
     .is('planned_payment_id', null)
@@ -99,6 +100,10 @@ export async function recalcPPs(parentId: string) {
   // ── שלב 1: קישור תנועות לתשלום המתאים לפי חודש ─────────────────────────
   // תנועה מקושרת לתשלום הראשון בלבד — עודף עובר לזיכוי ויוצר תנועה אמיתית בשלב 3
   for (const tx of rawTxs ?? []) {
+    // שורות זיכוי שהמערכת יצרה (זיכוי שמור / זיכוי מעודף תשלום) שהתנתקו מה-PP
+    // שלהן אינן תשלומים — ספירתן כתשלום מנפחת את הזיכוי בכל ריצה.
+    const txNotes = String(tx.notes ?? '')
+    if (txNotes === 'זיכוי שמור' || txNotes.startsWith('זיכוי מעודף תשלום')) continue
     let remaining = Number(tx.amount)
 
     const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
@@ -215,6 +220,14 @@ export async function recalcPPs(parentId: string) {
     if (!offsetTxs || offsetTxs.length === 0) {
       salaryOffsetMonths.push(sp.month_year as string)
     }
+  }
+
+  const matchedCount = (rawTxs ?? []).length
+  if (matchedCount > 0 || unlinkedWrong > 0) {
+    void logActivity({
+      parentId, actor: SYSTEM_ACTOR, action: 'automation',
+      summary: `ריענון שכ"ל אוטומטי: ${matchedCount} תנועות קושרו${unlinkedWrong ? ` · ${unlinkedWrong} נותקו` : ''}${credit > 0 ? ` · זיכוי שמור ₪${Math.round(credit)}` : ''}`,
+    })
   }
 
   return {

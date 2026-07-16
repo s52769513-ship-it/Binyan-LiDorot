@@ -4,6 +4,7 @@ import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
 import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 import { ppBeforeStart } from '@/lib/cutoffs'
+import { actorFromRequest, logActivity, summarizeFieldChanges } from '@/lib/activityLog'
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -48,6 +49,11 @@ const FIELD_MAP: Record<string, string> = {
   donationCreditBalance: 'donation_credit_balance',
 }
 
+function reverseFieldMapKey(dbKey: string): string {
+  const hit = Object.entries(FIELD_MAP).find(([, v]) => v === dbKey)
+  return hit ? hit[0] : dbKey
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -61,6 +67,12 @@ export async function PATCH(
     }
     if (Object.keys(update).length === 0)
       return NextResponse.json({ error: 'no fields' }, { status: 400 })
+
+    // Snapshot old values for the fields being changed, for the activity log
+    // (best-effort — logging never blocks the actual update below).
+    const changedKeys = Object.keys(update)
+    const { data: beforeRow } = await supabaseAdmin
+      .from('parents').select(changedKeys.join(',')).eq('id', id).maybeSingle()
 
     // Auto-compute name field when firstName or lastName change
     if ('first_name' in update || 'last_name' in update) {
@@ -192,6 +204,19 @@ export async function PATCH(
 
     const { error } = await supabaseAdmin.from('parents').update(update).eq('id', id)
     if (error) throw error
+
+    if (beforeRow) {
+      const before = beforeRow as unknown as Record<string, unknown>
+      const changes = changedKeys
+        .filter(k => before[k] !== update[k])
+        .map(k => ({ key: reverseFieldMapKey(k), oldValue: before[k], newValue: update[k] }))
+      if (changes.length > 0) {
+        void logActivity({
+          parentId: id, actor: actorFromRequest(req), action: 'update',
+          summary: summarizeFieldChanges(changes),
+        })
+      }
+    }
 
     // Return the updated parent object to ensure frontend gets computed fields (like name)
     const { data: updatedParent } = await supabaseAdmin.from('parents').select('*').eq('id', id).single()
