@@ -5,6 +5,7 @@ import { attributeTxsToPP } from '@/lib/ppAttribution'
 import FilePreviewModal from '@/components/FilePreviewModal'
 import { isCashFundTransaction } from '@/lib/cashFund'
 import { authHeaders } from '@/lib/authHeaders'
+import LinkedPersonEditor from '@/components/LinkedPersonEditor'
 
 export interface Transaction {
   id: string
@@ -534,12 +535,23 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
         <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto" dir="rtl">
           {deleteError && <p className="text-xs text-red-500 text-center">{deleteError}</p>}
-          {tx.parentName && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-400">שם</span>
-              <span className="text-sm font-medium text-gray-800">{tx.parentName}</span>
-            </div>
-          )}
+          <LinkedPersonEditor
+            currentId={tx.parentIds?.[0] ?? null}
+            currentName={tx.parentName ?? ''}
+            label="שם"
+            locked={!!tx.plannedPaymentId}
+            lockedReason="לא ניתן לשנות שיוך לתנועה המקושרת לתשלום מתוכנן — יש לנתק אותה קודם"
+            onConfirm={async newParent => {
+              const res = await fetch(`/api/transactions/${tx.id}/reassign`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ newParentId: newParent.id }),
+              })
+              const data = await res.json()
+              if (data.error) throw new Error(data.error)
+              onSaved?.({ ...tx, parentIds: [newParent.id], parentName: newParent.name })
+              onClose()
+            }}
+          />
 
           {/* Direction toggle — הכנסה/הוצאה */}
           <div className="grid grid-cols-2 gap-2">
