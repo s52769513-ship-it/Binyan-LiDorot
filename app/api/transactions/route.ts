@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     if (plannedPaymentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names')
         .eq('planned_payment_id', plannedPaymentId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -84,6 +84,7 @@ export async function GET(req: NextRequest) {
         amount:       Number(t.amount) || 0,
         type:         String(t.type || ''),
         date:         String(t.date || ''),
+        time:         String(t.time || ''),
         monthYear:    String(t.month_year || ''),
         notes:        String(t.notes || ''),
         parentIds:    (t.parent_ids as string[]) ?? [],
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
     if (standingOrderId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id')
         .eq('standing_order_id', standingOrderId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -105,6 +106,7 @@ export async function GET(req: NextRequest) {
         amount:           Number(t.amount) || 0,
         type:             String(t.type || ''),
         date:             String(t.date || ''),
+        time:             String(t.time || ''),
         monthYear:        String(t.month_year || ''),
         notes:            String(t.notes || ''),
         parentIds:        (t.parent_ids as string[]) ?? [],
@@ -126,7 +128,7 @@ export async function GET(req: NextRequest) {
     if (parentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, month_year, notes, parent_ids, project_names')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names')
         .contains('parent_ids', [parentId])
         .order('date', { ascending: false })
         .limit(500)
@@ -134,7 +136,7 @@ export async function GET(req: NextRequest) {
       const { totalIncome, totalExpense } = await totalsFor({ parentIds: [parentId] })
       return NextResponse.json({
         data: (data ?? []).map(t => ({
-          id: t.id, amount: t.amount, type: t.type, date: t.date,
+          id: t.id, amount: t.amount, type: t.type, date: t.date, time: t.time ?? '',
           monthYear: t.month_year, notes: t.notes ?? '',
           parentIds: t.parent_ids ?? [], projectNames: t.project_names ?? [],
         })),
@@ -155,7 +157,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
+      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -235,6 +237,7 @@ export async function GET(req: NextRequest) {
       amount:       Number(t.amount) || 0,
       type:         String(t.type || ''),
       date:         String(t.date || ''),
+      time:         String(t.time || ''),
       monthYear:    String(t.month_year || ''),
       notes:        String(t.notes || ''),
       parentIds:    (t.parent_ids as string[]) ?? [],

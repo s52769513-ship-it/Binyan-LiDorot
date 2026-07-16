@@ -11,6 +11,7 @@ export interface Transaction {
   amount: number
   type: string
   date: string
+  time?: string
   monthYear: string
   notes: string
   projectNames: string[]
@@ -63,6 +64,15 @@ function fmt(n: number) {
   return new Intl.NumberFormat('he-IL', {
     style: 'currency', currency: 'ILS', maximumFractionDigits: 0,
   }).format(n)
+}
+
+// Foreign-currency payments (Nadarim Plus USD) get converted to ILS at
+// insert time; the original amount/rate is embedded as free text in notes,
+// e.g. "(75 USD × 3.070)" — parse it back out to show a currency badge.
+function detectCurrency(notes: string): { icon: string; label: string; original: string } {
+  const m = notes.match(/\(([\d.]+)\s*USD[^)]*\)/)
+  if (m) return { icon: '$', label: 'דולר', original: `${m[1]} USD` }
+  return { icon: '₪', label: 'שקל', original: '' }
 }
 
 const TX_TYPES = ['הו"ק', 'נדרים', 'העברה בנקאית', 'מזומן', 'שיק', 'זיכוי', 'קיזוז משכר לימוד', 'קיזוז ממשכורת', 'אחר']
@@ -460,6 +470,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
   const currentType = TX_TYPES.includes(draft.type) ? draft.type : draft.type
   const currentProject = draft.projectNames?.[0] ?? ''
+  const currency = detectCurrency(tx.notes)
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -493,9 +504,17 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
           {/* Amount */}
           <div className="flex justify-between items-center gap-3">
-            <input type="number" value={draft.amount}
-              onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
-              className="text-xl font-bold text-emerald-700 w-32 border-b-2 border-emerald-300 focus:border-emerald-500 focus:outline-none bg-transparent text-left" />
+            <div className="flex items-center gap-1.5">
+              <input type="number" value={draft.amount}
+                onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
+                className="text-xl font-bold text-emerald-700 w-32 border-b-2 border-emerald-300 focus:border-emerald-500 focus:outline-none bg-transparent text-left" />
+              <span
+                className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0"
+                title={currency.original ? `שולם ב${currency.label} (${currency.original}), הומר לשקלים` : 'שקל'}
+              >
+                {currency.icon}
+              </span>
+            </div>
             <span className="text-xs text-gray-400 shrink-0">סכום</span>
           </div>
 
@@ -520,6 +539,14 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
               className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
             <span className="text-xs text-gray-400 shrink-0">תאריך</span>
           </div>
+
+          {/* Time — only known for transactions from Nadarim Plus */}
+          {tx.time && (
+            <div className="flex justify-between items-center gap-3">
+              <span className="text-sm text-gray-500 tabular-nums">{tx.time}</span>
+              <span className="text-xs text-gray-400 shrink-0">שעה</span>
+            </div>
+          )}
 
           {/* Month — read-only, auto from date */}
           <div className="flex justify-between items-center gap-3">
