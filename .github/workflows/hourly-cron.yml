@@ -1,0 +1,26 @@
+name: Hourly automations tick
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: hourly-cron
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping monthly cron endpoint
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ]; then
+            echo "::error::CRON_URL secret is not set"
+            exit 1
+          fi
+          curl -fsS --max-time 300 -X GET "${CRON_URL%/}/api/cron/monthly" \
+            -H "Authorization: Bearer ${CRON_SECRET}"
