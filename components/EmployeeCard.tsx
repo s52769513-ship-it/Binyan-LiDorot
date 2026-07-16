@@ -19,6 +19,8 @@ import { DebtModal }         from './DebtModal'
 // Parents whose donation recalc already ran this page load — module-level so
 // tab switches (which remount the tab component) don't re-trigger it.
 const donationRecalcDone = new Set<string>()
+// Same idea for the tuition saved-credit auto-apply (see load() below).
+const tuitionCreditAutoApplyDone = new Set<string>()
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
@@ -729,63 +731,28 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [chargeInFlight, setChargeInFlight]         = useState(false)
   const [chargeResult, setChargeResult]             = useState<{ soId: string; success: boolean; message?: string } | null>(null)
 
-  const creditApplyingRef = useRef(false)
-
   const load = useCallback(() => {
     setLoading(true); setError('')
     fetch(`/api/parents/${parentId}`)
       .then(r => r.json())
-      .then(async d => {
+      .then(d => {
         if (d.error) { setError(d.error); return }
         setParent(d); setTransactions(d.transactions ?? [])
 
-        // Auto-apply ppCredit to open tuition PPs (oldest first)
-        // Guard prevents concurrent/duplicate application triggered by Realtime refreshes
+        // Auto-apply any saved תשלום credit to open tuition PPs — once per
+        // parent per page session (module-level guard survives tab remounts),
+        // via the safe, idempotent, locked server-side recalc. A previous
+        // client-side version of this logic wrote leftover credit back to
+        // only the legacy pp_credit column while leaving credit_balance
+        // stale, which — since the API sums the two — roughly doubled the
+        // displayed credit (and minted a new "זיכוי שמור" transaction) every
+        // time a fresh open PP appeared. Do not reintroduce that pattern.
         const credit = Number(d.ppCredit) || 0
-        if (credit > 0 && !creditApplyingRef.current) {
-          creditApplyingRef.current = true
-          try {
-            const openTuitionPPs: { id: string; balance: number; amount: number; monthYear: string }[] =
-              (d.plannedPayments ?? [])
-                .filter((pp: { ppType: string; balance: number }) => pp.ppType !== 'salary' && pp.balance > 0)
-                .sort((a: { monthYear: string }, b: { monthYear: string }) => {
-                  const [am, ay] = a.monthYear.split('/').map(Number)
-                  const [bm, by] = b.monthYear.split('/').map(Number)
-                  return ay !== by ? ay - by : am - bm
-                })
-
-            let remaining = credit
-            for (const pp of openTuitionPPs) {
-              if (remaining <= 0) break
-              const applied    = Math.min(remaining, pp.balance)
-              const newBalance = pp.balance - applied
-              remaining -= applied
-              await fetch('/api/planned-payments', {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: pp.id, balance: newBalance }),
-              })
-              await fetch('/api/transactions', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  amount: applied, type: 'זיכוי', date: new Date().toISOString().split('T')[0],
-                  monthYear: pp.monthYear || '', notes: 'זיכוי שמור',
-                  parentIds: [parentId], projectNames: ['בנין לדורות'],
-                  plannedPaymentId: pp.id,
-                }),
-              })
-            }
-            if (remaining !== credit) {
-              await fetch(`/api/parents/${parentId}`, {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ppCredit: remaining }),
-              })
-              fetch(`/api/parents/${parentId}`).then(r => r.json()).then(fresh => {
-                if (!fresh.error) { setParent(fresh); setTransactions(fresh.transactions ?? []) }
-              })
-            }
-          } finally {
-            creditApplyingRef.current = false
-          }
+        if (credit > 0 && !tuitionCreditAutoApplyDone.has(parentId)) {
+          tuitionCreditAutoApplyDone.add(parentId)
+          fetch(`/api/parents/${parentId}/recalc-pp`, { method: 'POST' })
+            .then(() => load())
+            .catch(() => {})
         }
       })
       .catch(() => setError('שגיאה'))
