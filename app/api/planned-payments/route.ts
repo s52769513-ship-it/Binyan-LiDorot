@@ -5,6 +5,10 @@ import { recalcDonationPPs } from '@/app/api/parents/[id]/recalc-donation-pp/rou
 import { ppBeforeStart } from '@/lib/cutoffs'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
+import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+
+const fmtILS = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
 export async function GET(req: NextRequest) {
   try {
@@ -117,6 +121,11 @@ export async function PATCH(req: NextRequest) {
       .update({ amount: newAmount, balance: newBalance })
       .eq('id', id)
     if (error) throw error
+
+    void logActivityForParents((existing.parent_ids as string[]) ?? [], {
+      actor: actorFromRequest(req), action: 'update',
+      summary: `עודכן סכום תשלום מתוכנן (${existing.month_year ?? ''}): ${fmtILS(oldAmount)} ← ${fmtILS(newAmount)}`,
+    })
 
     // If this is a salary PP and the amount decreased, recalculate offsets
     if (existing.pp_type === 'salary' && delta < 0) {
@@ -232,6 +241,11 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('planned_payments').insert(row)
     if (error) throw error
 
+    void logActivityForParents(row.parent_ids, {
+      actor: actorFromRequest(req), action: 'create',
+      summary: `נוסף תשלום מתוכנן: ${row.name || resolvedPPType} · ${fmtILS(row.amount)} (${row.month_year})`,
+    })
+
     // Apply existing stored credit (of the matching debt type) to the new PP.
     // Awaited (not fire-and-forget) so the caller's reload reflects a PP that
     // has already consumed any stored credit — otherwise a new PP shows its
@@ -268,6 +282,12 @@ export async function DELETE(req: NextRequest) {
     const { data: pp } = await supabaseAdmin.from('planned_payments').select('*').eq('id', id).single()
     if (!pp) return NextResponse.json({ error: 'תשלום מתוכנן לא נמצא' }, { status: 404 })
     await softDelete(supabaseAdmin, 'planned_payment', id, pp, deletedBy)
+
+    void logActivityForParents((pp.parent_ids as string[]) ?? [], {
+      actor: deletedBy, action: 'delete',
+      summary: `נמחק תשלום מתוכנן: ${pp.name || pp.pp_type || ''} · ${fmtILS(Number(pp.amount) || 0)} (${pp.month_year ?? ''})`,
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(

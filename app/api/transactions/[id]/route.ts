@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
+import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+
+const fmtILS = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
 export async function GET(
   _req: NextRequest,
@@ -72,8 +76,21 @@ export async function PATCH(
       }
     }
 
+    const { data: txBefore } = await supabaseAdmin
+      .from('transactions').select('parent_ids, type, amount').eq('id', id).maybeSingle()
+
     const { error } = await supabaseAdmin.from('transactions').update(update).eq('id', id)
     if (error) throw error
+
+    if (txBefore) {
+      const parts = Object.entries(update).map(([k, v]) =>
+        k === 'amount' ? `סכום: ${fmtILS(Number(v))}` : k === 'notes' ? `הערות: ${v}` : `${k}: ${v}`)
+      void logActivityForParents((txBefore.parent_ids as string[]) ?? [], {
+        actor: actorFromRequest(req), action: 'update',
+        summary: `עודכנה תנועה (${txBefore.type || ''} ${fmtILS(Number(txBefore.amount) || 0)}): ${parts.join(' · ')}`,
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })
@@ -118,6 +135,12 @@ export async function DELETE(
     }
 
     await softDelete(supabaseAdmin, 'transaction', id, tx, deletedBy)
+
+    void logActivityForParents((tx.parent_ids as string[]) ?? [], {
+      actor: deletedBy, action: 'delete',
+      summary: `נמחקה תנועה: ${tx.type || 'ללא סוג'} · ${fmtILS(Number(tx.amount) || 0)}${tx.notes ? ` · ${tx.notes}` : ''}`,
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: (err as { message?: string })?.message ?? String(err) }, { status: 500 })

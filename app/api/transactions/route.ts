@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { insertSpilloverRows } from '@/lib/ppPayments'
+import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+
+const fmtILS = (n: number) =>
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
 
 const PAGE_SIZE = 50
 
@@ -286,6 +290,11 @@ export async function POST(req: NextRequest) {
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error
+
+    void logActivityForParents(row.parent_ids, {
+      actor: actorFromRequest(req), action: 'create',
+      summary: `נוספה תנועה: ${row.type || 'ללא סוג'} · ${fmtILS(row.amount)}${row.notes ? ` · ${row.notes}` : ''}`,
+    })
 
     // Update planned payment balance if linked; store surplus as credit on parent
     if (plannedPaymentId) {

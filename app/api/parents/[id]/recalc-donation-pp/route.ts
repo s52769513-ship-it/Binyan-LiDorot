@@ -8,6 +8,7 @@ import {
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
 import { isTxBeforeStart } from '@/lib/cutoffs'
+import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
 
 const UNDEFINED_COLUMN = '42703'
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -190,6 +191,13 @@ async function doRecalcDonationPPs(parentId: string): Promise<RecalcResult> {
   }
   await insertSpilloverRows(spillovers)
   await updateParentCredits(parentId, { donation: Math.max(0, credit) })
+
+  if (newlyLinked > 0 || unlinkedWrong > 0 || spillovers.length > 0) {
+    void logActivity({
+      parentId, actor: SYSTEM_ACTOR, action: 'automation',
+      summary: `ריענון מגבית אוטומטי: ${newlyLinked} תנועות קושרו${unlinkedWrong ? ` · ${unlinkedWrong} נותקו` : ''}${spillovers.length ? ` · ${spillovers.length} גלישות` : ''}${credit > 0 ? ` · זיכוי מגבית ₪${Math.round(credit)}` : ''}`,
+    })
+  }
 
   return {
     ppsReset: pps.length,

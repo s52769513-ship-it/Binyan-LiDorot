@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcPPs } from '@/app/api/parents/[id]/recalc-pp/route'
+import { actorFromRequest, logActivity } from '@/lib/activityLog'
 
 /** Replace mergeId with keepId in a postgres array column, skipping excluded row IDs */
 async function repoint(table: string, col: string, mergeId: string, keepId: string, excludeIds: Set<string> = new Set()) {
@@ -63,6 +64,8 @@ export async function POST(req: NextRequest) {
 
     if (dryRun) return NextResponse.json({ dryRun: true, summary })
 
+    const { data: mergeParent } = await supabaseAdmin.from('parents').select('name').eq('id', mergeId).maybeSingle()
+
     const excludeTx = new Set<string>(excludeTxIds)
     const excludePp = new Set<string>(excludePpIds)
 
@@ -83,6 +86,11 @@ export async function POST(req: NextRequest) {
     // ── Post-merge recalc ────────────────────────────────────────────────────
     // Recalculate each PP balance for the winner from its linked transactions
     await recalcPPs(keepId)
+
+    void logActivity({
+      parentId: keepId, actor: actorFromRequest(req), action: 'update',
+      summary: `מוזג לתוך רשומה זו: ${mergeParent?.name ?? mergeId} · ${txCount} תנועות · ${ppCount} תשלומים מתוכננים · ${stuCount} תלמידים`,
+    })
 
     return NextResponse.json({ success: true, summary, keepId })
   } catch (err) {

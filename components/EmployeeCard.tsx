@@ -159,7 +159,7 @@ function WomanLinkField({ women, parentId, onUpdate }: {
     setBusy(true)
     await fetch(`/api/women/${w.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ addParentId: parentId }),
     })
     setBusy(false)
@@ -173,7 +173,7 @@ function WomanLinkField({ women, parentId, onUpdate }: {
     setBusy(true)
     await fetch(`/api/women/${womanId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ removeParentId: parentId }),
     })
     setBusy(false)
@@ -337,7 +337,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
     try {
       await fetch(`/api/parents/${parent.id}`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body:    JSON.stringify({ monthlyDonation: val }),
       })
       onUpdate()
@@ -470,7 +470,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                 onChange={async e => {
                   const res = await fetch(`/api/parents/${parent.id}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
                     body: JSON.stringify({ deductDonation: e.target.checked }),
                   })
                   if (!res.ok) {
@@ -651,7 +651,78 @@ function Badge({ text }: { text: string }) {
   )
 }
 
-type TabKey = 'details' | 'children' | 'payments' | 'salary' | 'horaatkeva' | 'donation'
+/* ─── LOGS TAB — every action recorded against this parent, who did it and when ── */
+interface LogEntry { id: string; actor: string; action: string; summary: string; createdAt: string }
+
+const LOG_ACTION_STYLE: Record<string, { icon: string; color: string }> = {
+  create:      { icon: '➕', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  update:      { icon: '✏️', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  delete:      { icon: '🗑️', color: 'bg-red-50 text-red-700 border-red-200' },
+  automation:  { icon: '🤖', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+}
+
+function fmtLogTime(iso: string): string {
+  if (!iso) return ''
+  try {
+    return new Intl.DateTimeFormat('he-IL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
+  } catch { return iso }
+}
+
+function LogsTab({ parentId }: { parentId: string }) {
+  const [entries, setEntries] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+
+  const load = useCallback(() => {
+    setLoading(true); setError('')
+    fetch(`/api/parents/${parentId}/logs`)
+      .then(r => r.json())
+      .then(d => { if (d.error) setError(d.error); else setEntries(d.entries ?? []) })
+      .catch(() => setError('שגיאה בטעינת יומן הפעולות'))
+      .finally(() => setLoading(false))
+  }, [parentId])
+
+  useEffect(() => { load() }, [load])
+  useRealtimeRefresh(load, ['activity_log', 'automation_logs'])
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-gray-700">יומן פעולות</h3>
+        <button onClick={load} className="text-xs text-[#1a3a7a] hover:underline">רענן</button>
+      </div>
+
+      {error && <p className="text-xs text-red-500 text-center py-2">{error}</p>}
+
+      {loading ? (
+        <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />)}</div>
+      ) : entries.length === 0 ? (
+        <div className="text-center text-sm text-gray-400 py-10">אין עדיין פעולות רשומות</div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(e => {
+            const style = LOG_ACTION_STYLE[e.action] ?? LOG_ACTION_STYLE.update
+            return (
+              <div key={e.id} className={`flex items-start gap-2.5 rounded-xl border p-3 ${style.color}`}>
+                <span className="text-base leading-none mt-0.5">{style.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm leading-snug break-words">{e.summary}</p>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] opacity-70">
+                    <span className="font-medium">{e.actor}</span>
+                    <span>·</span>
+                    <span>{fmtLogTime(e.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type TabKey = 'details' | 'children' | 'payments' | 'salary' | 'horaatkeva' | 'donation' | 'logs'
 type SalarySubTab = 'summary' | 'settings' | 'women'
 
 /* ═══════════════════════════════════════════════════════
@@ -810,7 +881,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     setSelectedPP(prev => prev ? { ...prev, balance: computedBalance } : prev)
     fetch('/api/planned-payments', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ id: selectedPP.id, balance: computedBalance }),
     }).then(() => load()).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -819,7 +890,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const patch = useCallback(async (fields: Record<string, unknown>) => {
     const res = await fetch(`/api/parents/${parentId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(fields),
     })
     const updated = await res.json()
@@ -862,7 +933,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const patchWoman = async (womanId: string, fields: Record<string, unknown>) => {
     await fetch(`/api/women/${womanId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(fields),
     })
   }
@@ -954,6 +1025,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     { key: 'salary',      label: '💼 משכורת' },
     { key: 'horaatkeva',  label: `הו"ק${parent?.standingOrders?.length ? ` (${parent.standingOrders.length})` : ''}` },
     { key: 'donation',    label: `💚 מגבית${(parent?.monthlyDonation ?? 0) > 0 ? ` (₪${parent!.monthlyDonation})` : ''}` },
+    { key: 'logs',        label: '🕓 לוגים' },
   ]
 
   return (
@@ -963,8 +1035,8 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl overflow-hidden"
-        style={{ height: '92vh', maxHeight: '92vh' }}
+        className="relative flex flex-col bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-4xl overflow-hidden"
+        style={{ height: '94vh', maxHeight: '94vh' }}
       >
 
         {/* ── HEADER ── */}
@@ -1087,7 +1159,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   try {
                     const res = await fetch('/api/planned-payments/generate-year', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: { 'Content-Type': 'application/json', ...authHeaders() },
                       body: JSON.stringify({ parentId, amount }),
                     })
                     const data = await res.json()
@@ -1923,7 +1995,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             try {
                               const res = await fetch('/api/women', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
                                 body: JSON.stringify({ ...newWomanDraft, parentId }),
                               })
                               if (!res.ok) throw new Error((await res.json()).error)
@@ -1955,6 +2027,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           {/* ── DONATION TAB ── */}
           {parent && tab === 'donation' && (
             <DonationTab parent={parent} onUpdate={load} />
+          )}
+
+          {/* ── LOGS TAB ── */}
+          {parent && tab === 'logs' && (
+            <LogsTab parentId={parentId} />
           )}
 
           {/* ── הו"ק TAB ── */}
@@ -2102,7 +2179,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         try {
                           if (editingSoId) {
                             const res = await fetch(`/api/standing-orders/${editingSoId}`, {
-                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
                               body: JSON.stringify({ ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
                             })
                             const updated = await res.json()
@@ -2112,7 +2189,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             }
                           } else {
                             const res = await fetch('/api/standing-orders', {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
                               body: JSON.stringify({ parentId, ...soDraft, chargeDay: soDraft.chargeDay ? Number(soDraft.chargeDay) : null, linkedParentId: soDraft.linkedParentId || null }),
                             })
                             const created = await res.json()
@@ -2237,7 +2314,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                             setChargeResult(null)
                             try {
                               const res = await fetch(`/api/standing-orders/${so.id}/charge`, {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
                                 body: JSON.stringify({ amount, comments: chargeDraft.comments, date: chargeDraft.date || undefined }),
                               })
                               const data = await res.json()
@@ -2332,7 +2409,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           setSavingPPAmount(true)
                           fetch('/api/planned-payments', {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
                             body: JSON.stringify({ id: selectedPP.id, amount: newAmt }),
                           })
                             .then(r => r.json())
@@ -2355,7 +2432,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         setSavingPPAmount(true)
                         fetch('/api/planned-payments', {
                           method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
+                          headers: { 'Content-Type': 'application/json', ...authHeaders() },
                           body: JSON.stringify({ id: selectedPP.id, amount: newAmt }),
                         })
                           .then(r => r.json())

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { actorFromRequest, logActivity } from '@/lib/activityLog'
 
 function mapSo(so: Record<string, unknown>, linked: { name?: string } | null = null) {
   return {
@@ -104,6 +105,11 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) throw error
+
+    void logActivity({
+      parentId, actor: actorFromRequest(req), action: 'create',
+      summary: `נוספה הוראת קבע: ${data.standing_order_type || ''}${data.project_name ? ` · ${data.project_name}` : ''}${data.charge_amount ? ` · ₪${data.charge_amount}` : ''}`,
+    })
 
     return NextResponse.json(mapSo(data, (data.linked_parent as { name?: string } | null)))
   } catch (err) {

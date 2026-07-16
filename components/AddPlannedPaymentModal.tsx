@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { authHeaders } from '@/lib/authHeaders'
 
 interface Props {
   parentId?: string
@@ -73,7 +74,7 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
       const pid = selectedParent?.id ?? parentId
       const res = await fetch('/api/planned-payments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ amount: amtNum, name, date, monthYear, parentIds: pid ? [pid] : [], ...(ppType ? { ppType } : {}) }),
       })
       const data = await res.json()

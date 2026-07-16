@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
 import { TUITION_START_DATE } from '@/lib/cutoffs'
+import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
 
 /**
  * POST /api/parents/[id]/recalc-pp
@@ -219,6 +220,14 @@ export async function recalcPPs(parentId: string) {
     if (!offsetTxs || offsetTxs.length === 0) {
       salaryOffsetMonths.push(sp.month_year as string)
     }
+  }
+
+  const matchedCount = (rawTxs ?? []).length
+  if (matchedCount > 0 || unlinkedWrong > 0) {
+    void logActivity({
+      parentId, actor: SYSTEM_ACTOR, action: 'automation',
+      summary: `ריענון שכ"ל אוטומטי: ${matchedCount} תנועות קושרו${unlinkedWrong ? ` · ${unlinkedWrong} נותקו` : ''}${credit > 0 ? ` · זיכוי שמור ₪${Math.round(credit)}` : ''}`,
+    })
   }
 
   return {

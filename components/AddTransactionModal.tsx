@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import FilePreviewModal from '@/components/FilePreviewModal'
 import { CASH_FUND_PROJECT } from '@/lib/cashFund'
+import { authHeaders } from '@/lib/authHeaders'
 
 const PAYMENT_METHODS = ['העברה', 'מזומן', 'הו"ק', 'אשראי', 'פנימי', 'קיזוז שכר לימוד']
 
@@ -198,7 +199,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           amount: finalAmount,
           type, date, monthYear, notes,

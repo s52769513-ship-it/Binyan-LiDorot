@@ -247,7 +247,7 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
     try {
       const res = await fetch(`/api/transactions/${local.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(fields),
       })
       const data = await res.json()
@@ -390,7 +390,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
     setDuplicating(true); setDuplicateError('')
     try {
       const r = await fetch('/api/cash-fund/duplicate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ sourceTransactionId: tx.id }),
       })
       const data = await r.json()
@@ -443,7 +443,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
       const data = await res.json()
       if (data.error) { setReceiptError(data.error); return }
       await fetch(`/api/transactions/${tx.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ receipt_url: data.url }),
       })
       setDraft(d => ({ ...d, receiptUrl: data.url }))
@@ -459,7 +459,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
     setReceiptError('')
     try {
       await fetch(`/api/transactions/${tx.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ receipt_url: '' }),
       })
       setDraft(d => ({ ...d, receiptUrl: '' }))
@@ -485,7 +485,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
       if (Object.keys(body).length === 0) { onClose(); return }
       const r = await fetch(`/api/transactions/${tx.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
       })
       if (r.ok) { onSaved?.(draft); onClose() }
@@ -817,7 +817,7 @@ export function TransactionRow({ tx, onUpdate, onDelete, onOpenParent }: Props) 
     try {
       await fetch(`/api/transactions/${local.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(fields),
       })
       onUpdate(next)

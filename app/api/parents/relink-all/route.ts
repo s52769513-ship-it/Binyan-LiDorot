@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { relinkParent } from '@/lib/relink'
+import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
 
 export const maxDuration = 300 // ריצה על כל ההורים יכולה לקחת דקות
 
@@ -55,6 +56,12 @@ export async function POST() {
             done++
             totalSpill += stats.spilloverTotal
             totalCredit += stats.credit
+            if (stats.txsProcessed > 0 || stats.spilloverCreated > 0) {
+              void logActivity({
+                parentId: pid, actor: SYSTEM_ACTOR, action: 'automation',
+                summary: `ריענון כולל (כל ההורים): ${stats.txsProcessed} תנועות עובדו · ${stats.spilloverCreated} גלישות · זיכוי ₪${Math.round(stats.credit)}`,
+              })
+            }
             send({
               type: 'progress', current: i + 1, total: parentIds.length,
               parentName: name,
