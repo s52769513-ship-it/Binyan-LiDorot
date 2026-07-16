@@ -16,6 +16,10 @@ const TypeMultiSelect        = dynamic(() => import('./TypeMultiSelect'),       
 import { DebtModal }         from './DebtModal'
 
 /* ─── helpers ──────────────────────────────────────── */
+// Parents whose donation recalc already ran this page load — module-level so
+// tab switches (which remount the tab component) don't re-trigger it.
+const donationRecalcDone = new Set<string>()
+
 const fmt = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
 
@@ -243,7 +247,6 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
   const [showAddDonationPP, setShowAddDonationPP] = useState(false)
-  const donationRecalcRef = useRef<string | null>(null)
 
   const hasDonation = (parent.monthlyDonation ?? 0) > 0
   const hasDonationSO = parent.standingOrders?.some(so => so.projectName === 'דמי מגבית')
@@ -287,10 +290,13 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   // already-linked transactions (or donation payments imported before their
   // PP existed) don't surface on their own. Run the donation recalc once per
   // parent; if it changed anything, refresh so the credit KPI + balances show.
+  // הגבלה ברמת המודול (לא useRef): הקומפוננטה נהרסת ונבנית מחדש בכל מעבר טאב
+  // בכרטיס, ו-ref מתאפס איתה — מה שהפעיל את ה-recalc שוב ושוב בכל מעבר טאב
+  // והזניק ריצות חופפות שניפחו את הזיכוי. פעם אחת לכל הורה לכל טעינת עמוד.
   useEffect(() => {
-    if (donationRecalcRef.current === parent.id) return
+    if (donationRecalcDone.has(parent.id)) return
     if (!hasDonation && !hasDonationSO) return
-    donationRecalcRef.current = parent.id
+    donationRecalcDone.add(parent.id)
     ;(async () => {
       try {
         const r = await fetch(`/api/parents/${parent.id}/recalc-donation-pp`, { method: 'POST' })

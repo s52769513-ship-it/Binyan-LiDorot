@@ -46,7 +46,20 @@ interface PoolPP {
  *    גלויה על ה-PP שקיבל אותה
  * 4. עודף סופי → יתרת זכות מתאימה (credit_balance / donation_credit_balance)
  */
-export async function relinkParent(parentId: string): Promise<RelinkStats> {
+// נעילה נגד ריצות חופפות לאותו הורה — ריצה שנייה מקבלת את ה-Promise של
+// הראשונה. מחיקה-ואז-הכנסה של שורות הזיכוי בשתי ריצות משולבות משאירה שורות
+// כפולות שעלולות להתפרש כתשלומים (ראה recalc-donation-pp).
+const inFlightRelink = new Map<string, Promise<RelinkStats>>()
+
+export function relinkParent(parentId: string): Promise<RelinkStats> {
+  const existing = inFlightRelink.get(parentId)
+  if (existing) return existing
+  const p = doRelinkParent(parentId).finally(() => inFlightRelink.delete(parentId))
+  inFlightRelink.set(parentId, p)
+  return p
+}
+
+async function doRelinkParent(parentId: string): Promise<RelinkStats> {
   // 1. Delete previously generated spillover rows — the replay recreates them.
   const delBySource = await supabaseAdmin
     .from('transactions')
@@ -81,7 +94,7 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
   //    arrived before its PP existed) gets picked up and linked here too.
   const { data: txs, error: txErr } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, date, month_year, planned_payment_id, project_names')
+    .select('id, amount, date, month_year, planned_payment_id, project_names, notes')
     .contains('parent_ids', [parentId])
     .gt('amount', 0)
     .order('date', { ascending: true })
@@ -95,6 +108,10 @@ export async function relinkParent(parentId: string): Promise<RelinkStats> {
   let processed = 0
 
   for (const tx of txs ?? []) {
+    // שורות זיכוי/גלישה שהמערכת יצרה אינן תשלומים — מדלגים גם אם שלב 1 לא
+    // מחק אותן (ריצה חופפת), אחרת הן מנפחות את הזיכוי בכל ריצה.
+    const txNotes = String(tx.notes ?? '')
+    if (txNotes.startsWith(SPILLOVER_NOTES_PREFIX) || txNotes === 'זיכוי שמור') continue
     const wasLinked = tx.planned_payment_id != null
     const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
     // תנועה שכבר הייתה מקושרת: סוג החוב נקבע לפי ה-PP עצמו (מקור אמת).

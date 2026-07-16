@@ -32,7 +32,31 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function recalcDonationPPs(parentId: string) {
+// נעילה נגד ריצות מקבילות לאותו הורה: הטאב בכרטיס מפעיל recalc אוטומטית, ומעבר
+// מהיר בין טאבים יכול להזניק שתי ריצות חופפות. שילוב מחיקה-ואז-הכנסה של שורות
+// הזיכוי בשתי ריצות שמשתלבות זו בזו משאיר שורות זיכוי כפולות — שבריצה הבאה
+// נספרו (בטעות) כתשלומים אמיתיים וניפחו את הזיכוי בכל מעבר טאב. ריצה חופפת
+// מקבלת את ה-Promise של הריצה שכבר בדרך במקום להתחיל חדשה.
+const inFlightRecalc = new Map<string, Promise<RecalcResult>>()
+
+interface RecalcResult {
+  ppsReset: number
+  txsProcessed: number
+  newlyLinked: number
+  unlinkedWrong: number
+  spilloverCreated: number
+  leftoverCredit: number
+}
+
+export function recalcDonationPPs(parentId: string): Promise<RecalcResult> {
+  const existing = inFlightRecalc.get(parentId)
+  if (existing) return existing
+  const p = doRecalcDonationPPs(parentId).finally(() => inFlightRecalc.delete(parentId))
+  inFlightRecalc.set(parentId, p)
+  return p
+}
+
+async function doRecalcDonationPPs(parentId: string): Promise<RecalcResult> {
   // ── שלב 0: מחיקת שורות זיכוי/גלישה מגבית שנוצרו בעבר (משוחזרות בהרצה) ──
   //    כל שורות המגבית האוטומטיות מזוהות ע"י project 'דמי מגבית' + סימון:
   //    source_transaction_id (גלישה), notes בתחילית הגלישה, או 'זיכוי שמור' ישן.
@@ -97,7 +121,7 @@ export async function recalcDonationPPs(parentId: string) {
   // ── שלב 3: כל תנועות המגבית החיוביות (מקושרות או חופשיות), הישן ביותר קודם ─
   const { data: txs } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, date, month_year, planned_payment_id')
+    .select('id, amount, date, month_year, planned_payment_id, notes')
     .contains('parent_ids', [parentId])
     .contains('project_names', ['דמי מגבית'])
     .gt('amount', 0)
@@ -109,6 +133,10 @@ export async function recalcDonationPPs(parentId: string) {
   let newlyLinked = 0
 
   for (const tx of txs ?? []) {
+    // שורות זיכוי/גלישה שהמערכת עצמה יצרה אינן תשלומים — גם אם שלב 0 לא הספיק
+    // למחוק אותן (ריצה חופפת). ספירתן כתשלום היא שניפחה את הזיכוי בכל ריצה.
+    const txNotes = String(tx.notes ?? '')
+    if (txNotes.startsWith(SPILLOVER_NOTES_PREFIX) || txNotes === 'זיכוי שמור') continue
     const wasLinked = tx.planned_payment_id != null
     // תנועת מגבית לפני 06/2026 — היסטורית, לא מקושרת ולא נזקפת. מנתקים אם מקושרת.
     if (isTxBeforeStart('donation', tx.date as string | null)) {

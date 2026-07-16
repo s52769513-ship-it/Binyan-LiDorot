@@ -86,7 +86,7 @@ export async function recalcPPs(parentId: string) {
   // ── טעינת תנועות חופשיות של בנין לדורות ────────────────────────────────
   const { data: rawTxs } = await supabaseAdmin
     .from('transactions')
-    .select('id, amount, month_year, date')
+    .select('id, amount, month_year, date, notes')
     .contains('parent_ids', [parentId])
     .contains('project_names', ['בנין לדורות'])
     .is('planned_payment_id', null)
@@ -99,6 +99,10 @@ export async function recalcPPs(parentId: string) {
   // ── שלב 1: קישור תנועות לתשלום המתאים לפי חודש ─────────────────────────
   // תנועה מקושרת לתשלום הראשון בלבד — עודף עובר לזיכוי ויוצר תנועה אמיתית בשלב 3
   for (const tx of rawTxs ?? []) {
+    // שורות זיכוי שהמערכת יצרה (זיכוי שמור / זיכוי מעודף תשלום) שהתנתקו מה-PP
+    // שלהן אינן תשלומים — ספירתן כתשלום מנפחת את הזיכוי בכל ריצה.
+    const txNotes = String(tx.notes ?? '')
+    if (txNotes === 'זיכוי שמור' || txNotes.startsWith('זיכוי מעודף תשלום')) continue
     let remaining = Number(tx.amount)
 
     const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)
