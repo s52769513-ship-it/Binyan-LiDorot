@@ -699,6 +699,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   // Debt modal
   const [showDebtModal, setShowDebtModal]       = useState(false)
+  const [showPayOverdue, setShowPayOverdue]     = useState(false)
 
   // Finance
   const [transactions, setTransactions] = useState<TransactionItem[]>([])
@@ -1316,13 +1317,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 📊 סיכום חובות מלא
               </button>
 
-              {/* Overdue banner */}
+              {/* Overdue banner — click to record one payment that closes all overdue PPs */}
               {overdueTotal > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <button
+                  onClick={() => setShowPayOverdue(true)}
+                  title="לחץ לתשלום מרוכז של כל הסכום שבאיחור"
+                  className="w-full text-right bg-red-50 border border-red-200 rounded-xl p-4 hover:bg-red-100 hover:border-red-300 transition-colors"
+                >
                   <p className="text-xs text-red-500 mb-0.5">סכום באיחור תשלום</p>
                   <p className="text-3xl font-bold text-red-700">{fmt(overdueTotal)}</p>
-                  <p className="text-xs text-red-400 mt-1">{overduePPs.length} תשלומים שעברו תאריך</p>
-                </div>
+                  <p className="text-xs text-red-400 mt-1">{overduePPs.length} תשלומים שעברו תאריך · לחץ לתשלום</p>
+                </button>
               )}
 
               {/* Credit badge */}
@@ -2658,6 +2663,26 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
       {/* ── Debt modal ── */}
       {showDebtModal && (
         <DebtModal parentId={parentId} parentName={parent?.name} isOpen={showDebtModal} onClose={() => setShowDebtModal(false)} />
+      )}
+
+      {/* ── Pay-all-overdue: one transaction pre-filled with the full overdue
+          total. Left unlinked to a specific PP (a single payment can span
+          several overdue months) — recalc-pp cascades it across them, oldest
+          first, using the same safe path as every other credit application. */}
+      {showPayOverdue && parent && (
+        <AddTransactionModal
+          parentId={parent.id}
+          parentName={parent.name}
+          prefilledAmount={overdueTotal}
+          prefilledNotes="תשלום מרוכז — סגירת חוב באיחור"
+          preselectedProject="בנין לדורות"
+          sourceLabel={`סגירת ${overduePPs.length} תשלומים באיחור`}
+          onClose={() => setShowPayOverdue(false)}
+          onSuccess={() => {
+            setShowPayOverdue(false)
+            fetch(`/api/parents/${parentId}/recalc-pp`, { method: 'POST' }).finally(load)
+          }}
+        />
       )}
 
       {showAddSalaryPP && parent && (() => {
