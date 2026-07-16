@@ -119,6 +119,14 @@ export const SCHEDULABLE: SchedulableAutomation[] = [
     defaultDay: 3, defaultHour: 8,
     payload: c => ({ dryRun: false, monthYear: monthYearOf(c) }),
   },
+  {
+    id: 'recurring-payments', label: 'יצירת תשלומים קבועים לספקים',
+    endpoint: '/api/automations/recurring-payments', mode: 'stream',
+    // Generates the whole month's supplier runs at month start; each run keeps
+    // its own charge day. A "צור חיובי החודש" button covers mid-month additions.
+    defaultDay: 1, defaultHour: 6,
+    payload: c => ({ dryRun: false, monthYear: monthYearOf(c) }),
+  },
   // Nedarim sync/pull automations and the Airtable transactions pull are
   // intentionally manual-only (run from the UI) — not part of the schedule.
 ]

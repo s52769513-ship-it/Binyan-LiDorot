@@ -365,6 +365,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   const [deleting, setDeleting]   = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [previewReceipt, setPreviewReceipt] = useState(false)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+  const [receiptError, setReceiptError] = useState('')
   const [cashFundStatus, setCashFundStatus] = useState<'checking' | 'none' | 'duplicated'>('checking')
   const [duplicating, setDuplicating] = useState(false)
   const [duplicateError, setDuplicateError] = useState('')
@@ -426,6 +428,43 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   // When date changes, auto-update monthYear
   const handleDateChange = (newDate: string) => {
     setDraft(d => ({ ...d, date: newDate, monthYear: dateToMonthYear(newDate) }))
+  }
+
+  // Upload/replace an invoice/receipt on any transaction. Uploads to storage
+  // then persists receipt_url immediately (independent of the שמור button).
+  const handleReceiptChange = async (file: File | null) => {
+    setReceiptError('')
+    if (!file) return
+    setUploadingReceipt(true)
+    try {
+      const form = new FormData()
+      form.set('file', file)
+      const res = await fetch('/api/transactions/upload-receipt', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error) { setReceiptError(data.error); return }
+      await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receipt_url: data.url }),
+      })
+      setDraft(d => ({ ...d, receiptUrl: data.url }))
+      onSaved?.({ ...draft, receiptUrl: data.url })
+    } catch {
+      setReceiptError('שגיאה בהעלאת הקובץ')
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
+
+  const removeReceipt = async () => {
+    setReceiptError('')
+    try {
+      await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receipt_url: '' }),
+      })
+      setDraft(d => ({ ...d, receiptUrl: '' }))
+      onSaved?.({ ...draft, receiptUrl: '' })
+    } catch { setReceiptError('שגיאה') }
   }
 
   const save = async () => {
@@ -603,14 +642,31 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </div>
           )}
 
-          {/* Receipt/invoice — opens in an in-page preview, not a new tab */}
-          {tx.receiptUrl && (
-            <div className="flex justify-between items-center gap-3">
-              <button onClick={() => setPreviewReceipt(true)}
-                className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
-              <span className="text-xs text-gray-400 shrink-0">חשבונית</span>
+          {/* Receipt/invoice — upload / view / replace / remove (all transactions) */}
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1 min-w-0">
+              {draft.receiptUrl ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={() => setPreviewReceipt(true)}
+                    className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
+                  <label className="text-xs text-[#1a3a7a] hover:underline cursor-pointer">
+                    {uploadingReceipt ? 'מעלה...' : 'החלף'}
+                    <input type="file" accept="image/*,.pdf" className="hidden"
+                      onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
+                  </label>
+                  <button onClick={removeReceipt} className="text-xs text-red-400 hover:text-red-600">הסר</button>
+                </div>
+              ) : (
+                <label className="inline-flex items-center gap-1.5 text-sm text-[#1a3a7a] border border-dashed border-[#1a3a7a]/40 rounded-lg px-3 py-1.5 hover:bg-[#1a3a7a]/5 cursor-pointer">
+                  <span>{uploadingReceipt ? 'מעלה...' : '📎 העלה חשבונית / מסמך'}</span>
+                  <input type="file" accept="image/*,.pdf" className="hidden"
+                    onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
+                </label>
+              )}
+              {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
             </div>
-          )}
+            <span className="text-xs text-gray-400 shrink-0 mt-1.5">חשבונית</span>
+          </div>
 
           {/* Notes */}
           <div className="flex justify-between items-start gap-3">
@@ -741,8 +797,8 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
           )}
         </div>
       </div>
-      {previewReceipt && tx.receiptUrl && (
-        <FilePreviewModal url={tx.receiptUrl} onClose={() => setPreviewReceipt(false)} />
+      {previewReceipt && draft.receiptUrl && (
+        <FilePreviewModal url={draft.receiptUrl} onClose={() => setPreviewReceipt(false)} />
       )}
     </div>
   )

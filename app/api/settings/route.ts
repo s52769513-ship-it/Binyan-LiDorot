@@ -22,6 +22,8 @@ export async function PATCH(req: NextRequest) {
       'salary_pp_day', 'salary_pp_hour', 'salary_pp_time', 'salary_pp_enabled',
       'donation_pp_day', 'donation_pp_hour', 'donation_pp_time', 'donation_pp_enabled',
       'donation_offset_day', 'donation_offset_hour', 'donation_offset_time', 'donation_offset_enabled',
+      'recurring_payments_day', 'recurring_payments_hour', 'recurring_payments_time', 'recurring_payments_enabled',
+      'card_owner_parent_id',
       // Nedarim sync/pull automations and the Airtable transactions pull are
       // manual-only by design — no schedule keys for them.
     ]

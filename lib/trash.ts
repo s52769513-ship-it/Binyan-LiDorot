@@ -9,6 +9,7 @@ export type RecordType =
   | 'parent'
   | 'standing_order'
   | 'woman'
+  | 'recurring_payment'
 
 export const recordTypeTableMap: Record<RecordType, string> = {
   'transaction':     'transactions',
@@ -17,6 +18,7 @@ export const recordTypeTableMap: Record<RecordType, string> = {
   'parent':          'parents',
   'standing_order':  'standing_orders',
   'woman':           'women',
+  'recurring_payment': 'recurring_payments',
 }
 
 // מוחק רשומה "רכות": שומר עותק מלא ב-deleted_records (עם מי מחק ומתי),
