@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
@@ -17,7 +17,6 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [count, setCount] = useState(0)
   const [open, setOpen]   = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -31,17 +30,18 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
   useEffect(() => { load() }, [load])
   useRealtimeRefresh(load, ['recurring_payment_runs', 'card_payment_tasks'])
 
+  // Close the drawer on Escape
   useEffect(() => {
-    const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
   }, [])
 
   const go = () => { setOpen(false); router.push('/dashboard/fixed-payments') }
 
   return (
-    <div ref={ref} className="relative">
-      <button onClick={() => setOpen(o => !o)}
+    <>
+      <button onClick={() => setOpen(true)}
         title="משימות פתוחות"
         className={`relative flex items-center justify-center rounded-lg transition-colors ${
           variant === 'sidebar'
@@ -58,29 +58,44 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
       </button>
 
       {open && (
-        <div className="absolute left-0 mt-2 w-72 max-h-96 overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 z-50" dir="rtl">
-          <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">משימות פתוחות</span>
-            <span className="text-xs text-gray-400">{count}</span>
-          </div>
-          {tasks.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-400">אין משימות פתוחות 🎉</div>
-          ) : (
-            <div>
-              {tasks.map(t => (
-                <button key={`${t.kind}-${t.id}`} onClick={go}
-                  className="w-full text-right px-4 py-2.5 border-b border-gray-50 hover:bg-blue-50 transition-colors block">
-                  <p className="text-sm text-gray-800">{t.kind === 'card' ? '💳 ' : '🧾 '}{t.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.subtitle}</p>
-                </button>
-              ))}
+        <div className="fixed inset-0 z-[90]" dir="rtl">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          {/* Right-side drawer */}
+          <div className="absolute top-0 right-0 h-full w-80 max-w-[85vw] bg-white shadow-2xl flex flex-col animate-[slideIn_0.2s_ease-out]">
+            <div className="px-5 py-4 flex items-center justify-between shrink-0"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+              <span className="text-sm font-bold" style={{ color: '#d4a921' }}>
+                🔔 משימות פתוחות {count > 0 && `(${count})`}
+              </span>
+              <button onClick={() => setOpen(false)} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
             </div>
-          )}
-          <button onClick={go} className="w-full px-4 py-2.5 text-center text-xs text-[#1a3a7a] hover:bg-gray-50 font-medium">
-            פתח תשלומים קבועים ←
-          </button>
+
+            <div className="flex-1 overflow-y-auto">
+              {tasks.length === 0 ? (
+                <div className="px-4 py-12 text-center text-sm text-gray-400">אין משימות פתוחות 🎉</div>
+              ) : (
+                tasks.map(t => (
+                  <button key={`${t.kind}-${t.id}`} onClick={go}
+                    className="w-full text-right px-5 py-3 border-b border-gray-100 hover:bg-blue-50 transition-colors block">
+                    <p className="text-sm text-gray-800">{t.kind === 'card' ? '💳 ' : '🧾 '}{t.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t.subtitle}</p>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button onClick={go}
+              className="shrink-0 px-5 py-3 text-center text-sm text-[#1a3a7a] hover:bg-gray-50 font-medium border-t border-gray-100">
+              פתח תשלומים קבועים ←
+            </button>
+          </div>
         </div>
       )}
-    </div>
+
+      <style jsx global>{`
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      `}</style>
+    </>
   )
 }

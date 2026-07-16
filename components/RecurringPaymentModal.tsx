@@ -38,7 +38,9 @@ export default function RecurringPaymentModal({
 
   const save = async () => {
     if (!parentId) { setError('יש לבחור ספק'); return }
-    if (!amount || isNaN(Number(amount))) { setError('סכום שגוי'); return }
+    // Amount is optional — some bills (e.g. electricity) are only known at
+    // month end; leave blank and fill the real amount when marking שולם.
+    if (amount.trim() && isNaN(Number(amount))) { setError('סכום שגוי'); return }
     setSaving(true); setError('')
     try {
       const payload = {
@@ -90,8 +92,9 @@ export default function RecurringPaymentModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-400 block mb-1">סכום</label>
+              <label className="text-xs text-gray-400 block mb-1">סכום <span className="text-gray-300">(אופציונלי)</span></label>
               <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="ריק = ימולא בתשלום" dir="rtl"
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1a3a7a]/30" />
             </div>
             <div>

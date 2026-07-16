@@ -16,6 +16,9 @@ export default function SupplierPicker({
   const [search, setSearch]   = useState('')
   const [results, setResults] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  // Allow creating a brand-new supplier when searching within a specific type
+  const canCreate = !!personType
 
   const run = async (q: string) => {
     setSearch(q)
@@ -28,6 +31,20 @@ export default function SupplierPicker({
       const d = await r.json()
       setResults((d.data ?? []).map((p: Record<string, unknown>) => ({ id: String(p.id), name: String(p.name) })))
     } catch { setResults([]) } finally { setLoading(false) }
+  }
+
+  const createNew = async () => {
+    const name = search.trim()
+    if (!name) return
+    setCreating(true)
+    try {
+      const r = await fetch('/api/parents/quick', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, personType: personType || 'ספק' }),
+      })
+      const d = await r.json()
+      if (d.id) { onSelect({ id: d.id, name: d.name }); setSearch(''); setResults([]) }
+    } catch {} finally { setCreating(false) }
   }
 
   if (value) {
@@ -59,8 +76,15 @@ export default function SupplierPicker({
           ))}
         </div>
       )}
-      {search && results.length === 0 && !loading && (
-        <div className="text-xs text-gray-400 text-center py-2">לא נמצאו תוצאות</div>
+      {search.trim() && results.length === 0 && !loading && (
+        canCreate ? (
+          <button onClick={createNew} disabled={creating}
+            className="w-full text-center px-3 py-2 text-sm rounded-lg border border-dashed border-[#1a3a7a]/40 text-[#1a3a7a] hover:bg-[#1a3a7a]/5 disabled:opacity-60 transition-colors">
+            {creating ? 'יוצר...' : `➕ צור ספק חדש: "${search.trim()}"`}
+          </button>
+        ) : (
+          <div className="text-xs text-gray-400 text-center py-2">לא נמצאו תוצאות</div>
+        )
       )}
     </div>
   )

@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
     const { parentId, supplierName, amount, chargeDay, paymentMethod, bank, active, notes } = body
 
     if (!parentId) return NextResponse.json({ error: 'יש לבחור ספק' }, { status: 400 })
-    if (amount == null || isNaN(Number(amount))) return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
+    // Amount is optional (0 when unknown until month end).
+    if (amount != null && amount !== '' && isNaN(Number(amount))) {
+      return NextResponse.json({ error: 'סכום שגוי' }, { status: 400 })
+    }
 
     const { data, error } = await supabaseAdmin
       .from('recurring_payments')
