@@ -8,6 +8,7 @@ import type { Transaction } from '@/components/TransactionCard'
 import { attributeTxsToPP } from '@/lib/ppAttribution'
 import { authHeaders } from '@/lib/authHeaders'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
+import LinkedPersonEditor from '@/components/LinkedPersonEditor'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
@@ -2492,6 +2493,26 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{selectedPP.monthYear}</span>
                   <span className="text-gray-400">חודש</span>
+                </div>
+              )}
+              {parent && (
+                <div className="pt-2 mt-1 border-t border-gray-100">
+                  <LinkedPersonEditor
+                    currentId={parent.id}
+                    currentName={parent.name}
+                    locked={ppTxList.length > 0}
+                    lockedReason="לא ניתן לשנות שיוך לתשלום מתוכנן שיש לו תנועות מקושרות — יש לנתק אותן קודם"
+                    onConfirm={async newParent => {
+                      const res = await fetch(`/api/planned-payments/${selectedPP.id}/reassign`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                        body: JSON.stringify({ newParentId: newParent.id }),
+                      })
+                      const data = await res.json()
+                      if (data.error) throw new Error(data.error)
+                      setSelectedPP(null)
+                      load()
+                    }}
+                  />
                 </div>
               )}
             </div>
