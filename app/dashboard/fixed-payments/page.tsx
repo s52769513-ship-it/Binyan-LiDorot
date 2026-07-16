@@ -168,7 +168,8 @@ export default function FixedPaymentsPage() {
             </thead>
             <tbody>
               {runs.map(r => (
-                <tr key={r.id} className="border-b border-gray-50 hover:bg-blue-50/40">
+                <tr key={r.id} onClick={() => setPayRun(r)}
+                  className="border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer">
                   <td className="px-3 py-2 font-medium text-gray-800">{r.supplierName}{r.bank ? <span className="text-gray-400 text-xs"> · {r.bank}</span> : null}</td>
                   <td className="px-3 py-2 text-gray-600 text-xs">{r.paymentMethod}</td>
                   <td className="px-3 py-2 text-gray-500 text-xs">{r.dueDate ? r.dueDate.slice(8, 10) : '—'}</td>
@@ -176,7 +177,7 @@ export default function FixedPaymentsPage() {
                   <td className="px-3 py-2 text-left tabular-nums text-gray-600">{r.amountPaid > 0 ? fmt(r.amountPaid) : '—'}</td>
                   <td className="px-3 py-2 text-center">{runStatus(r)}</td>
                   <td className="px-3 py-2 text-left">
-                    <button onClick={() => setPayRun(r)}
+                    <button onClick={e => { e.stopPropagation(); setPayRun(r) }}
                       className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium">
                       {r.status === 'done' ? 'ערוך' : 'שולם'}
                     </button>
@@ -208,20 +209,21 @@ export default function FixedPaymentsPage() {
             </thead>
             <tbody>
               {defs.map(d => (
-                <tr key={d.id} className="border-b border-gray-50 hover:bg-blue-50/40">
+                <tr key={d.id} onClick={() => setEditDef(d)}
+                  className="border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer">
                   <td className="px-3 py-2 font-medium text-gray-800">{d.supplierName}</td>
-                  <td className="px-3 py-2 text-left tabular-nums">{fmt(d.amount)}</td>
+                  <td className="px-3 py-2 text-left tabular-nums">{d.amount > 0 ? fmt(d.amount) : '—'}</td>
                   <td className="px-3 py-2 text-gray-500">{d.chargeDay ?? '1'}</td>
                   <td className="px-3 py-2 text-gray-600 text-xs">{d.paymentMethod}</td>
                   <td className="px-3 py-2 text-gray-500 text-xs">{d.bank || '—'}</td>
                   <td className="px-3 py-2 text-center">
-                    <button onClick={() => toggleActive(d)}
+                    <button onClick={e => { e.stopPropagation(); toggleActive(d) }}
                       className={`text-xs px-2 py-0.5 rounded-full ${d.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
                       {d.active ? 'פעיל' : 'כבוי'}
                     </button>
                   </td>
                   <td className="px-3 py-2 text-left">
-                    <button onClick={() => setEditDef(d)} className="text-xs text-[#1a3a7a] hover:underline">ערוך</button>
+                    <button onClick={e => { e.stopPropagation(); setEditDef(d) }} className="text-xs text-[#1a3a7a] hover:underline">ערוך</button>
                   </td>
                 </tr>
               ))}

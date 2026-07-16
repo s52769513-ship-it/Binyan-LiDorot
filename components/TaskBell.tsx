@@ -1,8 +1,14 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
+import type { RunLite } from '@/components/PayRunModal'
+import type { CardTask } from '@/components/CardPaymentTaskModal'
+
+const PayRunModal          = dynamic(() => import('@/components/PayRunModal'),          { ssr: false })
+const CardPaymentTaskModal = dynamic(() => import('@/components/CardPaymentTaskModal'), { ssr: false })
 
 interface TaskItem {
   kind: 'run' | 'card'
@@ -10,6 +16,8 @@ interface TaskItem {
   title: string
   subtitle: string
   monthYear: string
+  run?: RunLite
+  card?: CardTask
 }
 
 export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 'sidebar' }) {
@@ -17,6 +25,8 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [count, setCount] = useState(0)
   const [open, setOpen]   = useState(false)
+  const [payRun, setPayRun]   = useState<RunLite | null>(null)
+  const [cardTask, setCardTask] = useState<CardTask | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -36,6 +46,11 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
+
+  const openTask = (t: TaskItem) => {
+    if (t.kind === 'run' && t.run) { setPayRun(t.run); setOpen(false) }
+    else if (t.kind === 'card' && t.card) { setCardTask(t.card); setOpen(false) }
+  }
 
   const go = () => { setOpen(false); router.push('/dashboard/fixed-payments') }
 
@@ -61,8 +76,8 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
         <div className="fixed inset-0 z-[90]" dir="rtl">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          {/* Right-side drawer */}
-          <div className="absolute top-0 right-0 h-full w-80 max-w-[85vw] bg-white shadow-2xl flex flex-col animate-[slideIn_0.2s_ease-out]">
+          {/* Left-side drawer */}
+          <div className="absolute top-0 left-0 h-full w-80 max-w-[85vw] bg-white shadow-2xl flex flex-col animate-[slideInLeft_0.2s_ease-out]">
             <div className="px-5 py-4 flex items-center justify-between shrink-0"
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
               <span className="text-sm font-bold" style={{ color: '#d4a921' }}>
@@ -76,7 +91,7 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
                 <div className="px-4 py-12 text-center text-sm text-gray-400">אין משימות פתוחות 🎉</div>
               ) : (
                 tasks.map(t => (
-                  <button key={`${t.kind}-${t.id}`} onClick={go}
+                  <button key={`${t.kind}-${t.id}`} onClick={() => openTask(t)}
                     className="w-full text-right px-5 py-3 border-b border-gray-100 hover:bg-blue-50 transition-colors block">
                     <p className="text-sm text-gray-800">{t.kind === 'card' ? '💳 ' : '🧾 '}{t.title}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{t.subtitle}</p>
@@ -93,8 +108,15 @@ export default function TaskBell({ variant = 'topbar' }: { variant?: 'topbar' | 
         </div>
       )}
 
+      {payRun && (
+        <PayRunModal run={payRun} onClose={() => setPayRun(null)} onSaved={load} />
+      )}
+      {cardTask && (
+        <CardPaymentTaskModal task={cardTask} onClose={() => setCardTask(null)} onSaved={load} />
+      )}
+
       <style jsx global>{`
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
       `}</style>
     </>
   )
