@@ -541,12 +541,41 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </div>
           )}
 
+          {/* Direction toggle — הכנסה/הוצאה */}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button"
+              onClick={() => setDraft(d => ({ ...d, amount: Math.abs(d.amount) }))}
+              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                draft.amount >= 0
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+              }`}>
+              ↙ הכנסה
+            </button>
+            <button type="button"
+              onClick={() => setDraft(d => ({ ...d, amount: -Math.abs(d.amount) }))}
+              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                draft.amount < 0
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-red-400'
+              }`}>
+              ↗ הוצאה
+            </button>
+          </div>
+
           {/* Amount */}
           <div className="flex justify-between items-center gap-3">
             <div className="flex items-center gap-1.5">
-              <input type="number" value={draft.amount}
-                onChange={e => setDraft(d => ({ ...d, amount: Number(e.target.value) }))}
-                className="text-xl font-bold text-emerald-700 w-32 border-b-2 border-emerald-300 focus:border-emerald-500 focus:outline-none bg-transparent text-left" />
+              <input type="number" value={Math.abs(draft.amount)}
+                onChange={e => {
+                  const abs = Math.abs(Number(e.target.value))
+                  setDraft(d => ({ ...d, amount: d.amount < 0 ? -abs : abs }))
+                }}
+                className={`text-xl font-bold w-32 border-b-2 focus:outline-none bg-transparent text-left ${
+                  draft.amount < 0
+                    ? 'text-red-600 border-red-300 focus:border-red-500'
+                    : 'text-emerald-700 border-emerald-300 focus:border-emerald-500'
+                }`} />
               <span
                 className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0"
                 title={currency.original ? `שולם ב${currency.label} (${currency.original}), הומר לשקלים` : 'שקל'}
