@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { href: '/dashboard/donations',    label: '💚 מגבית'    },
   { href: '/dashboard/reports',     label: 'דוחות'       },
   { href: '/dashboard/register',    label: 'רישום תלמיד' },
+  { href: '/dashboard/duplicates',  label: '🔍 כפילויות' },
   { href: '/dashboard/trash',       label: '🗑️ אשפה'     },
   { href: '/dashboard/settings',    label: '⚙ הגדרות'   },
 ]
