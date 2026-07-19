@@ -41,6 +41,7 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
   const [showParentDrop, setShowParentDrop] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [dupWarning, setDupWarning] = useState<{ amount: number; name: string }[] | null>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -66,12 +67,28 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
 
   const handleDateChange = (d: string) => { setDate(d); setMonthYear(getMonthYear(d)) }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (force = false) => {
     const amtNum = Number(amount)
     if (!amount || isNaN(amtNum) || amtNum <= 0) { setError('יש להזין סכום חיובי'); return }
     setSubmitting(true); setError('')
     try {
       const pid = selectedParent?.id ?? parentId
+
+      // Warn (not block) if a planned payment of the same type already exists
+      // for this parent+month — a common source of duplicate tuition PPs.
+      if (!force && pid && monthYear.trim()) {
+        const intendedType = ppType ?? (name === 'משכורת' ? 'salary' : 'tuition')
+        try {
+          const existing = await fetch(
+            `/api/planned-payments?parentId=${encodeURIComponent(pid)}&monthYear=${encodeURIComponent(monthYear)}`,
+          ).then(r => r.json())
+          const dups = (Array.isArray(existing) ? existing : [])
+            .filter((pp: { ppType?: string }) => (pp.ppType ?? 'tuition') === intendedType)
+            .map((pp: { amount?: number; name?: string }) => ({ amount: Number(pp.amount) || 0, name: String(pp.name ?? '') }))
+          if (dups.length > 0) { setDupWarning(dups); setSubmitting(false); return }
+        } catch { /* if the check fails, don't block creation */ }
+      }
+
       const res = await fetch('/api/planned-payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -79,6 +96,7 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
+      setDupWarning(null)
       onSuccess?.()
       onClose()
     } catch { setError('שגיאה בשמירה') }
@@ -154,12 +172,45 @@ export default function AddPlannedPaymentModal({ parentId, parentName, initialNa
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
             ביטול
           </button>
-          <button onClick={handleSubmit} disabled={submitting}
+          <button onClick={() => handleSubmit()} disabled={submitting}
             className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 disabled:opacity-60 transition-colors">
             {submitting ? 'שומר...' : 'שמור'}
           </button>
         </div>
       </div>
+
+      {/* Duplicate warning — a PP of this type already exists for this month */}
+      {dupWarning && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setDupWarning(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3" dir="rtl">
+            <p className="text-sm font-bold text-gray-800 text-center">⚠️ כבר קיים תשלום מתוכנן</p>
+            <p className="text-sm text-gray-600 text-center leading-relaxed">
+              לחודש <b>{monthYear}</b> כבר קיים תשלום מסוג זה:
+            </p>
+            <div className="space-y-1">
+              {dupWarning.map((d, i) => (
+                <div key={i} className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 flex justify-between">
+                  <span className="tabular-nums font-semibold">₪{d.amount.toLocaleString('he-IL')}</span>
+                  <span>{d.name || 'תשלום מתוכנן'}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-amber-600 text-center">ליצור בכל זאת תשלום נוסף לאותו חודש?</p>
+            <div className="flex gap-2">
+              <button onClick={() => setDupWarning(null)}
+                className="flex-1 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">
+                ביטול
+              </button>
+              <button onClick={() => { setDupWarning(null); handleSubmit(true) }} disabled={submitting}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-60">
+                צור בכל זאת
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

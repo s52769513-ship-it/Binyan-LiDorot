@@ -744,6 +744,22 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [editingPPAmount, setEditingPPAmount] = useState(false)
   const [ppAmountDraft, setPPAmountDraft]     = useState('')
   const [savingPPAmount, setSavingPPAmount]   = useState(false)
+  const [confirmDeletePP, setConfirmDeletePP] = useState(false)
+  const [deletingPP, setDeletingPP]           = useState(false)
+
+  const handleDeletePP = async () => {
+    if (!selectedPP) return
+    setDeletingPP(true)
+    try {
+      const res = await fetch(`/api/planned-payments?id=${encodeURIComponent(selectedPP.id)}`, {
+        method: 'DELETE', headers: authHeaders(),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.error) { setDeletingPP(false); setConfirmDeletePP(false); return }
+      setSelectedPP(null); setConfirmDeletePP(false); setDeletingPP(false)
+      load()
+    } catch { setDeletingPP(false); setConfirmDeletePP(false) }
+  }
   // Linked transactions in PP modal
   const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;parentIds:string[];projectNames:string[];isCredit:boolean}[]>([])
   const [selectedPpTx, setSelectedPpTx]       = useState<Transaction | null>(null)
@@ -860,6 +876,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   }, [])
 
   useEffect(() => {
+    setConfirmDeletePP(false)
     if (!selectedPP) { setPpTxList([]); return }
     loadPpTx(selectedPP.id)
   }, [selectedPP?.id, loadPpTx])
@@ -2390,9 +2407,28 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" dir="rtl">
             <div className="flex items-center justify-between mb-4">
-              <button onClick={() => { setSelectedPP(null); setEditingPPAmount(false) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setSelectedPP(null); setEditingPPAmount(false); setConfirmDeletePP(false) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                {!confirmDeletePP ? (
+                  <button onClick={() => setConfirmDeletePP(true)} title="מחק תשלום מתוכנן"
+                    className="text-gray-300 hover:text-red-500 text-base leading-none">🗑️</button>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <button onClick={() => setConfirmDeletePP(false)} className="text-[11px] text-gray-400 hover:text-gray-600">ביטול</button>
+                    <button onClick={handleDeletePP} disabled={deletingPP}
+                      className="text-[11px] bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600 disabled:opacity-60">
+                      {deletingPP ? '...' : 'מחק'}
+                    </button>
+                  </span>
+                )}
+              </div>
               <h3 className="font-bold text-gray-800 text-base">{selectedPP.name || 'תשלום מתוכנן'}</h3>
             </div>
+            {confirmDeletePP && selectedPP.balance < selectedPP.amount && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-3">
+                שולם על תשלום זה — התנועות המקושרות יעברו גם הן לאשפה (ניתן לשחזר).
+              </p>
+            )}
             <div className="space-y-3 mb-5">
               <div className="flex justify-between items-center">
                 {editingPPAmount ? (
