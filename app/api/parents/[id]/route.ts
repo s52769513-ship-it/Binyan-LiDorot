@@ -5,6 +5,9 @@ import { softDelete } from '@/lib/trash'
 import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 import { ppBeforeStart } from '@/lib/cutoffs'
 import { actorFromRequest, logActivity, summarizeFieldChanges } from '@/lib/activityLog'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 const FIELD_MAP: Record<string, string> = {
   firstName: 'first_name', lastName: 'last_name',
@@ -134,11 +137,15 @@ export async function PATCH(
             .contains('parent_ids', [id]).eq('month_year', tuitionMY).eq('pp_type', 'tuition').limit(1)
           const tuitionPP = tuitionPPs?.[0]
 
-          // Undo old offset to get real outstanding, then recalculate: min(salary, outstanding)
+          // Undo old offset to get the real outstanding tuition, then recalc
+          // the offset as min(salary, outstanding). The outstanding is CAPPED
+          // at the PP's own amount: a stale/inflated balance (or a balance that
+          // already folded the offset tx in via recalc-pp) must never let the
+          // offset — or the resulting balance — exceed the month's real tuition.
           const effectiveTuition = tuitionPP
-            ? Number(tuitionPP.balance) + oldOffset
+            ? Math.min(Number(tuitionPP.amount), Number(tuitionPP.balance) + oldOffset)
             : oldOffset
-          const newOffset   = Math.min(newSalary, effectiveTuition)
+          const newOffset   = Math.min(newSalary, Math.max(0, effectiveTuition))
           const offsetDelta = newOffset - oldOffset  // positive = more offset, negative = less
 
           if (offsetDelta === 0) continue  // nothing changed
@@ -146,21 +153,17 @@ export async function PATCH(
           // Update tuition-side offset tx
           await supabaseAdmin.from('transactions').update({ amount: newOffset }).eq('id', tuitionOffsetTx.id)
 
-          // More offset → tuition balance decreases; less offset → balance increases
+          // More offset → tuition balance decreases; less offset → balance
+          // increases — but always clamped to [0, amount] so it can never
+          // inflate past the month's real tuition (was previously unbounded).
           if (tuitionPP) {
             await supabaseAdmin.from('planned_payments')
-              .update({ balance: Number(tuitionPP.balance) - offsetDelta })
+              .update({ balance: clamp(Number(tuitionPP.balance) - offsetDelta, 0, Number(tuitionPP.amount)) })
               .eq('id', tuitionPP.id)
           }
-
-          // Update parent tuition_balance accordingly
-          const { data: parentRow } = await supabaseAdmin
-            .from('parents').select('tuition_balance').eq('id', id).single()
-          if (parentRow) {
-            await supabaseAdmin.from('parents')
-              .update({ tuition_balance: (Number(parentRow.tuition_balance) || 0) - offsetDelta })
-              .eq('id', id)
-          }
+          // parents.tuition_balance is recomputed from the source of truth
+          // (Σ tuition PP balances) after the loop — not mutated incrementally
+          // here, which is what let it ratchet upward with each salary edit.
 
           // Update salary-side offset tx (more offset → salary PP balance decreases)
           if (salaryOffsetTx) {
@@ -200,6 +203,11 @@ export async function PATCH(
           }
         }
       }
+
+      // Derive parents.tuition_balance from the source of truth (Σ tuition PP
+      // balances) after all per-month offset adjustments — replaces the old
+      // incremental arithmetic that ratcheted the balance upward on each edit.
+      await recalcParentTuitionBalance(id)
     }
 
     const { error } = await supabaseAdmin.from('parents').update(update).eq('id', id)
