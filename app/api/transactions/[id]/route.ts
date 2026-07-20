@@ -30,22 +30,36 @@ export async function PATCH(
       if (key in body) update[key] = body[key]
     }
 
-    // If unlinking from PP (planned_payment_id → null), restore PP balance
-    if ('planned_payment_id' in body && body.planned_payment_id === null) {
+    // If the PP link is changing (unlink → null, or re-link to a chosen PP),
+    // restore the OLD PP's balance and reduce the NEW PP's balance by this
+    // transaction's amount, so a manually-picked link has correct balances.
+    if ('planned_payment_id' in body) {
       const { data: oldTx } = await supabaseAdmin
         .from('transactions')
         .select('amount, planned_payment_id')
         .eq('id', id)
         .single()
-      if (oldTx?.planned_payment_id) {
-        const { data: pp } = await supabaseAdmin
-          .from('planned_payments')
-          .select('balance, amount')
-          .eq('id', oldTx.planned_payment_id)
-          .single()
-        if (pp) {
-          const restored = Math.min(Number(pp.amount), Number(pp.balance) + Math.abs(Number(oldTx.amount)))
-          await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', oldTx.planned_payment_id)
+      const oldPpId = (oldTx?.planned_payment_id as string) ?? null
+      const newPpId = (body.planned_payment_id as string) ?? null
+      const txAmt   = Math.abs(Number(oldTx?.amount) || 0)
+      if (oldPpId !== newPpId) {
+        // Restore the old PP
+        if (oldPpId) {
+          const { data: pp } = await supabaseAdmin
+            .from('planned_payments').select('balance, amount').eq('id', oldPpId).single()
+          if (pp) {
+            const restored = Math.min(Number(pp.amount), Number(pp.balance) + txAmt)
+            await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', oldPpId)
+          }
+        }
+        // Apply to the newly-chosen PP
+        if (newPpId) {
+          const { data: pp } = await supabaseAdmin
+            .from('planned_payments').select('balance, amount').eq('id', newPpId).single()
+          if (pp) {
+            const reduced = Math.max(0, Number(pp.balance) - txAmt)
+            await supabaseAdmin.from('planned_payments').update({ balance: reduced }).eq('id', newPpId)
+          }
         }
       }
     }
