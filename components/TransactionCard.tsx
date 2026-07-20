@@ -346,6 +346,17 @@ export default function TransactionCard({ tx, onUpdate, onDelete }: Props) {
 }
 
 /* ─── Transaction Detail Modal ─────────────────────────────── */
+
+// Consistent labeled field wrapper for the detail modal's grid layout.
+function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`bg-gray-50 rounded-xl px-3 py-2 ${className}`}>
+      <div className="text-[11px] text-gray-400 mb-1">{label}</div>
+      {children}
+    </div>
+  )
+}
+
 export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }: {
   tx: Transaction
   onClose: () => void
@@ -550,136 +561,117 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
         <div className="p-5 space-y-3 max-h-[82vh] overflow-y-auto" dir="rtl">
           {deleteError && <p className="text-xs text-red-500 text-center">{deleteError}</p>}
-          <LinkedPersonEditor
-            currentId={draft.parentIds?.[0] ?? null}
-            currentName={tx.parentName ?? ''}
-            label="שם"
-            locked={!!draft.plannedPaymentId}
-            lockedReason="מקושרת לתשלום מתוכנן — נתק כדי לשנות שיוך"
-            onUnlink={async () => {
-              const res = await fetch(`/api/transactions/${tx.id}`, {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ planned_payment_id: null }),
-              })
-              const data = await res.json().catch(() => ({}))
-              if (data?.error) throw new Error(data.error)
-              setDraft(d => ({ ...d, plannedPaymentId: null }))
-              onSaved?.({ ...draft, plannedPaymentId: null })
-            }}
-            onConfirm={async newParent => {
-              const res = await fetch(`/api/transactions/${tx.id}/reassign`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ newParentId: newParent.id }),
-              })
-              const data = await res.json()
-              if (data.error) throw new Error(data.error)
-              onSaved?.({ ...tx, parentIds: [newParent.id], parentName: newParent.name })
-              onClose()
-            }}
-          />
 
-          {/* Direction toggle — הכנסה/הוצאה */}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button"
-              onClick={() => setDraft(d => ({ ...d, amount: Math.abs(d.amount) }))}
-              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
-                draft.amount >= 0
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
-              }`}>
-              ↙ הכנסה
-            </button>
-            <button type="button"
-              onClick={() => setDraft(d => ({ ...d, amount: -Math.abs(d.amount) }))}
-              className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
-                draft.amount < 0
-                  ? 'bg-red-600 text-white border-red-600'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-red-400'
-              }`}>
-              ↗ הוצאה
-            </button>
-          </div>
+          {/* Person */}
+          <Field label="שם">
+            <LinkedPersonEditor
+              currentId={draft.parentIds?.[0] ?? null}
+              currentName={tx.parentName ?? ''}
+              label=""
+              locked={!!draft.plannedPaymentId}
+              lockedReason="מקושרת לתשלום מתוכנן — נתק כדי לשנות שיוך"
+              onUnlink={async () => {
+                const res = await fetch(`/api/transactions/${tx.id}`, {
+                  method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                  body: JSON.stringify({ planned_payment_id: null }),
+                })
+                const data = await res.json().catch(() => ({}))
+                if (data?.error) throw new Error(data.error)
+                setDraft(d => ({ ...d, plannedPaymentId: null }))
+                onSaved?.({ ...draft, plannedPaymentId: null })
+              }}
+              onConfirm={async newParent => {
+                const res = await fetch(`/api/transactions/${tx.id}/reassign`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                  body: JSON.stringify({ newParentId: newParent.id }),
+                })
+                const data = await res.json()
+                if (data.error) throw new Error(data.error)
+                onSaved?.({ ...tx, parentIds: [newParent.id], parentName: newParent.name })
+                onClose()
+              }}
+            />
+          </Field>
 
-          {/* Amount */}
-          <div className="flex justify-between items-center gap-3">
-            <div className="flex items-center gap-1.5">
+          {/* Amount + direction — prominent */}
+          <div className="bg-gray-50 rounded-xl px-3 py-3 space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button"
+                onClick={() => setDraft(d => ({ ...d, amount: Math.abs(d.amount) }))}
+                className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                  draft.amount >= 0
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+                }`}>
+                ↙ הכנסה
+              </button>
+              <button type="button"
+                onClick={() => setDraft(d => ({ ...d, amount: -Math.abs(d.amount) }))}
+                className={`py-2 rounded-lg text-xs font-bold border-2 transition-colors ${
+                  draft.amount < 0
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-red-400'
+                }`}>
+                ↗ הוצאה
+              </button>
+            </div>
+            <div className="flex items-center justify-center gap-2">
               <input type="number" value={Math.abs(draft.amount)}
                 onChange={e => {
                   const abs = Math.abs(Number(e.target.value))
                   setDraft(d => ({ ...d, amount: d.amount < 0 ? -abs : abs }))
                 }}
-                className={`text-xl font-bold w-32 border-b-2 focus:outline-none bg-transparent text-left ${
+                className={`text-2xl font-bold w-40 border-b-2 focus:outline-none bg-transparent text-center ${
                   draft.amount < 0
                     ? 'text-red-600 border-red-300 focus:border-red-500'
                     : 'text-emerald-700 border-emerald-300 focus:border-emerald-500'
                 }`} />
               <span
-                className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold shrink-0"
+                className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold shrink-0"
                 title={currency.original ? `שולם ב${currency.label} (${currency.original}), הומר לשקלים` : 'שקל'}
               >
                 {currency.icon}
               </span>
             </div>
-            <span className="text-xs text-gray-400 shrink-0">סכום</span>
           </div>
 
-          {/* Type — select */}
-          <div className="flex justify-between items-center gap-3">
-            <select
-              value={currentType}
-              onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
-              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
-            >
-              {!TX_TYPES.includes(draft.type) && draft.type && (
-                <option value={draft.type}>{draft.type}</option>
-              )}
-              {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <span className="text-xs text-gray-400 shrink-0">אמצעי תשלום</span>
+          {/* Two-column detail grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="אמצעי תשלום">
+              <select value={currentType} onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
+                className="w-full text-sm text-gray-800 bg-transparent focus:outline-none text-right">
+                {!TX_TYPES.includes(draft.type) && draft.type && <option value={draft.type}>{draft.type}</option>}
+                {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="קטגוריה">
+              <select value={currentProject} onChange={e => setDraft(d => ({ ...d, projectNames: e.target.value ? [e.target.value] : [] }))}
+                className="w-full text-sm text-gray-800 bg-transparent focus:outline-none text-right">
+                <option value="">— ללא —</option>
+                {!PROJECT_OPTIONS.includes(currentProject) && currentProject && <option value={currentProject}>{currentProject}</option>}
+                {PROJECT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label="תאריך">
+              <input type="date" value={draft.date} onChange={e => handleDateChange(e.target.value)}
+                className="w-full text-sm text-gray-800 bg-transparent focus:outline-none" />
+            </Field>
+            <Field label={tx.time ? 'חודש · שעה' : 'חודש'}>
+              <span className="text-sm text-gray-500 tabular-nums">{draft.monthYear}{tx.time ? ` · ${tx.time}` : ''}</span>
+            </Field>
+            {draft.amount < 0 && (
+              <Field label="מסגרת" className="col-span-2">
+                <select value={draft.framework ?? ''} onChange={e => setDraft(d => ({ ...d, framework: e.target.value }))}
+                  className="w-full text-sm text-gray-800 bg-transparent focus:outline-none text-right">
+                  {FRAMEWORKS.map(f => <option key={f || 'none'} value={f}>{f || 'כללי / משותף'}</option>)}
+                </select>
+              </Field>
+            )}
           </div>
 
-          {/* Date */}
-          <div className="flex justify-between items-center gap-3">
-            <input type="date" value={draft.date} onChange={e => handleDateChange(e.target.value)}
-              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent" />
-            <span className="text-xs text-gray-400 shrink-0">תאריך</span>
-          </div>
-
-          {/* Time — only known for transactions from Nadarim Plus */}
-          {tx.time && (
-            <div className="flex justify-between items-center gap-3">
-              <span className="text-sm text-gray-500 tabular-nums">{tx.time}</span>
-              <span className="text-xs text-gray-400 shrink-0">שעה</span>
-            </div>
-          )}
-
-          {/* Month — read-only, auto from date */}
-          <div className="flex justify-between items-center gap-3">
-            <span className="text-sm text-gray-500 tabular-nums">{draft.monthYear}</span>
-            <span className="text-xs text-gray-400 shrink-0">חודש</span>
-          </div>
-
-          {/* Category — select */}
-          <div className="flex justify-between items-center gap-3">
-            <select
-              value={currentProject}
-              onChange={e => setDraft(d => ({ ...d, projectNames: e.target.value ? [e.target.value] : [] }))}
-              className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
-            >
-              <option value="">— ללא —</option>
-              {!PROJECT_OPTIONS.includes(currentProject) && currentProject && (
-                <option value={currentProject}>{currentProject}</option>
-              )}
-              {PROJECT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <span className="text-xs text-gray-400 shrink-0">קטגוריה</span>
-          </div>
-
-          {/* קופת מזומנים — only for transactions tagged with the cash-fund
-              category (the swap: bank transfer to a person → person returns
-              the equivalent in physical cash into the fund). */}
+          {/* קופת מזומנים — only for cash-fund-tagged transactions */}
           {isCashFund && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1.5">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 space-y-1.5">
               {cashFundStatus === 'checking' ? (
                 <p className="text-xs text-gray-400 text-center">בודק סטטוס קופת מזומנים...</p>
               ) : cashFundStatus === 'duplicated' ? (
@@ -694,52 +686,34 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             </div>
           )}
 
-          {/* Framework/division — relevant for expenses */}
-          {draft.amount < 0 && (
-            <div className="flex justify-between items-center gap-3">
-              <select
-                value={draft.framework ?? ''}
-                onChange={e => setDraft(d => ({ ...d, framework: e.target.value }))}
-                className="text-sm text-gray-800 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent flex-1 text-right"
-              >
-                {FRAMEWORKS.map(f => <option key={f || 'none'} value={f}>{f || 'כללי / משותף'}</option>)}
-              </select>
-              <span className="text-xs text-gray-400 shrink-0">מסגרת</span>
-            </div>
-          )}
-
-          {/* Receipt/invoice — upload / view / replace / remove (all transactions) */}
-          <div className="flex justify-between items-start gap-3">
-            <div className="flex-1 min-w-0">
-              {draft.receiptUrl ? (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button onClick={() => setPreviewReceipt(true)}
-                    className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה בחשבונית</button>
-                  <label className="text-xs text-[#1a3a7a] hover:underline cursor-pointer">
-                    {uploadingReceipt ? 'מעלה...' : 'החלף'}
-                    <input type="file" accept="image/*,.pdf" className="hidden"
-                      onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
-                  </label>
-                  <button onClick={removeReceipt} className="text-xs text-red-400 hover:text-red-600">הסר</button>
-                </div>
-              ) : (
-                <label className="inline-flex items-center gap-1.5 text-sm text-[#1a3a7a] border border-dashed border-[#1a3a7a]/40 rounded-lg px-3 py-1.5 hover:bg-[#1a3a7a]/5 cursor-pointer">
-                  <span>{uploadingReceipt ? 'מעלה...' : '📎 העלה חשבונית / מסמך'}</span>
+          {/* Receipt/invoice */}
+          <Field label="חשבונית / מסמך">
+            {draft.receiptUrl ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setPreviewReceipt(true)}
+                  className="text-sm text-emerald-700 font-medium hover:underline truncate">📎 צפייה</button>
+                <label className="text-xs text-[#1a3a7a] hover:underline cursor-pointer">
+                  {uploadingReceipt ? 'מעלה...' : 'החלף'}
                   <input type="file" accept="image/*,.pdf" className="hidden"
                     onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
                 </label>
-              )}
-              {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
-            </div>
-            <span className="text-xs text-gray-400 shrink-0 mt-1.5">חשבונית</span>
-          </div>
+                <button onClick={removeReceipt} className="text-xs text-red-400 hover:text-red-600">הסר</button>
+              </div>
+            ) : (
+              <label className="inline-flex items-center gap-1.5 text-sm text-[#1a3a7a] cursor-pointer hover:underline">
+                <span>{uploadingReceipt ? 'מעלה...' : '📎 העלה חשבונית / מסמך'}</span>
+                <input type="file" accept="image/*,.pdf" className="hidden"
+                  onChange={e => handleReceiptChange(e.target.files?.[0] ?? null)} disabled={uploadingReceipt} />
+              </label>
+            )}
+            {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
+          </Field>
 
           {/* Notes */}
-          <div className="flex justify-between items-start gap-3">
+          <Field label="הערות">
             <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
-              rows={2} className="text-sm text-gray-800 text-right flex-1 border-b border-gray-200 focus:border-[#1a3a7a] focus:outline-none bg-transparent resize-none" />
-            <span className="text-xs text-gray-400 shrink-0 mt-1">הערות</span>
-          </div>
+              rows={2} className="w-full text-sm text-gray-800 text-right bg-transparent focus:outline-none resize-none" />
+          </Field>
 
           {/* Linked PP */}
           {draft.plannedPaymentId && !showPpPicker && (
