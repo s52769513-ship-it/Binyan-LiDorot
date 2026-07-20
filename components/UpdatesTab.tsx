@@ -9,45 +9,6 @@ function fmtDate(iso: string): string {
   catch { return iso }
 }
 
-// Schematic "where is it" illustration: a mock panel with the target item
-// highlighted by a pulsing marker — a live map of where to click.
-function DemoFrame({ entry }: { entry: ChangelogEntry }) {
-  const d = entry.demo
-  if (!d) return null
-  return (
-    <div className="rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 flex items-center justify-between">
-        <span>{d.frameTitle}</span>
-        {d.breadcrumb && <span className="text-gray-400">{d.breadcrumb.join(' ← ')}</span>}
-      </div>
-      <div className="p-3 space-y-1.5 bg-white">
-        {d.items.map((it, i) => (
-          <div key={i} className="relative">
-            <div className={`rounded-lg px-3 py-2 text-sm border ${
-              it.highlight
-                ? 'border-amber-400 bg-amber-50 text-gray-900 font-semibold ring-2 ring-amber-300'
-                : it.muted
-                  ? 'border-gray-100 bg-gray-50 text-gray-400'
-                  : 'border-gray-200 bg-white text-gray-600'
-            }`}>
-              {it.label}
-            </div>
-            {it.highlight && (
-              <>
-                <span className="absolute -top-2 -left-2 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500" />
-                </span>
-                <span className="absolute top-1/2 -translate-y-1/2 left-2 text-[10px] font-bold text-amber-600 bg-white/80 rounded px-1">כאן 👆</span>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function DemoModal({ entry, onClose }: { entry: ChangelogEntry; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
@@ -59,12 +20,7 @@ function DemoModal({ entry, onClose }: { entry: ChangelogEntry; onClose: () => v
         <div className="p-5 space-y-4">
           <p className="text-sm text-gray-600 leading-relaxed">{entry.description}</p>
 
-          {entry.demo && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 mb-1.5">📍 איפה זה נמצא</p>
-              <DemoFrame entry={entry} />
-            </div>
-          )}
+          <div className="bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-500">📍 {entry.location}</div>
 
           {entry.steps && entry.steps.length > 0 && (
             <div>
@@ -117,7 +73,7 @@ export default function UpdatesTab() {
                   <span className="text-[11px] text-gray-400 shrink-0">{fmtDate(e.date)}</span>
                 </div>
                 <p className="text-sm text-gray-600 mt-1 leading-relaxed line-clamp-2">{e.description}</p>
-                <p className="text-[11px] text-[#1a3a7a] mt-2 font-medium">לחץ לצפייה בהמחשה →</p>
+                <p className="text-[11px] text-[#1a3a7a] mt-2 font-medium">לחץ לפרטים וצעדים →</p>
               </div>
             </div>
           </button>

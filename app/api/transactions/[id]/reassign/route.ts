@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { actorFromRequest, logActivity } from '@/lib/activityLog'
+import { relinkParent } from '@/lib/relink'
 
 const fmtILS = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -38,6 +39,12 @@ export async function POST(
 
     const { error } = await supabaseAdmin.from('transactions').update({ parent_ids: [newParentId] }).eq('id', id)
     if (error) throw error
+
+    // Re-run PP linking on both sides: the old parent loses this payment, and
+    // the new parent picks it up and links it to their matching PP (relink
+    // replays all txs, resets PP balances, re-links, recomputes credits).
+    if (oldParentId) { try { await relinkParent(oldParentId) } catch { /* best-effort */ } }
+    try { await relinkParent(newParentId) } catch { /* best-effort */ }
 
     const actor = actorFromRequest(req)
     const label = `${tx.type || 'ללא סוג'} · ${fmtILS(Number(tx.amount) || 0)}${tx.notes ? ` · ${tx.notes}` : ''}`
