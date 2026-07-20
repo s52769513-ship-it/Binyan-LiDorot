@@ -6,8 +6,9 @@ import AutomationsTab from '@/components/AutomationsTab'
 import MergeParentsTab from '@/components/MergeParentsModal'
 import OldDebtsImportTab from '@/components/OldDebtsImportTab'
 import AirtableTransactionsPullTab from '@/components/AirtableTransactionsPullTab'
+import UpdatesTab from '@/components/UpdatesTab'
 
-type SettingsTab = 'general' | 'automations' | 'merge' | 'import' | 'debts' | 'airtable-pull'
+type SettingsTab = 'general' | 'automations' | 'merge' | 'import' | 'debts' | 'airtable-pull' | 'updates'
 
 interface Settings {
   institution_name?: string
@@ -540,6 +541,7 @@ export default function SettingsPage() {
           { key: 'import',      label: '📤 ייבוא תלמידים' },
           { key: 'debts',         label: '💰 ייבוא חובות ישנים' },
           { key: 'airtable-pull', label: '📥 משיכת תנועות מ-Airtable' },
+          { key: 'updates',       label: '🆕 עדכוני מערכת' },
         ] as { key: SettingsTab; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setSettingsTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -557,6 +559,7 @@ export default function SettingsPage() {
       {settingsTab === 'import'        && <ImportTab />}
       {settingsTab === 'debts'         && <OldDebtsImportTab />}
       {settingsTab === 'airtable-pull' && <AirtableTransactionsPullTab />}
+      {settingsTab === 'updates'       && <UpdatesTab />}
 
       {settingsTab === 'general' && <>
       {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-right font-medium">✓ {success}</div>}
