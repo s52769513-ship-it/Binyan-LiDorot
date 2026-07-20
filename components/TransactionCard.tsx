@@ -371,7 +371,20 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   const [cashFundStatus, setCashFundStatus] = useState<'checking' | 'none' | 'duplicated'>('checking')
   const [duplicating, setDuplicating] = useState(false)
   const [duplicateError, setDuplicateError] = useState('')
-  const unlinking = draft.plannedPaymentId === null && tx.plannedPaymentId !== null
+  const [showPpPicker, setShowPpPicker] = useState(false)
+  const [ppOptions, setPpOptions] = useState<{ id: string; name: string; amount: number; balance: number; monthYear: string; ppType: string }[]>([])
+  const [ppOptionsLoading, setPpOptionsLoading] = useState(false)
+
+  const loadPpOptions = () => {
+    const pid = tx.parentIds?.[0]
+    if (!pid) return
+    setPpOptionsLoading(true)
+    fetch(`/api/planned-payments?parentId=${encodeURIComponent(pid)}`)
+      .then(r => r.json())
+      .then(d => setPpOptions(Array.isArray(d) ? d : []))
+      .catch(() => setPpOptions([]))
+      .finally(() => setPpOptionsLoading(false))
+  }
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(tx)
   const isCashFund = isCashFundTransaction(tx.projectNames)
@@ -408,11 +421,13 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   // paid amount and attribution) + spillover rows this transaction generated
   // (עודף שגלש ל-PPs אחרים / זיכוי)
   useEffect(() => {
-    if (!tx.plannedPaymentId) { setPpInfo(null); setPpTxList(null); setSpillovers([]); return }
+    // Track the live draft link so a manual pick/unlink updates the panel now.
+    const linkedId = draft.plannedPaymentId
+    if (!linkedId) { setPpInfo(null); setPpTxList(null); setSpillovers([]); return }
     setPpLoading(true); setPpError(false)
     Promise.all([
-      fetch(`/api/planned-payments?id=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
-      fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(tx.plannedPaymentId)}`).then(r => r.json()),
+      fetch(`/api/planned-payments?id=${encodeURIComponent(linkedId)}`).then(r => r.json()),
+      fetch(`/api/transactions?plannedPaymentId=${encodeURIComponent(linkedId)}`).then(r => r.json()),
       fetch(`/api/transactions?sourceTransactionId=${encodeURIComponent(tx.id)}`).then(r => r.json()),
     ])
       .then(([ppList, txList, spillList]) => {
@@ -424,7 +439,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
       })
       .catch(() => setPpError(true))
       .finally(() => setPpLoading(false))
-  }, [tx.plannedPaymentId, tx.id])
+  }, [draft.plannedPaymentId, tx.id])
 
   // When date changes, auto-update monthYear
   const handleDateChange = (newDate: string) => {
@@ -514,7 +529,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
           <span className="text-sm font-bold" style={{ color: '#d4a921' }}>פירוט תנועה</span>
           <div className="flex items-center gap-3">
@@ -533,7 +548,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
           </div>
         </div>
 
-        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto" dir="rtl">
+        <div className="p-5 space-y-3 max-h-[82vh] overflow-y-auto" dir="rtl">
           {deleteError && <p className="text-xs text-red-500 text-center">{deleteError}</p>}
           <LinkedPersonEditor
             currentId={draft.parentIds?.[0] ?? null}
@@ -727,7 +742,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
           </div>
 
           {/* Linked PP */}
-          {tx.plannedPaymentId && !unlinking && (
+          {draft.plannedPaymentId && !showPpPicker && (
             ppLoading ? (
               <div className="text-xs text-gray-400 text-center py-2">טוען תשלום מתוכנן...</div>
             ) : ppError ? (
@@ -755,10 +770,14 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
               const showBreakdown = (appliedHere !== null && appliedHere < txAmount - 0.005) || spillovers.length > 0
               return (
                 <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
-                  {/* Header: title + unlink */}
+                  {/* Header: title + change / unlink */}
                   <div className="flex justify-between items-center">
-                    <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
-                      className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setShowPpPicker(true); loadPpOptions() }}
+                        className="text-xs text-indigo-500 hover:text-indigo-700">שנה</button>
+                      <button onClick={() => setDraft(d => ({ ...d, plannedPaymentId: null }))}
+                        className="text-xs text-red-400 hover:text-red-600">נתק</button>
+                    </div>
                     <span className="text-xs font-semibold text-indigo-700">תשלום מתוכנן מקושר</span>
                   </div>
 
@@ -828,8 +847,49 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
               )
             })() : null
           )}
-          {unlinking && (
-            <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">הקישור לתשלום המתוכנן יוסר בשמירה</div>
+
+          {/* Not linked → offer to link to a chosen planned payment */}
+          {!draft.plannedPaymentId && !showPpPicker && tx.parentIds?.[0] && (
+            <button onClick={() => { setShowPpPicker(true); loadPpOptions() }}
+              className="w-full py-2 rounded-xl text-sm font-medium border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 transition-colors">
+              🔗 קשר לתשלום מתוכנן
+            </button>
+          )}
+
+          {/* PP picker — choose which planned payment to link this transaction to */}
+          {showPpPicker && (
+            <div className="bg-indigo-50 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <button onClick={() => setShowPpPicker(false)} className="text-xs text-gray-400 hover:text-gray-600">סגור</button>
+                <span className="text-xs font-semibold text-indigo-700">בחר תשלום מתוכנן לקישור</span>
+              </div>
+              {ppOptionsLoading ? (
+                <p className="text-xs text-gray-400 text-center py-2">טוען...</p>
+              ) : ppOptions.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-2">אין תשלומים מתוכננים לאדם זה</p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto space-y-1">
+                  {ppOptions.map(pp => (
+                    <button key={pp.id}
+                      onClick={() => { setDraft(d => ({ ...d, plannedPaymentId: pp.id })); setShowPpPicker(false) }}
+                      className={`w-full text-right px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        draft.plannedPaymentId === pp.id
+                          ? 'border-indigo-400 bg-white'
+                          : 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/40'
+                      }`}>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-xs tabular-nums ${pp.balance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {pp.balance > 0 ? `${fmtIL(pp.balance)} נשאר` : '✓ שולם'}
+                        </span>
+                        <span className="font-medium text-gray-800">{pp.name || 'תשלום'} · {pp.monthYear}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-400 text-right mt-0.5">סכום {fmtIL(pp.amount)}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400">הקישור נשמר בלחיצה על &quot;שמור שינויים&quot; והיתרה תתעדכן.</p>
+            </div>
           )}
         </div>
 
