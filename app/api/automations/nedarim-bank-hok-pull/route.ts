@@ -6,85 +6,52 @@ const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
 const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
 
 const AUTOMATION_ID = 'nedarim-bank-hok-pull'
+// Dedup reads from this id AND the legacy 'nedarim-pull' id, so rows already
+// imported under the old automation are never brought in a second time.
+const DEDUP_IDS = [AUTOMATION_ID, 'nedarim-pull']
 
-// Parse date from Nedarim (DD/MM/YYYY or YYYY-MM-DD) → YYYY-MM-DD
-function parseDate(raw: string): string {
-  if (!raw) return ''
-  const s = String(raw).split('T')[0]
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  const p = s.split('/')
-  if (p.length === 3) {
-    const [d, m, y] = p
-    return `${y.length === 2 ? '20' + y : y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+function parseNedarimDate(dateStr: string): { date: string; monthYear: string } {
+  const [datePart] = String(dateStr || '').split(' ')
+  const parts = datePart.split('/')
+  if (parts.length === 3) {
+    const [dd, mm, yyyy] = parts
+    return { date: `${yyyy}-${mm}-${dd}`, monthYear: `${mm}/${yyyy}` }
   }
-  return s
+  const today = new Date().toISOString().split('T')[0]
+  const [y, m] = today.split('-')
+  return { date: today, monthYear: `${m}/${y}` }
 }
 
-// month_year from date: YYYY-MM-DD → MM/YYYY
-function toMonthYear(dateStr: string): string {
-  if (!dateStr) return ''
-  const p = dateStr.split('-')
-  if (p.length >= 2) return `${p[1]}/${p[0]}`
-  return ''
+// "DD/MM/YYYY" for a date N days before today (default range for scheduled runs).
+function isoAgo(days: number): string {
+  const d = new Date(Date.now() - days * 86_400_000)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+function todayDMY(): string {
+  const d = new Date()
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-// The Masav (bank) API's history shape is not officially documented the way
-// the credit GetKevaId/HistoryData one is, so we extract defensively: look for
-// the first array-of-objects field under any of several likely names, and read
-// each transaction's id/status/amount/date from any of several likely keys.
-// In dry-run we also surface the raw response shape so it can be calibrated
-// against a real account before any writes happen.
-function findHistoryArray(json: Record<string, unknown>): { key: string; rows: Record<string, unknown>[] } | null {
-  const candidates = ['HistoryData', 'History', 'Transactions', 'Movements', 'Rows', 'data', 'Data']
-  for (const k of candidates) {
-    const v = json[k]
-    if (Array.isArray(v) && v.length && typeof v[0] === 'object') {
-      return { key: k, rows: v as Record<string, unknown>[] }
-    }
-  }
-  // Fallback: any array-of-objects field
-  for (const [k, v] of Object.entries(json)) {
-    if (Array.isArray(v) && v.length && typeof v[0] === 'object') {
-      return { key: k, rows: v as Record<string, unknown>[] }
-    }
-  }
-  return null
-}
-
-function pick(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k]
-    if (v != null && String(v).trim() !== '') return String(v).trim()
-  }
-  return ''
-}
-
-// Map a status string/code to charged | refused | other.
-// Masav returns text like "שולם"/"חזר"/"נדחה" and/or numeric codes; the credit
-// system uses 1=success, 2=refused, 3=cancelled.
-function classifyStatus(raw: string): 'charged' | 'refused' | 'other' {
-  const s = raw.trim()
-  if (s === '1') return 'charged'
-  if (s === '2' || s === '3') return 'refused'
-  if (/שול[םמ]|בוצע|חוי[יב]ב|נגב[ה]|הצלח/.test(s)) return 'charged'
-  if (/חזר|נדח|סירוב|בוטל|נכשל|החזר/.test(s)) return 'refused'
-  return 'other'
-}
-
+// GET — last run info
 export async function GET() {
   const { data } = await supabaseAdmin
     .from('automation_logs')
-    .select('run_at, details')
+    .select('run_at, summary, details')
     .eq('automation_id', AUTOMATION_ID)
     .order('run_at', { ascending: false })
     .limit(1)
   return NextResponse.json(data?.[0] ?? null)
 }
 
+// POST — pull bank charge/return history from Nedarim (Masav GetMasavHistoryNew)
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const dryRun   = body.dryRun === true
+  const dryRun: boolean = body.dryRun === true
   const parentId: string | null = body.parentId ?? null
+  // Scheduled/daily runs may omit the range → default to a rolling 45-day window
+  // (back-dated returns/updates are caught; the DT_RowId dedup prevents repeats).
+  const from: string = body.from || isoAgo(45)
+  const to: string   = body.to   || todayDMY()
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -92,161 +59,165 @@ export async function POST(req: NextRequest) {
       const send = (obj: object) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
+      let totalImported = 0, totalReturned = 0, totalSkipped = 0, totalAmount = 0
+      const actions: object[] = []
+
       try {
-        // 1. Load all previously imported TransactionIds for dedup
-        const { data: logs } = await supabaseAdmin
+        // Optional parent filter — restrict to that parent's bank הו"ק numbers
+        let parentHokNumbers: Set<string> | null = null
+        if (parentId) {
+          const { data: parentSos } = await supabaseAdmin
+            .from('standing_orders')
+            .select('external_id')
+            .or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+            .eq('standing_order_type', 'בנקאי')
+          parentHokNumbers = new Set((parentSos ?? []).map(s => String(s.external_id)).filter(Boolean))
+          send({ type: 'log', message: `סינון להורה: ${parentHokNumbers.size} הו"ק בנקאי` })
+        }
+
+        // 1. Pull the charge/return history for the date range
+        send({ type: 'log', message: `מושך תנועות הו"ק בנקאי מנדרים (${from} – ${to})...` })
+        const url = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavHistoryNew&MosadId=${MOSAD_ID}&ApiPassword=${API_PASS}&From=${encodeURIComponent(from)}&To=${encodeURIComponent(to)}`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Nedarim API: ${res.status}`)
+        const raw = await res.text()
+        let parsed: { data?: Record<string, unknown>[] } = {}
+        try { parsed = JSON.parse(raw) } catch { throw new Error('תגובה לא תקינה מנדרים') }
+        const records = (parsed?.data ?? []) as Record<string, unknown>[]
+        send({ type: 'log', message: `נמצאו ${records.length} רשומות` })
+
+        // 2. Load already-imported DT_RowIds (this id + legacy) for dedup
+        const { data: prevLogs } = await supabaseAdmin
           .from('automation_logs')
           .select('details')
-          .eq('automation_id', AUTOMATION_ID)
-        const seenTxIds = new Set<string>(
-          (logs ?? []).flatMap(l => (l.details?.txIds as string[]) ?? [])
-        )
-
-        // 2. Load bank standing orders (optionally filtered by parent)
-        let soQuery = supabaseAdmin
-          .from('standing_orders')
-          .select('id, external_id, parent_id, linked_parent_id, project_name')
-          .eq('standing_order_type', 'בנקאי')
-          .neq('external_id', '')
-        if (parentId) {
-          soQuery = soQuery.or(`parent_id.eq.${parentId},linked_parent_id.eq.${parentId}`)
+          .in('automation_id', DEDUP_IDS)
+          .eq('dry_run', false)
+          .limit(300)
+        const importedRowIds = new Set<string>()
+        for (const log of prevLogs ?? []) {
+          const ids = (log.details as Record<string, unknown> | null)?.rowIds
+          if (Array.isArray(ids)) ids.forEach((id: unknown) => importedRowIds.add(String(id)))
         }
-        const { data: soList, error } = await soQuery
-        if (error) throw error
-        const bankSOs = (soList ?? []).filter(s => s.external_id)
-        send({ type: 'log', message: `נמצאו ${bankSOs.length} הו"ק בנקאי לעיבוד` })
 
-        let totalImported = 0, totalSkipped = 0, totalRefused = 0
-        let totalAmount = 0
-        let shapeReported = false
-        const newTxIds: string[] = []
+        // 3. Process each record
+        const today = new Date().toISOString().split('T')[0]
+        const newRowIds: string[] = []
 
-        for (let i = 0; i < bankSOs.length; i++) {
-          const so = bankSOs[i]
-          send({ type: 'progress', current: i + 1, total: bankSOs.length })
+        for (let i = 0; i < records.length; i++) {
+          const rec       = records[i]
+          const hokNumber = String(rec['2'] ?? '').trim()   // מספר הו"ק
+          const donorName = String(rec['3'] ?? '').trim()   // שם
+          const dateRaw   = String(rec['4'] ?? '').trim()   // תאריך
+          const amount    = Number(rec['5'] ?? 0)           // סכום
+          const status    = String(rec['6'] ?? '').trim()   // סטטוס
+          const category  = String(rec['8'] ?? '').trim()   // קטגוריה
+          const rowId     = String(rec['DT_RowId'] ?? '').trim()
 
-          try {
-            const url = `https://matara.pro/nedarimplus/Reports/Masav3.aspx?Action=GetMasavId&MosadNumber=${MOSAD_ID}&ApiPassword=${API_PASS}&MasavId=${encodeURIComponent(so.external_id)}`
-            const resp = await fetch(url)
-            if (!resp.ok) { send({ type: 'log', message: `הו"ק ${so.external_id}: שגיאת רשת` }); totalSkipped++; continue }
-            const json = await resp.json()
-            const isError = json.Result != null && json.Result !== 0
-            if (isError) { send({ type: 'log', message: `הו"ק ${so.external_id}: ${json.Message ?? 'שגיאה'}` }); totalSkipped++; continue }
+          send({ type: 'progress', current: i + 1, total: records.length })
 
-            const clientName = pick(json, ['ClientName', 'KevaName', 'Name'])
-
-            const found = findHistoryArray(json)
-
-            // Surface the raw response shape once, so an unverified Masav format
-            // can be calibrated from the dry-run output before any real import.
-            if (!shapeReported) {
-              shapeReported = true
-              const topKeys = Object.keys(json)
-              const sampleKeys = found?.rows?.[0] ? Object.keys(found.rows[0]) : []
-              send({
-                type: 'log',
-                message: `🔍 מבנה תשובת Masav (${so.external_id}): שדות=[${topKeys.join(', ')}]${found ? ` · היסטוריה תחת "${found.key}" (${found.rows.length}) · שדות-תנועה=[${sampleKeys.join(', ')}]` : ' · לא נמצא מערך היסטוריה'}`,
-              })
-            }
-
-            if (!found) {
-              // No history array in this response — nothing to import for this SO.
-              totalSkipped++
-              continue
-            }
-
-            const payerParentId   = so.parent_id
-            const billingParentId = so.linked_parent_id ?? null
-            const projectName     = so.project_name || pick(json, ['KevaGroupe', 'Groupe', 'Project']) || 'בנין לדורות'
-
-            for (const tx of found.rows) {
-              const txId      = pick(tx, ['TransactionId', 'MasavId', 'Id', 'ID', 'RowId'])
-              const statusRaw = pick(tx, ['StatusText', 'Status', 'ID', 'StatusCode'])
-              const amount    = Number(pick(tx, ['Amount', 'Sum', 'ChargeAmount']).replace(/[^\d.]/g, '')) || 0
-              const dateStr   = parseDate(pick(tx, ['Date', 'ChargeDate', 'NextDate', 'PayDate']))
-              const monthYear = toMonthYear(dateStr)
-              const cls       = classifyStatus(statusRaw)
-
-              // Dedup on TransactionId across previous runs
-              if (txId && seenTxIds.has(txId)) { totalSkipped++; continue }
-
-              if (cls === 'refused') {
-                send({ type: 'log', message: `הו"ק ${so.external_id} (${clientName}): חזר/נדחה ${dateStr || statusRaw} — דלג` })
-                totalRefused++
-                if (txId) { newTxIds.push(txId); seenTxIds.add(txId) }
-                continue
-              }
-              if (cls !== 'charged' || !amount || !dateStr) { totalSkipped++; continue }
-
-              // Apply to open PPs of the matching debt type (project דמי מגבית →
-              // donation PP, otherwise tuition PP), same cascade as credit pull.
-              const ppParentId = billingParentId ?? payerParentId
-              const targetPPType = ppTypeForProject(projectName)
-              const newTxId = crypto.randomUUID()
-              let linkedPPId: string | null = null
-
-              if (dryRun) {
-                if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear, targetPPType)).ppId
-              } else if (ppParentId) {
-                linkedPPId = (await applyPaymentToParentPPs({
-                  parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
-                  source: { txId: newTxId, label: monthYear, date: dateStr },
-                })).ppId
-              }
-
-              send({
-                type: 'log',
-                message: `הו"ק ${so.external_id} (${clientName}): ₪${amount} · ${dateStr}${linkedPPId ? ' → PP' : ''}${dryRun ? ' [dry]' : ''}`,
-              })
-
-              if (!dryRun) {
-                const txParentIds = Array.from(new Set([
-                  ...(payerParentId ? [payerParentId] : []),
-                  ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : []),
-                ]))
-
-                await supabaseAdmin.from('transactions').insert({
-                  id:                 newTxId,
-                  amount,
-                  type:               'הו"ק',
-                  date:               dateStr,
-                  month_year:         monthYear,
-                  notes:              `בנקאי הו"ק ${so.external_id} · ${clientName}`,
-                  parent_ids:         txParentIds,
-                  project_ids:        [],
-                  project_names:      [projectName],
-                  planned_payment_id: linkedPPId,
-                  standing_order_id:  so.id,
-                  synced_at:          '2099-12-31T23:59:59.999Z',
-                })
-              }
-
-              if (txId) { newTxIds.push(txId); seenTxIds.add(txId) }
-              totalImported++
-              totalAmount += amount
-            }
-          } catch (err) {
-            send({ type: 'log', message: `הו"ק ${so.external_id}: שגיאה — ${String(err)}` })
+          if (parentHokNumbers !== null && !parentHokNumbers.has(hokNumber)) { totalSkipped++; continue }
+          if (rowId && importedRowIds.has(rowId)) {
             totalSkipped++
+            actions.push({ hokNumber, donorName, skipped: true, reason: 'יובא כבר' })
+            continue
           }
+
+          const isReturned = status === 'החזרת הוראת קבע' || status.includes('חזרה')
+
+          // Find parent via standing order external_id
+          const { data: soRows } = await supabaseAdmin
+            .from('standing_orders')
+            .select('id, parent_id, linked_parent_id')
+            .eq('external_id', hokNumber)
+            .limit(1)
+          const so = soRows?.[0] ?? null
+          const standingOrderDbId = so?.id ?? null
+          const payerParentId     = so?.parent_id ?? null
+          const billingParentId   = so?.linked_parent_id ?? payerParentId
+
+          if (!payerParentId) {
+            totalSkipped++
+            actions.push({ hokNumber, donorName, amount, status, skipped: true, reason: 'הו"ק לא נמצא במערכת' })
+            send({ type: 'log', message: `הו"ק ${hokNumber} (${donorName}): לא נמצא במערכת — דלג` })
+            continue
+          }
+
+          const { date, monthYear } = parseNedarimDate(dateRaw)
+          const projectName = category || 'בנין לדורות'
+          const notes = ['נדרים', rowId ? `DT:${rowId}` : null, status || null].filter(Boolean).join(' · ')
+
+          if (isReturned) {
+            // Returned charge → negative transaction + 25₪ return fee
+            if (!dryRun) {
+              await supabaseAdmin.from('transactions').insert({
+                id: crypto.randomUUID(), amount: -amount, type: 'החזרת הו"ק',
+                date: today, month_year: monthYear, notes: `${notes} · ${donorName}`,
+                parent_ids: Array.from(new Set([payerParentId, ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : [])])),
+                project_ids: [], project_names: [projectName],
+                planned_payment_id: null, standing_order_id: standingOrderDbId,
+                synced_at: '2099-12-31T23:59:59.999Z',
+              })
+              await supabaseAdmin.from('transactions').insert({
+                id: crypto.randomUUID(), amount: -25, type: 'עמלת החזרת הו"ק',
+                date: today, month_year: monthYear, notes: `עמלת החזרת הו"ק · ${donorName}`,
+                parent_ids: [payerParentId], project_ids: [], project_names: ['עמלות'],
+                planned_payment_id: null, standing_order_id: standingOrderDbId,
+                synced_at: '2099-12-31T23:59:59.999Z',
+              })
+            }
+            if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
+            totalReturned++
+            actions.push({ hokNumber, donorName, amount: -amount, status, monthYear, isReturned: true, skipped: false })
+            send({ type: 'log', message: `הו"ק ${hokNumber} (${donorName}): החזרה ₪${amount} · ${date}${dryRun ? ' [dry]' : ''}` })
+            continue
+          }
+
+          // Successful charge → import + link to the matching PP
+          const ppParentId = billingParentId ?? payerParentId
+          const targetPPType = ppTypeForProject(projectName)
+          const newTxId = crypto.randomUUID()
+          let linkedPPId: string | null = null
+
+          if (dryRun) {
+            if (ppParentId) linkedPPId = (await findPaymentTarget(ppParentId, monthYear, targetPPType)).ppId
+          } else {
+            if (ppParentId) {
+              linkedPPId = (await applyPaymentToParentPPs({
+                parentId: ppParentId, amount, preferredMonthYear: monthYear, ppType: targetPPType,
+                source: { txId: newTxId, label: monthYear, date },
+              })).ppId
+            }
+            await supabaseAdmin.from('transactions').insert({
+              id: newTxId, amount, type: 'הו"ק',
+              date, month_year: monthYear, notes: `${notes} · ${donorName}`,
+              parent_ids: Array.from(new Set([payerParentId, ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : [])])),
+              project_ids: [], project_names: [projectName],
+              planned_payment_id: linkedPPId, standing_order_id: standingOrderDbId,
+              synced_at: '2099-12-31T23:59:59.999Z',
+            })
+          }
+
+          if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
+          totalImported++
+          totalAmount += amount
+          actions.push({ hokNumber, donorName, amount, status, monthYear, ppLinked: !!linkedPPId, skipped: false })
+          send({ type: 'log', message: `הו"ק ${hokNumber} (${donorName}): ₪${amount} · ${date}${linkedPPId ? ' → PP' : ''}${dryRun ? ' [dry]' : ''}` })
         }
 
+        // 4. Log the run
         if (!dryRun) {
           await supabaseAdmin.from('automation_logs').insert({
-            id:            crypto.randomUUID(),
-            automation_id: AUTOMATION_ID,
-            run_at:        new Date().toISOString(),
-            dry_run:       false,
-            actions_count: totalImported,
-            status:        'success',
-            summary:       `הו"ק בנקאי: יובאו ${totalImported} · חזרות/סירובים ${totalRefused} · דולגו ${totalSkipped} · ₪${totalAmount.toLocaleString('he-IL')}`,
-            details:       { txIds: newTxIds, imported: totalImported, refused: totalRefused, skipped: totalSkipped, totalAmount },
+            id: crypto.randomUUID(), automation_id: AUTOMATION_ID,
+            run_at: new Date().toISOString(), dry_run: false,
+            actions_count: totalImported, status: 'success',
+            summary: `הו"ק בנקאי: יובאו ${totalImported} · החזרות ${totalReturned} · דולגו ${totalSkipped} · ₪${totalAmount.toLocaleString('he-IL')} (${from}–${to})`,
+            details: { from, to, rowIds: newRowIds, imported: totalImported, returned: totalReturned, skipped: totalSkipped, totalAmount },
           })
         }
 
-        send({ type: 'done', imported: totalImported, refused: totalRefused, returned: totalRefused, skipped: totalSkipped, totalAmount, dryRun })
+        send({ type: 'done', imported: totalImported, returned: totalReturned, refused: totalReturned, skipped: totalSkipped, totalAmount, dryRun, actions })
       } catch (err) {
-        send({ type: 'error', message: String(err) })
+        send({ type: 'error', message: String((err as { message?: string })?.message ?? err) })
       } finally {
         controller.close()
       }

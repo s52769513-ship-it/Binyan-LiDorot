@@ -20,7 +20,9 @@ export interface SchedulableAutomation {
   label: string
   endpoint: string
   mode: RunMode
-  /** Default day-of-month when the setting is missing. */
+  /** 'monthly' (default) fires once per Israel-month; 'daily' fires once per day. */
+  cadence?: 'monthly' | 'daily'
+  /** Default day-of-month when the setting is missing (ignored for daily). */
   defaultDay: number
   /** Default hour (Israel local, 0-23) when the setting is missing. */
   defaultHour: number
@@ -127,7 +129,16 @@ export const SCHEDULABLE: SchedulableAutomation[] = [
     defaultDay: 1, defaultHour: 6,
     payload: c => ({ dryRun: false, monthYear: monthYearOf(c) }),
   },
-  // Nedarim sync/pull automations and the Airtable transactions pull are
+  {
+    id: 'nedarim-bank-hok-pull', label: 'משיכת תנועות הו"ק בנקאי',
+    endpoint: '/api/automations/nedarim-bank-hok-pull', mode: 'stream',
+    // Runs DAILY: pulls what was charged/returned on bank standing orders. The
+    // route defaults to a rolling 45-day window (back-dated returns are caught)
+    // and dedups by DT_RowId, so a daily cadence never imports the same row twice.
+    cadence: 'daily', defaultDay: 1, defaultHour: 7,
+    payload: () => ({ dryRun: false }),
+  },
+  // Other Nedarim sync/pull automations and the Airtable transactions pull are
   // intentionally manual-only (run from the UI) — not part of the schedule.
 ]
 
@@ -161,6 +172,23 @@ export function isDue(cfg: ScheduleConfig, clock: ScheduleClock): boolean {
   if (clock.day < targetDay) return false
   if (clock.day === targetDay && clock.hour < cfg.hour) return false
   return true
+}
+
+/**
+ * Cadence-aware due check. Monthly automations use the day+hour rule above;
+ * daily ones fire once the clock has reached the chosen hour on any day (the
+ * caller enforces once-per-day via the periodKey guard, mirroring the monthly
+ * once-per-month guard).
+ */
+export function isDueFor(a: SchedulableAutomation, cfg: ScheduleConfig, clock: ScheduleClock): boolean {
+  if (!cfg.enabled) return false
+  if (a.cadence === 'daily') return clock.hour >= cfg.hour
+  return isDue(cfg, clock)
+}
+
+/** The idempotency-guard period key for an automation: "MM/YYYY" (monthly) or "YYYY-MM-DD" (daily). */
+export function periodKeyOf(a: SchedulableAutomation, clock: ScheduleClock): string {
+  return a.cadence === 'daily' ? isoDateOf(clock) : monthYearOf(clock)
 }
 
 /** Read a ScheduleConfig from a flat settings object for one automation. */

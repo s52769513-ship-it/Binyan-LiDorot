@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import {
-  SCHEDULABLE, getSchedulable, israelClock, readConfig, isDue,
+  SCHEDULABLE, getSchedulable, israelClock, readConfig, isDueFor, periodKeyOf,
   monthYearOf, type SchedulableAutomation, type ScheduleClock,
 } from '@/lib/automationSchedule'
 
@@ -54,18 +54,20 @@ async function runAutomation(
   return { ok: res.ok, status: res.status, ...json }
 }
 
-async function alreadyRanThisMonth(automationId: string, monthKey: string): Promise<boolean> {
+// One guard row per (automation, period). `period` is the month for monthly
+// automations and the date for daily ones — same column, different granularity.
+async function alreadyRanThisPeriod(automationId: string, periodKey: string): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from('automation_logs')
     .select('id')
     .eq('automation_id', GUARD_ID)
     .filter('details->>automation', 'eq', automationId)
-    .filter('details->>month', 'eq', monthKey)
+    .filter('details->>month', 'eq', periodKey)
     .limit(1)
   return (data?.length ?? 0) > 0
 }
 
-async function writeGuard(automationId: string, monthKey: string, clock: ScheduleClock, result: unknown) {
+async function writeGuard(automationId: string, periodKey: string, clock: ScheduleClock, result: unknown) {
   try {
     await supabaseAdmin.from('automation_logs').insert({
       id: crypto.randomUUID(),
@@ -73,8 +75,8 @@ async function writeGuard(automationId: string, monthKey: string, clock: Schedul
       run_at: new Date().toISOString(),
       dry_run: false,
       status: 'success',
-      summary: `⏰ תזמון: ${automationId} — ${monthKey} (יום ${clock.day} ${String(clock.hour).padStart(2, '0')}:00)`,
-      details: { automation: automationId, month: monthKey, scheduled: true, result },
+      summary: `⏰ תזמון: ${automationId} — ${periodKey} (יום ${clock.day} ${String(clock.hour).padStart(2, '0')}:00)`,
+      details: { automation: automationId, month: periodKey, scheduled: true, result },
     })
   } catch { /* best-effort */ }
 }
@@ -100,17 +102,18 @@ export async function GET(req: NextRequest) {
 
   for (const a of SCHEDULABLE) {
     const cfg = readConfig(settings, a)
-    if (!isDue(cfg, clock)) {
-      results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : `not due (day ${cfg.day}, today is day ${clock.day})` }
+    const periodKey = periodKeyOf(a, clock)
+    if (!isDueFor(a, cfg, clock)) {
+      results[a.id] = { skipped: true, reason: !cfg.enabled ? 'disabled' : a.cadence === 'daily' ? `not due yet (hour ${cfg.hour}, now ${clock.hour})` : `not due (day ${cfg.day}, today is day ${clock.day})` }
       continue
     }
-    if (await alreadyRanThisMonth(a.id, monthKey)) {
-      results[a.id] = { skipped: true, reason: 'already ran this month' }
+    if (await alreadyRanThisPeriod(a.id, periodKey)) {
+      results[a.id] = { skipped: true, reason: a.cadence === 'daily' ? 'already ran today' : 'already ran this month' }
       continue
     }
     try {
       const result = await runAutomation(base, a, clock)
-      await writeGuard(a.id, monthKey, clock, result)
+      await writeGuard(a.id, periodKey, clock, result)
       results[a.id] = { ran: true, result }
     } catch (err) {
       results[a.id] = { error: String((err as { message?: string })?.message ?? err) }
