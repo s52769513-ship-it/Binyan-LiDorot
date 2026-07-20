@@ -153,13 +153,13 @@ CREATE POLICY "service_role_all" ON salary_offsets
   },
   {
     id: 'nedarim-bank-hok-pull', name: 'משיכת תנועות הו"ק בנקאי', icon: '🏦',
-    desc: 'מושך היסטוריית חיובים בנקאיים לפי טווח תאריכים, מקשר להו"ק ולהורה, ומוסיף תנועה ל-DB',
+    desc: 'מושך לכל הו"ק בנקאי את מה שחוייב/חזר, מקשר להורה ול-PP שכ"ל, ומוסיף תנועה — עם בדיקת כפילות',
     defaultMonth: currentMY,
-    endpoint: '/api/automations/nedarim-pull',
+    endpoint: '/api/automations/nedarim-bank-hok-pull',
     steps: [
       { icon:'⏰', label:'הפעלה',          desc:'ידני',                  bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700'  },
-      { icon:'🌐', label:'GetMasavHistory', desc:'טווח תאריכים',          bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
-      { icon:'🔍', label:'התאמת הו"ק',     desc:'לפי מספר הו"ק',        bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
+      { icon:'🏦', label:'כל הו"ק בנקאי', desc:'לפי DB',                bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700'    },
+      { icon:'🌐', label:'GetMasavId',     desc:'חוייב / חזר לכל הו"ק', bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700'   },
       { icon:'✅', label:'תנועה + PP',      desc:'חיוב / קישור לשכ"ל',  bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
     ],
     sql: '',
