@@ -9,6 +9,7 @@ import { attributeTxsToPP } from '@/lib/ppAttribution'
 import { authHeaders } from '@/lib/authHeaders'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 import LinkedPersonEditor from '@/components/LinkedPersonEditor'
+import SupplierPicker from '@/components/SupplierPicker'
 
 const AddTransactionModal    = dynamic(() => import('./AddTransactionModal'),    { ssr: false })
 const AddPlannedPaymentModal = dynamic(() => import('./AddPlannedPaymentModal'), { ssr: false })
@@ -819,6 +820,26 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [chargeDraft, setChargeDraft]               = useState({ amount: '', comments: '', date: '' })
   const [chargeInFlight, setChargeInFlight]         = useState(false)
   const [chargeResult, setChargeResult]             = useState<{ soId: string; success: boolean; message?: string } | null>(null)
+  const [transferSo, setTransferSo]                 = useState<StandingOrderItem | null>(null)
+  const [transferTarget, setTransferTarget]         = useState<{ id: string; name: string } | null>(null)
+  const [transferring, setTransferring]             = useState(false)
+  const [transferError, setTransferError]           = useState('')
+
+  const doTransferSo = async () => {
+    if (!transferSo || !transferTarget) return
+    setTransferring(true); setTransferError('')
+    try {
+      const res = await fetch(`/api/standing-orders/${transferSo.id}/transfer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ newParentId: transferTarget.id }),
+      })
+      const data = await res.json()
+      if (data.error) { setTransferError(data.error); return }
+      setTransferSo(null); setTransferTarget(null)
+      load()
+    } catch { setTransferError('שגיאה בהעברה') }
+    finally { setTransferring(false) }
+  }
 
   const load = useCallback(() => {
     setLoading(true); setError('')
@@ -2244,6 +2265,10 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                           onClick={e => { e.stopPropagation(); setEditingSoId(so.id); setShowAddSo(false); setSoDraft({ externalId: so.externalId, standingOrderType: so.standingOrderType, bankName: so.bankName, bankBranch: so.bankBranch, bankAccount: so.bankAccount, chargeDay: so.chargeDay != null ? String(so.chargeDay) : '', linkedParentId: so.linkedParentId ?? '', linkedParentName: so.linkedParentName ?? '', notes: so.notes }); setSoParentQuery('') }}
                           className="text-[11px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
                         >עריכה</button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setTransferSo(so); setTransferTarget(null); setTransferError('') }}
+                          className="text-[11px] text-indigo-500 hover:text-indigo-700 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                        >העבר</button>
                         {(so.standingOrderType === 'אשראי' || so.standingOrderType === 'בנקאי') && so.externalId && (
                           <button
                             onClick={e => {
@@ -2792,6 +2817,40 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
       {showReport && parent && (
         <ReportModal parent={parent} onClose={() => setShowReport(false)} />
+      )}
+
+      {/* ── Standing-order transfer modal ── */}
+      {transferSo && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !transferring && setTransferSo(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+              <span className="text-sm font-bold" style={{ color: '#d4a921' }}>העברת הוראת קבע</span>
+              <button onClick={() => setTransferSo(null)} className="text-white/60 hover:text-white text-lg leading-none">✕</button>
+            </div>
+            <div className="p-5 space-y-3">
+              {transferError && <p className="text-xs text-red-500 text-center">{transferError}</p>}
+              <p className="text-sm text-gray-600 leading-relaxed">
+                העברת ההו&quot;ק <b>{transferSo.externalId || transferSo.standingOrderType || ''}</b> וכל התנועות שלה מ־<b>{parent?.name}</b> לבן אדם אחר. הקישורים לתשלומים מתוכננים יחושבו מחדש אצל שני הצדדים.
+              </p>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">העבר אל</label>
+                <SupplierPicker
+                  value={transferTarget?.id ?? null}
+                  valueName={transferTarget?.name}
+                  personType=""
+                  placeholder="חפש בן אדם..."
+                  onSelect={p => setTransferTarget(p)}
+                />
+              </div>
+            </div>
+            <div className="px-5 pb-5 pt-2">
+              <button onClick={doTransferSo} disabled={!transferTarget || transferring}
+                className="w-full py-2 rounded-xl text-sm font-semibold bg-[#1a3a7a] text-white hover:bg-[#0d1f52] disabled:opacity-50 transition-colors">
+                {transferring ? 'מעביר...' : transferTarget ? `העבר ל${transferTarget.name}` : 'בחר נמען'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Debt modal ── */}

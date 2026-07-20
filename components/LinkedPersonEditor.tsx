@@ -56,13 +56,18 @@ export default function LinkedPersonEditor({
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold text-gray-800 truncate">{currentName || '—'}</span>
           {!locked && (
-            <button onClick={() => setPicking(p => !p)} className="text-xs text-[#1a3a7a] hover:underline">
-              {picking ? 'ביטול' : 'שנה'}
+            <button onClick={() => setPicking(p => !p)}
+              className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+                picking
+                  ? 'border-gray-300 text-gray-500 hover:bg-gray-50'
+                  : 'border-[#1a3a7a]/30 text-[#1a3a7a] hover:bg-[#1a3a7a]/5'
+              }`}>
+              {picking ? 'ביטול' : '✏️ שינוי בן אדם'}
             </button>
           )}
-          <span className="text-sm font-medium text-gray-800">{currentName || '—'}</span>
         </div>
         <span className="text-xs text-gray-400 shrink-0" title={locked ? lockedReason : undefined}>
           {label}{locked && ' 🔒'}
