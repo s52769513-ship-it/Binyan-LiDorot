@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 
 export async function DELETE(
   req: NextRequest,
@@ -26,6 +27,10 @@ export async function DELETE(
     }
 
     await softDelete(supabaseAdmin, 'planned_payment', id, pp, deletedBy)
+
+    for (const pid of ((pp.parent_ids as string[]) ?? [])) {
+      try { await recalcParentTuitionBalance(pid) } catch { /* best-effort */ }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

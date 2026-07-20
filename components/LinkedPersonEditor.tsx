@@ -9,19 +9,35 @@ import SupplierPicker from '@/components/SupplierPicker'
 // is linked to a PP, or a PP already has linked transactions — reassigning
 // either half of an already-linked pair would silently orphan the other).
 export default function LinkedPersonEditor({
-  currentId, currentName, locked, lockedReason, onConfirm, label = 'מקושר ל',
+  currentId, currentName, locked, lockedReason, onConfirm, onUnlink, unlinkLabel = 'נתק תחילה', label = 'מקושר ל',
 }: {
   currentId: string | null
   currentName: string
   locked: boolean
   lockedReason?: string
   onConfirm: (newParent: { id: string; name: string }) => Promise<void> | void
+  /** When locked, an optional action that clears the lock (e.g. unlink the tx from its PP). */
+  onUnlink?: () => Promise<void> | void
+  unlinkLabel?: string
   label?: string
 }) {
   const [picking, setPicking]   = useState(false)
   const [pendingParent, setPendingParent] = useState<{ id: string; name: string } | null>(null)
   const [applying, setApplying] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
   const [error, setError]       = useState('')
+
+  const doUnlink = async () => {
+    if (!onUnlink) return
+    setUnlinking(true); setError('')
+    try {
+      await onUnlink()
+    } catch {
+      setError('שגיאה בניתוק')
+    } finally {
+      setUnlinking(false)
+    }
+  }
 
   const confirm = async () => {
     if (!pendingParent) return
@@ -53,8 +69,16 @@ export default function LinkedPersonEditor({
         </span>
       </div>
 
-      {locked && lockedReason && (
-        <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5">{lockedReason}</p>
+      {locked && (lockedReason || onUnlink) && (
+        <div className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
+          <span>{lockedReason}</span>
+          {onUnlink && (
+            <button onClick={doUnlink} disabled={unlinking}
+              className="shrink-0 px-2 py-0.5 rounded bg-amber-500 text-white font-medium hover:bg-amber-600 disabled:opacity-60">
+              {unlinking ? '...' : unlinkLabel}
+            </button>
+          )}
+        </div>
       )}
 
       {picking && !locked && (

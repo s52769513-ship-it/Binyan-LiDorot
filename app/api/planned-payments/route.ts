@@ -6,6 +6,7 @@ import { ppBeforeStart } from '@/lib/cutoffs'
 import { tuitionMonthForSalary } from '@/lib/months'
 import { softDelete } from '@/lib/trash'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 
 const fmtILS = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -282,6 +283,13 @@ export async function DELETE(req: NextRequest) {
     const { data: pp } = await supabaseAdmin.from('planned_payments').select('*').eq('id', id).single()
     if (!pp) return NextResponse.json({ error: 'תשלום מתוכנן לא נמצא' }, { status: 404 })
     await softDelete(supabaseAdmin, 'planned_payment', id, pp, deletedBy)
+
+    // Recompute the stored tuition_balance from the remaining PPs so every view
+    // (dashboard, parents list, card header) agrees with the live PP list —
+    // otherwise the deleted PP's amount lingers in the stored balance.
+    for (const pid of ((pp.parent_ids as string[]) ?? [])) {
+      try { await recalcParentTuitionBalance(pid) } catch { /* best-effort */ }
+    }
 
     void logActivityForParents((pp.parent_ids as string[]) ?? [], {
       actor: deletedBy, action: 'delete',

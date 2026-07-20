@@ -536,11 +536,21 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
         <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto" dir="rtl">
           {deleteError && <p className="text-xs text-red-500 text-center">{deleteError}</p>}
           <LinkedPersonEditor
-            currentId={tx.parentIds?.[0] ?? null}
+            currentId={draft.parentIds?.[0] ?? null}
             currentName={tx.parentName ?? ''}
             label="שם"
-            locked={!!tx.plannedPaymentId}
-            lockedReason="לא ניתן לשנות שיוך לתנועה המקושרת לתשלום מתוכנן — יש לנתק אותה קודם"
+            locked={!!draft.plannedPaymentId}
+            lockedReason="מקושרת לתשלום מתוכנן — נתק כדי לשנות שיוך"
+            onUnlink={async () => {
+              const res = await fetch(`/api/transactions/${tx.id}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ planned_payment_id: null }),
+              })
+              const data = await res.json().catch(() => ({}))
+              if (data?.error) throw new Error(data.error)
+              setDraft(d => ({ ...d, plannedPaymentId: null }))
+              onSaved?.({ ...draft, plannedPaymentId: null })
+            }}
             onConfirm={async newParent => {
               const res = await fetch(`/api/transactions/${tx.id}/reassign`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
