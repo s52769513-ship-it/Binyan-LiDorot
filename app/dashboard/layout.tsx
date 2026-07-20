@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import TaskBell from '@/components/TaskBell'
+import NewVersionBanner from '@/components/NewVersionBanner'
 
 const NAV_LINKS = [
   { href: '/dashboard',             label: 'דשבורד'      },
@@ -151,6 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="min-h-screen py-6 px-4 sm:px-6" style={{ paddingTop: 64 }} dir="rtl">
           {children}
         </main>
+        <NewVersionBanner />
       </div>
     )
   }
@@ -239,6 +241,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {children}
       </main>
+      <NewVersionBanner />
     </div>
   )
 }
