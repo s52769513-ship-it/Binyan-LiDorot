@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { insertSpilloverRows } from '@/lib/ppPayments'
+import { relinkParent } from '@/lib/relink'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
@@ -296,73 +296,16 @@ export async function POST(req: NextRequest) {
       summary: `נוספה תנועה: ${row.type || 'ללא סוג'} · ${fmtILS(row.amount)}${row.notes ? ` · ${row.notes}` : ''}`,
     })
 
-    // Update planned payment balance if linked; store surplus as credit on parent
-    if (plannedPaymentId) {
+    // תשלום המקושר ל-PP: מריצים ריענון מלא של ההורה, כך שהתשלום גולש על כל
+    // החודשים הפתוחים (מהישן לחדש) ולא נתקע על חודש בודד — אותה לוגיקת cascade
+    // של האוטומציות והקישור הידני. רק עודף אמיתי (אחרי כל החודשים) הופך לזיכוי,
+    // וכל גלישה נרשמת כשורת "זיכוי מעודף תשלום" גלויה על ה-PP שקיבל אותה.
+    if (plannedPaymentId && Array.isArray(parentIds) && parentIds[0]) {
       try {
-        const { data: pp } = await supabaseAdmin
-          .from('planned_payments')
-          .select('balance')
-          .eq('id', plannedPaymentId)
-          .single()
-        if (pp) {
-          const paid    = Math.abs(Number(amount))
-          const oldBal  = pp.balance || 0
-          const surplus = Math.max(0, paid - oldBal)
-          await supabaseAdmin
-            .from('planned_payments')
-            .update({ balance: Math.max(0, oldBal - paid) })
-            .eq('id', plannedPaymentId)
-
-          if (surplus > 0 && Array.isArray(parentIds) && parentIds.length > 0) {
-            const pid   = parentIds[0]
-            const today = new Date().toISOString().split('T')[0]
-
-            // Find ONE target PP: most overdue first, then closest to today
-            const { data: openPPs } = await supabaseAdmin
-              .from('planned_payments')
-              .select('id, balance, date, month_year, pp_type')
-              .contains('parent_ids', [pid])
-              .gt('balance', 0)
-              .neq('id', plannedPaymentId)
-              .order('date', { ascending: true })
-
-            const overdue  = (openPPs ?? []).filter(pp => pp.date && pp.date < today)
-            const upcoming = (openPPs ?? []).filter(pp => !pp.date || pp.date >= today)
-            const targetPP = overdue[0] ?? upcoming[0] ?? null
-
-            let remaining = surplus
-            if (targetPP) {
-              const applied = Math.min(remaining, targetPP.balance)
-              await supabaseAdmin
-                .from('planned_payments')
-                .update({ balance: targetPP.balance - applied })
-                .eq('id', targetPP.id)
-
-              // Visible spillover row on the target PP, pointing back at the
-              // source transaction so its detail view can show the breakdown
-              await insertSpilloverRows([{
-                parentId:    pid,
-                ppId:        targetPP.id,
-                ppMonthYear: targetPP.month_year ?? '',
-                ppType:      targetPP.pp_type ?? null,
-                amount:      applied,
-                sourceTxId:  id,
-                sourceLabel: monthYear || date || null,
-                date:        date || null,
-              }])
-              remaining -= applied
-            }
-
-            // Store any leftover as credit_balance for future payments
-            if (remaining > 0) {
-              const { data: par } = await supabaseAdmin.from('parents').select('credit_balance').eq('id', pid).single()
-              await supabaseAdmin.from('parents').update({ credit_balance: (Number(par?.credit_balance) || 0) + remaining }).eq('id', pid)
-            }
-          }
-        }
+        await relinkParent(parentIds[0])
       } catch (ppErr) {
-        console.error('planned payment balance update error:', ppErr)
-        // Do not fail the transaction — it was already saved
+        console.error('relink after transaction create failed:', ppErr)
+        // לא מפילים את הבקשה — התנועה כבר נשמרה
       }
     }
 

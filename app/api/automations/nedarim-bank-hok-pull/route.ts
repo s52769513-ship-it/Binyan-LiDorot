@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
+import { relinkParent } from '@/lib/relink'
 
 const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
 const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
@@ -164,6 +165,13 @@ export async function POST(req: NextRequest) {
                 planned_payment_id: null, standing_order_id: standingOrderDbId,
                 synced_at: '2099-12-31T23:59:59.999Z',
               })
+              // שחזור החוב: ריענון ההורה מסמן את החיוב המקורי שחזר (markReturnedCharges
+              // בתוך relink) ומנתק אותו מה-PP — כך שהחוב של אותו חודש נפתח מחדש.
+              const debtParentId = billingParentId ?? payerParentId
+              if (debtParentId) {
+                try { await relinkParent(debtParentId) }
+                catch (e) { send({ type: 'log', message: `הו"ק ${hokNumber}: ריענון לאחר החזרה נכשל — ${String(e)}` }) }
+              }
             }
             if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
             totalReturned++

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
 import { TUITION_START_DATE } from '@/lib/cutoffs'
 import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
+import { markReturnedCharges, RETURNED_CHARGE_NOTES_PREFIX } from '@/lib/ppPayments'
 
 /**
  * POST /api/parents/[id]/recalc-pp
@@ -27,6 +28,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function recalcPPs(parentId: string) {
+  // ── שלב 0-: קיזוז החזרות הו"ק ──────────────────────────────────────────
+  // סימון כל חיוב הו"ק שחזר (ניתוק מה-PP + תיוג ההערות) כדי שהחישוב מטה לא
+  // יספור אותו כתשלום — החוב של אותו חודש נפתח מחדש.
+  await markReturnedCharges(parentId)
+
   // ── שלב 0: ניתוק תנועות שגויות ─────────────────────────────────────────
   // תנועות שמקושרות לתשלומי שכ"ל אך אינן מפרויקט בנין לדורות
   const { data: tuitionPPIds } = await supabaseAdmin
@@ -103,7 +109,11 @@ export async function recalcPPs(parentId: string) {
     // שורות זיכוי שהמערכת יצרה (זיכוי שמור / זיכוי מעודף תשלום) שהתנתקו מה-PP
     // שלהן אינן תשלומים — ספירתן כתשלום מנפחת את הזיכוי בכל ריצה.
     const txNotes = String(tx.notes ?? '')
-    if (txNotes === 'זיכוי שמור' || txNotes.startsWith('זיכוי מעודף תשלום')) continue
+    if (
+      txNotes === 'זיכוי שמור' ||
+      txNotes.startsWith('זיכוי מעודף תשלום') ||
+      txNotes.startsWith(RETURNED_CHARGE_NOTES_PREFIX)  // חיוב הו"ק שחזר — אינו תשלום
+    ) continue
     let remaining = Number(tx.amount)
 
     const monthMatch = openPPs.findIndex(p => p.month_year === tx.month_year && p.balance > 0)

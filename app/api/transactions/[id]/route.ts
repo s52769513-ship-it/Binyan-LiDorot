@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
+import { relinkParent } from '@/lib/relink'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
@@ -30,71 +31,21 @@ export async function PATCH(
       if (key in body) update[key] = body[key]
     }
 
-    // If the PP link is changing (unlink → null, or re-link to a chosen PP),
-    // restore the OLD PP's balance and reduce the NEW PP's balance by this
-    // transaction's amount, so a manually-picked link has correct balances.
-    if ('planned_payment_id' in body) {
-      const { data: oldTx } = await supabaseAdmin
-        .from('transactions')
-        .select('amount, planned_payment_id')
-        .eq('id', id)
-        .single()
-      const oldPpId = (oldTx?.planned_payment_id as string) ?? null
-      const newPpId = (body.planned_payment_id as string) ?? null
-      const txAmt   = Math.abs(Number(oldTx?.amount) || 0)
-      if (oldPpId !== newPpId) {
-        // Restore the old PP
-        if (oldPpId) {
-          const { data: pp } = await supabaseAdmin
-            .from('planned_payments').select('balance, amount').eq('id', oldPpId).single()
-          if (pp) {
-            const restored = Math.min(Number(pp.amount), Number(pp.balance) + txAmt)
-            await supabaseAdmin.from('planned_payments').update({ balance: restored }).eq('id', oldPpId)
-          }
-        }
-        // Apply to the newly-chosen PP
-        if (newPpId) {
-          const { data: pp } = await supabaseAdmin
-            .from('planned_payments').select('balance, amount').eq('id', newPpId).single()
-          if (pp) {
-            const reduced = Math.max(0, Number(pp.balance) - txAmt)
-            await supabaseAdmin.from('planned_payments').update({ balance: reduced }).eq('id', newPpId)
-          }
-        }
-      }
-    }
-
-    // If amount is changing, adjust the linked planned payment's balance
-    if ('amount' in body) {
-      const { data: oldTx } = await supabaseAdmin
-        .from('transactions')
-        .select('amount, planned_payment_id')
-        .eq('id', id)
-        .single()
-      if (oldTx?.planned_payment_id) {
-        const oldAmt = Math.abs(Number(oldTx.amount))
-        const newAmt = Math.abs(Number(body.amount))
-        const diff   = newAmt - oldAmt   // positive = paid more → balance drops more
-        const { data: pp } = await supabaseAdmin
-          .from('planned_payments')
-          .select('balance, amount')
-          .eq('id', oldTx.planned_payment_id)
-          .single()
-        if (pp) {
-          const newBal = Math.min(pp.amount, Math.max(0, (pp.balance ?? 0) - diff))
-          await supabaseAdmin
-            .from('planned_payments')
-            .update({ balance: newBal })
-            .eq('id', oldTx.planned_payment_id)
-        }
-      }
-    }
-
     const { data: txBefore } = await supabaseAdmin
       .from('transactions').select('parent_ids, type, amount').eq('id', id).maybeSingle()
 
     const { error } = await supabaseAdmin.from('transactions').update(update).eq('id', id)
     if (error) throw error
+
+    // אם השתנה שדה שמשפיע על יתרות/גלישה — מריצים ריענון מלא של ההורה, כך
+    // שהשינוי מתפשט נכון על כל החודשים הפתוחים (עודף גולש הלאה במקום להיחתך
+    // ולהיאבד). זו אותה לוגיקת cascade של הוספת תשלום, הקישור הידני והאוטומציות.
+    const balanceFields = ['amount', 'planned_payment_id', 'month_year', 'date', 'project_names']
+    if (balanceFields.some(k => k in body)) {
+      for (const pid of ((txBefore?.parent_ids as string[]) ?? [])) {
+        try { await relinkParent(pid) } catch (e) { console.error('relink after tx edit failed:', e) }
+      }
+    }
 
     if (txBefore) {
       const parts = Object.entries(update).map(([k, v]) =>
@@ -118,9 +69,6 @@ export async function DELETE(
   try {
     const { id } = await params
     const deletedBy = req.headers.get('x-auth-email') || 'unknown'
-    // plannedPaymentId can be passed as fallback query param for older transactions
-    // that were created before planned_payment_id was stored on the row
-    const fallbackPPId = req.nextUrl.searchParams.get('plannedPaymentId') ?? ''
 
     const { data: tx } = await supabaseAdmin
       .from('transactions')
@@ -130,25 +78,14 @@ export async function DELETE(
 
     if (!tx) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
 
-    const ppId     = tx.planned_payment_id || fallbackPPId || null
-    const txAmount = Math.abs(Number(tx.amount ?? 0))
-
-    if (ppId && txAmount > 0) {
-      const { data: pp } = await supabaseAdmin
-        .from('planned_payments')
-        .select('balance, amount')
-        .eq('id', ppId)
-        .single()
-      if (pp) {
-        const restored = Math.min(pp.amount, (pp.balance ?? 0) + txAmount)
-        await supabaseAdmin
-          .from('planned_payments')
-          .update({ balance: restored })
-          .eq('id', ppId)
-      }
-    }
-
     await softDelete(supabaseAdmin, 'transaction', id, tx, deletedBy)
+
+    // מחיקת תשלום שגלש על כמה חודשים חייבת להחזיר את כל ההשפעה, לא רק את ה-PP
+    // הבודד שהיה מקושר. לאחר שהתנועה ירדה מהטבלה החיה — ריענון מלא של ההורה
+    // מחשב מחדש את כל היתרות/הגלישות בלעדיה.
+    for (const pid of ((tx.parent_ids as string[]) ?? [])) {
+      try { await relinkParent(pid) } catch (e) { console.error('relink after tx delete failed:', e) }
+    }
 
     void logActivityForParents((tx.parent_ids as string[]) ?? [], {
       actor: deletedBy, action: 'delete',

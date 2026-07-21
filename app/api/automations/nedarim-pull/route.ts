@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
+import { relinkParent } from '@/lib/relink'
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -209,6 +210,13 @@ export async function POST(req: NextRequest) {
                 standing_order_id:  standingOrderDbId,
                 synced_at:          '2099-12-31T23:59:59.999Z',
               })
+              // שחזור החוב: ריענון ההורה מסמן את החיוב שחזר ומנתק אותו מה-PP,
+              // כך שהחוב של אותו חודש נפתח מחדש.
+              const debtParentId = billingParentId ?? payerParentId
+              if (debtParentId) {
+                try { await relinkParent(debtParentId) }
+                catch (err) { e({ type: 'log', message: `ריענון לאחר החזרה נכשל — ${String(err)}` }) }
+              }
             }
             if (rowId) newRowIds.push(rowId)
             totalReturned++

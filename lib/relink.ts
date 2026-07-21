@@ -5,7 +5,9 @@ import {
   recalcParentTuitionBalance,
   updateParentCredits,
   ppTypeForProject,
+  markReturnedCharges,
   SPILLOVER_NOTES_PREFIX,
+  RETURNED_CHARGE_NOTES_PREFIX,
   type PayablePPType,
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
@@ -60,6 +62,11 @@ export function relinkParent(parentId: string): Promise<RelinkStats> {
 }
 
 async function doRelinkParent(parentId: string): Promise<RelinkStats> {
+  // 0. Reconcile bank-הו"ק returns: mark each returned charge (unlink it + tag
+  //    its notes) so the replay below never counts a bounced charge as a
+  //    payment — the debt for that month re-opens automatically.
+  await markReturnedCharges(parentId)
+
   // 1. Delete previously generated spillover rows — the replay recreates them.
   const delBySource = await supabaseAdmin
     .from('transactions')
@@ -111,7 +118,11 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     // שורות זיכוי/גלישה שהמערכת יצרה אינן תשלומים — מדלגים גם אם שלב 1 לא
     // מחק אותן (ריצה חופפת), אחרת הן מנפחות את הזיכוי בכל ריצה.
     const txNotes = String(tx.notes ?? '')
-    if (txNotes.startsWith(SPILLOVER_NOTES_PREFIX) || txNotes === 'זיכוי שמור') continue
+    if (
+      txNotes.startsWith(SPILLOVER_NOTES_PREFIX) ||
+      txNotes === 'זיכוי שמור' ||
+      txNotes.startsWith(RETURNED_CHARGE_NOTES_PREFIX)  // חיוב הו"ק שחזר — אינו תשלום
+    ) continue
     const wasLinked = tx.planned_payment_id != null
     const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
     // תנועה שכבר הייתה מקושרת: סוג החוב נקבע לפי ה-PP עצמו (מקור אמת).

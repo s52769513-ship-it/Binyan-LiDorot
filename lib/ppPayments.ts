@@ -33,6 +33,14 @@ export type PayablePPType = 'tuition' | 'donation'
  */
 export const SPILLOVER_NOTES_PREFIX = 'זיכוי מעודף תשלום'
 const FAR_FUTURE = '2099-12-31T23:59:59.999Z'
+
+/**
+ * חיוב הו"ק שחזר (החזרת הוראת קבע): החיוב המקורי מסומן בקידומת הזו ומנותק
+ * מה-PP, כך שכל חישוב מחדש (relink / recalc-pp) לא סופר אותו כתשלום, והחוב
+ * של אותו חודש נפתח מחדש. התנועה עצמה נשארת גלויה בתזרים (הסכום עדיין חיובי),
+ * וגם שורת ההחזרה השלילית + עמלת ההחזרה נשמרות — כך שהכסף מתאזן והחוב מתוקן.
+ */
+export const RETURNED_CHARGE_NOTES_PREFIX = 'חיוב שהוחזר'
 // 42703 = SQL undefined column (select/filter); PGRST204 = PostgREST schema
 // cache miss on insert/update payload keys — both mean the column is missing
 export const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204'])
@@ -144,6 +152,63 @@ export interface ApplyResult extends PaymentTarget {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * מתאים כל שורת "החזרת הו"ק" לחיוב ההו"ק המקורי שלה (לפי אותו הו"ק ואותו סכום)
+ * ומסמן את החיוב שחזר: מנתק אותו מה-PP ומוסיף לו את קידומת
+ * RETURNED_CHARGE_NOTES_PREFIX. כל חישוב מחדש (relink / recalc-pp) מדלג על
+ * חיובים מסומנים — כך שהחוב של אותו חודש נפתח מחדש, בעוד שהתנועה נשארת גלויה
+ * בתזרים (הכסף מתאזן מול שורת ההחזרה השלילית).
+ *
+ * אידמפוטנטי: חיוב שכבר סומן "צורך" את ההחזרה התואמת לו ולא גורם לסימון כפול,
+ * וכל החזרה מבטלת חיוב אחד בלבד (החדש ביותר קודם). מחזיר כמה חיובים סומנו כעת.
+ */
+export async function markReturnedCharges(parentId: string): Promise<number> {
+  const { data: returns } = await supabaseAdmin
+    .from('transactions')
+    .select('standing_order_id, amount')
+    .contains('parent_ids', [parentId])
+    .eq('type', 'החזרת הו"ק')
+  if (!returns || returns.length === 0) return 0
+
+  // כמה החזרות יש לכל (הו"ק, סכום) — כל אחת מבטלת חיוב תואם אחד
+  const need = new Map<string, number>()
+  for (const r of returns) {
+    const soId = (r.standing_order_id as string | null) ?? ''
+    if (!soId) continue
+    const key = `${soId}|${round2(Math.abs(Number(r.amount) || 0))}`
+    need.set(key, (need.get(key) ?? 0) + 1)
+  }
+  if (need.size === 0) return 0
+
+  // חיובי הו"ק חיוביים של ההורה, מהחדש לישן — מבטלים קודם את החיוב האחרון
+  const { data: charges } = await supabaseAdmin
+    .from('transactions')
+    .select('id, standing_order_id, amount, notes')
+    .contains('parent_ids', [parentId])
+    .eq('type', 'הו"ק')
+    .gt('amount', 0)
+    .order('date', { ascending: false })
+
+  let marked = 0
+  for (const c of charges ?? []) {
+    const soId = (c.standing_order_id as string | null) ?? ''
+    if (!soId) continue
+    const key = `${soId}|${round2(Math.abs(Number(c.amount) || 0))}`
+    const remaining = need.get(key) ?? 0
+    if (remaining <= 0) continue
+    const notes = String(c.notes ?? '')
+    // חיוב שכבר סומן — צורך החזרה קיימת כדי שלא נסמן חיוב נוסף באותה החזרה
+    if (notes.startsWith(RETURNED_CHARGE_NOTES_PREFIX)) { need.set(key, remaining - 1); continue }
+    need.set(key, remaining - 1)
+    await supabaseAdmin.from('transactions').update({
+      planned_payment_id: null,
+      notes: `${RETURNED_CHARGE_NOTES_PREFIX} · ${notes}`,
+    }).eq('id', c.id as string)
+    marked++
+  }
+  return marked
+}
 
 async function fetchOpenPPs(parentId: string, ppType: PayablePPType): Promise<OpenPP[]> {
   const { data } = await supabaseAdmin
