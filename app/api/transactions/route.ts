@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { insertSpilloverRows } from '@/lib/ppPayments'
+import { insertSpilloverRows, applyPaymentToParentPPs, ppTypeForProject } from '@/lib/ppPayments'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
@@ -362,6 +362,35 @@ export async function POST(req: NextRequest) {
         }
       } catch (ppErr) {
         console.error('planned payment balance update error:', ppErr)
+        // Do not fail the transaction — it was already saved
+      }
+    } else {
+      // No PP was picked manually — auto-link the payment to the parent's open
+      // PPs, exactly like the הו"ק automations do (full cascade: reduces the
+      // most-overdue PP first, spills over to the next, and stores any surplus
+      // as credit). Only for real incoming payments (positive amount) whose
+      // project maps to a payable debt type — payments on "בנין לדורות" → שכ"ל,
+      // "מגבית" → מגבית. Other categories (מזומנים, הוצאות…) map to null and
+      // are left unlinked, so nothing is misapplied.
+      try {
+        const amt = Number(amount)
+        const pid = Array.isArray(parentIds) && parentIds.length > 0 ? parentIds[0] : null
+        const projList = Array.isArray(projectNames) ? projectNames : []
+        const ppType = projList.map(ppTypeForProject).find(t => t != null) ?? null
+        if (amt > 0 && pid && ppType) {
+          const { ppId } = await applyPaymentToParentPPs({
+            parentId: pid,
+            amount: amt,
+            preferredMonthYear: monthYear || null,
+            ppType,
+            source: { txId: id, label: monthYear || date || null, date: date || null },
+          })
+          if (ppId) {
+            await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId }).eq('id', id)
+          }
+        }
+      } catch (autoErr) {
+        console.error('auto-link PP error:', autoErr)
         // Do not fail the transaction — it was already saved
       }
     }
