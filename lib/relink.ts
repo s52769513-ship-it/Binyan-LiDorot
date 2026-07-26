@@ -5,11 +5,12 @@ import {
   recalcParentTuitionBalance,
   updateParentCredits,
   ppTypeForProject,
+  MISSING_COLUMN_CODES,
   SPILLOVER_NOTES_PREFIX,
   type PayablePPType,
   type SpilloverRowInput,
 } from '@/lib/ppPayments'
-import { isTxBeforeStart } from '@/lib/cutoffs'
+import { isTxBeforeStart, ppBeforeStart } from '@/lib/cutoffs'
 
 const UNDEFINED_COLUMN = '42703'
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -92,13 +93,28 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
   // 3. All positive transactions (linked or not), oldest first — a
   //    transaction never linked before (e.g. a donation payment that
   //    arrived before its PP existed) gets picked up and linked here too.
-  const { data: txs, error: txErr } = await supabaseAdmin
+  //    manual_link: a transaction the user linked/unlinked by hand — the
+  //    replay must NOT re-choose its target (see loop below). Read it
+  //    resiliently so the code keeps working before the migration is run.
+  type RelinkTx = {
+    id: string; amount: number; date: string | null; month_year: string | null
+    planned_payment_id: string | null; project_names: string[] | null
+    notes: string | null; manual_link?: boolean
+  }
+  const fetchTxs = (cols: string) => supabaseAdmin
     .from('transactions')
-    .select('id, amount, date, month_year, planned_payment_id, project_names, notes')
+    .select(cols)
     .contains('parent_ids', [parentId])
     .gt('amount', 0)
     .order('date', { ascending: true })
-  if (txErr) throw txErr
+  const withManual = 'id, amount, date, month_year, planned_payment_id, project_names, notes, manual_link'
+  const noManual   = 'id, amount, date, month_year, planned_payment_id, project_names, notes'
+  let txsResult = await fetchTxs(withManual)
+  if (txsResult.error && MISSING_COLUMN_CODES.has(txsResult.error.code)) {
+    txsResult = await fetchTxs(noManual)
+  }
+  if (txsResult.error) throw txsResult.error
+  const txs = (txsResult.data ?? []) as unknown as RelinkTx[]
 
   const spillovers: SpilloverRowInput[] = []
   const linkUpdates: { id: string; planned_payment_id: string | null }[] = []
@@ -112,8 +128,35 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     // מחק אותן (ריצה חופפת), אחרת הן מנפחות את הזיכוי בכל ריצה.
     const txNotes = String(tx.notes ?? '')
     if (txNotes.startsWith(SPILLOVER_NOTES_PREFIX) || txNotes === 'זיכוי שמור') continue
+
+    const manual = (tx as { manual_link?: boolean }).manual_link === true
     const wasLinked = tx.planned_payment_id != null
     const linked = wasLinked ? pps.find(p => p.id === tx.planned_payment_id) : undefined
+
+    // ── קישור ידני ── המשתמש קבע את השיוך בעצמו — הריענון לא נוגע בו.
+    if (manual) {
+      // ניתוק ידני (planned_payment_id=null): התנועה נשארת צפה — לא יורדת
+      // מ-PP ולא נזקפת כזיכוי. פשוט מדלגים עליה.
+      if (!wasLinked) continue
+      // קישור ידני ל-PP קיים: מורידים את הסכום מאותו PP בדיוק (גם אם לפני
+      // החיתוך — ידני גובר), עודף → יתרת זכות של סוג החוב. לא בוחרים יעד
+      // מחדש ולא כותבים linkUpdates (השיוך נשמר כמו שהוא).
+      if (linked) {
+        processed++
+        const applyType = linked.pp_type ?? 'tuition'
+        let rem = Math.abs(Number(tx.amount))
+        const apply = Math.min(rem, linked.balance)
+        linked.balance = round2(linked.balance - apply)
+        rem = round2(rem - apply)
+        if (applyType === 'donation') creditDonation = round2(creditDonation + rem)
+        else creditTuition = round2(creditTuition + rem)
+      } else {
+        // מקושר ל-PP שכבר לא קיים (נמחק) — מנתקים לצפה.
+        linkUpdates.push({ id: tx.id as string, planned_payment_id: null })
+      }
+      continue
+    }
+
     // תנועה שכבר הייתה מקושרת: סוג החוב נקבע לפי ה-PP עצמו (מקור אמת).
     // תנועה חופשית: סוג החוב נקבע לפי הפרויקט שלה — קטגוריה שאינה
     // שכ"ל/מגבית (משכורות, הוצאות וכו') נשארת בלי קישור, כמו בכל שאר הקוד.
@@ -130,9 +173,13 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     }
     processed++
 
-    const open = pps.filter(p => p.balance > 0 && p.pp_type === poolType)
+    // אוטומטי לעולם לא יורד מ-PP שלפני החיתוך — אלה משויכים רק ידנית.
+    const open = pps.filter(p =>
+      p.balance > 0 && p.pp_type === poolType &&
+      !ppBeforeStart(p.pp_type, { month_year: p.month_year })
+    )
     const monthMatch = open.find(p => p.month_year === tx.month_year)
-    const stickyLink = linked && linked.balance > 0 ? linked : undefined
+    const stickyLink = linked && linked.balance > 0 && !ppBeforeStart(linked.pp_type, { month_year: linked.month_year }) ? linked : undefined
     const preferred = monthMatch ?? stickyLink
     const cascade = preferred ? [preferred, ...open.filter(p => p.id !== preferred.id)] : open
 

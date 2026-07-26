@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
+import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
@@ -93,7 +94,16 @@ export async function PATCH(
     const { data: txBefore } = await supabaseAdmin
       .from('transactions').select('parent_ids, type, amount').eq('id', id).maybeSingle()
 
-    const { error } = await supabaseAdmin.from('transactions').update(update).eq('id', id)
+    // A hand-picked link/unlink is a manual override — flag it so relink never
+    // re-chooses or drops it (survives ריענון, including links to pre-04/2026 PPs).
+    if ('planned_payment_id' in body) update.manual_link = true
+
+    let { error } = await supabaseAdmin.from('transactions').update(update).eq('id', id)
+    if (error && MISSING_COLUMN_CODES.has(error.code) && 'manual_link' in update) {
+      // manual_link טרם ב-schema cache (המיגרציה לא הורצה) — שומרים בלעדיו
+      delete update.manual_link
+      ;({ error } = await supabaseAdmin.from('transactions').update(update).eq('id', id))
+    }
     if (error) throw error
 
     if (txBefore) {

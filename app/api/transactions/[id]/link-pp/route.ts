@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
+import { ppBeforeStart } from '@/lib/cutoffs'
 
 /**
  * POST /api/transactions/[id]/link-pp
@@ -48,8 +50,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // Link transaction to target PP
-    await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId }).eq('id', txId)
+    // Link transaction to target PP — manual_link flags it as a hand-picked
+    // override so relink never re-chooses/drops it (resilient if column missing).
+    let linkErr = (await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId, manual_link: true }).eq('id', txId)).error
+    if (linkErr && MISSING_COLUMN_CODES.has(linkErr.code)) {
+      linkErr = (await supabaseAdmin.from('transactions').update({ planned_payment_id: ppId }).eq('id', txId)).error
+    }
+    if (linkErr) throw linkErr
 
     // Load all open PPs of same type for this parent, sorted oldest first
     const parentId = (tx.parent_ids as string[])?.[0]
@@ -61,8 +68,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .contains('parent_ids', [parentId])
       .eq('pp_type', ppType)
       .gt('balance', 0)
-    // Chronological sort in JS — text sort of "MM/YYYY" breaks across years
+    // Chronological sort in JS — text sort of "MM/YYYY" breaks across years.
+    // Overflow beyond the chosen PP cascades only into post-cutoff PPs; a
+    // pre-04/2026 PP is only ever paid when it's the explicitly chosen target.
     const openPPs = sortByMonth(openPPsRaw ?? [], true)
+      .filter(p => !ppBeforeStart(ppType, { month_year: (p.month_year as string) ?? null }))
 
     // Apply amount with cascade starting from target PP
     let remaining = Math.abs(Number(tx.amount))
