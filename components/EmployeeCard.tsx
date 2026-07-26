@@ -765,6 +765,47 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [ppTxList, setPpTxList]               = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;parentIds:string[];projectNames:string[];isCredit:boolean}[]>([])
   const [selectedPpTx, setSelectedPpTx]       = useState<Transaction | null>(null)
   const [loadingPpTx, setLoadingPpTx]         = useState(false)
+  // Link an existing (unlinked) transaction to the open PP
+  const [showLinkExisting, setShowLinkExisting] = useState(false)
+  const [unlinkedTxs, setUnlinkedTxs]         = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string}[]>([])
+  const [loadingUnlinked, setLoadingUnlinked] = useState(false)
+  const [linkingTxId, setLinkingTxId]         = useState<string | null>(null)
+
+  const loadUnlinkedTxs = useCallback(() => {
+    setLoadingUnlinked(true)
+    fetch(`/api/transactions?parentId=${parentId}`)
+      .then(r => r.json())
+      .then(d => {
+        const rows = Array.isArray(d) ? d : (d.data ?? [])
+        // Only real incoming payments not yet linked to any PP (exclude credit/spillover rows)
+        setUnlinkedTxs(rows
+          .filter((t: { plannedPaymentId?: string|null; amount:number; notes?:string }) =>
+            !t.plannedPaymentId && Number(t.amount) > 0 &&
+            !String(t.notes ?? '').startsWith('זיכוי'))
+          .map((t: {id:string;amount:number;date:string;monthYear:string;type:string;notes:string}) => ({
+            id: t.id, amount: Number(t.amount), date: t.date, monthYear: t.monthYear, type: t.type, notes: t.notes,
+          })))
+      })
+      .catch(() => setUnlinkedTxs([]))
+      .finally(() => setLoadingUnlinked(false))
+  }, [parentId])
+
+  const linkExistingTx = (txId: string) => {
+    if (!selectedPP) return
+    setLinkingTxId(txId)
+    fetch(`/api/transactions/${txId}/link-pp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ppId: selectedPP.id }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { alert(d.error); return }
+        setShowLinkExisting(false)
+        loadPpTx(selectedPP.id)
+        load()
+      })
+      .finally(() => setLinkingTxId(null))
+  }
 
   // Add salary PP
   const [showAddSalaryPP, setShowAddSalaryPP]   = useState(false)
@@ -898,6 +939,7 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   useEffect(() => {
     setConfirmDeletePP(false)
+    setShowLinkExisting(false)
     if (!selectedPP) { setPpTxList([]); return }
     loadPpTx(selectedPP.id)
   }, [selectedPP?.id, loadPpTx])
@@ -2634,20 +2676,39 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                         </button>
                       )}
                       {!tx.isCredit && (
-                        <button
-                          onClick={e => {
-                            e.stopPropagation()
-                            if (!confirm('למחוק תשלום זה?')) return
-                            const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
-                            fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE', headers: authHeaders() })
-                              .then(() => {
-                                setPpTxList(prev => prev.filter(t => t.id !== tx.id))
-                                load()
+                        <div className="flex items-center gap-1 mr-1 shrink-0">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (!confirm('לנתק תנועה זו מהתשלום המתוכנן? היתרה תחזור והתנועה תישאר ללא שיוך (ניתן לקשר אותה מחדש).')) return
+                              fetch(`/api/transactions/${tx.id}`, {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                body: JSON.stringify({ planned_payment_id: null }),
                               })
-                          }}
-                          className="p-1 text-gray-300 hover:text-red-400 text-xs mr-1 shrink-0"
-                          title="מחיקה"
-                        >🗑️</button>
+                                .then(() => {
+                                  setPpTxList(prev => prev.filter(t => t.id !== tx.id))
+                                  if (selectedPP) loadPpTx(selectedPP.id)
+                                  load()
+                                })
+                            }}
+                            className="px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-amber-600 border border-gray-200 rounded shrink-0"
+                            title="נתק מהתשלום המתוכנן"
+                          >נתק</button>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (!confirm('למחוק תשלום זה?')) return
+                              const ppParam = selectedPP ? `?plannedPaymentId=${encodeURIComponent(selectedPP.id)}` : ''
+                              fetch(`/api/transactions/${tx.id}${ppParam}`, { method: 'DELETE', headers: authHeaders() })
+                                .then(() => {
+                                  setPpTxList(prev => prev.filter(t => t.id !== tx.id))
+                                  load()
+                                })
+                            }}
+                            className="p-1 text-gray-300 hover:text-red-400 text-xs shrink-0"
+                            title="מחיקה"
+                          >🗑️</button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -2660,6 +2721,44 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 </>
                 )
               })()}
+            </div>
+
+            {/* ── Link an existing (unlinked) transaction to this PP ── */}
+            <div className="mb-3">
+              {!showLinkExisting ? (
+                <button
+                  onClick={() => { setShowLinkExisting(true); loadUnlinkedTxs() }}
+                  className="w-full py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-xs hover:bg-indigo-100 transition-colors"
+                >
+                  🔗 קשר תנועה קיימת לתשלום זה
+                </button>
+              ) : (
+                <div className="border border-indigo-200 rounded-xl p-2.5 bg-indigo-50/40">
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setShowLinkExisting(false)} className="text-[11px] text-gray-400 hover:text-gray-600">סגור</button>
+                    <span className="text-xs font-semibold text-gray-600">בחר תנועה לא-מקושרת לקשר</span>
+                  </div>
+                  {loadingUnlinked ? (
+                    <p className="text-center text-xs text-gray-400 py-2">טוען...</p>
+                  ) : unlinkedTxs.length === 0 ? (
+                    <p className="text-center text-xs text-gray-400 py-2">אין תנועות לא-מקושרות לאדם זה</p>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {unlinkedTxs.map(t => (
+                        <button key={t.id} disabled={linkingTxId === t.id}
+                          onClick={() => linkExistingTx(t.id)}
+                          className="w-full flex items-center justify-between rounded-lg px-3 py-2 bg-white border border-gray-200 hover:border-indigo-400 text-right transition-colors disabled:opacity-50">
+                          <div className="flex items-center gap-2">
+                            {t.type && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200">{t.type}</span>}
+                            <span className="text-xs text-gray-400">{t.monthYear || fmtDate(t.date)}</span>
+                          </div>
+                          <span className="text-sm font-bold text-emerald-700">{linkingTxId === t.id ? '...' : fmt(Math.abs(t.amount))}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {selectedPP.balance > 0 && (

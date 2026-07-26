@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
-import { isTxBeforeStart } from '@/lib/cutoffs'
+import { isTxBeforeStart, ppBeforeStart } from '@/lib/cutoffs'
 
 /**
  * לוגיקה אחודה להחלת תשלום על תשלומים מתוכננים של הורה.
@@ -152,11 +152,15 @@ async function fetchOpenPPs(parentId: string, ppType: PayablePPType): Promise<Op
     .contains('parent_ids', [parentId])
     .eq('pp_type', ppType)
     .gt('balance', 0)
-  return (data ?? []).map(p => ({
-    id: p.id as string,
-    balance: Number(p.balance),
-    month_year: (p.month_year as string) ?? null,
-  }))
+  // תשלום אוטומטי לעולם לא יורד מ-PP שלפני החיתוך (שכ"ל 04/2026, מגבית 06/2026)
+  // — אלה משויכים רק בקישור ידני. כאן זה המסלול האוטומטי, אז מסננים אותם.
+  return (data ?? [])
+    .filter(p => !ppBeforeStart(ppType, { month_year: (p.month_year as string) ?? null }))
+    .map(p => ({
+      id: p.id as string,
+      balance: Number(p.balance),
+      month_year: (p.month_year as string) ?? null,
+    }))
 }
 
 /** מסדר: PP של החודש המבוקש ראשון, אחריו השאר מהוותיק לחדש. */
