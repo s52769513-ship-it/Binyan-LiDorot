@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: txs, error } = await supabaseAdmin
           .from('transactions')
-          .select('id, standing_order_id, type, amount, date, month_year, parent_ids, created_at')
+          .select('id, standing_order_id, type, amount, date, month_year, parent_ids, planned_payment_id')
           .in('type', ['הו"ק', 'החזרת הו"ק'])
           .not('standing_order_id', 'is', null)
         if (error) throw error
@@ -42,8 +42,14 @@ export async function POST(req: NextRequest) {
         const toDelete: typeof txs = []
         for (const rows of groups.values()) {
           if (rows.length <= 1) continue
-          // Keep the earliest (created_at, then id as a stable tiebreaker); the rest are dupes.
-          rows.sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')) || String(a.id).localeCompare(String(b.id)))
+          // Keep one, delete the rest. Prefer keeping a row that is linked to a
+          // PP (so the kept transaction still counts toward the debt); id is a
+          // stable tiebreaker (transactions has no created_at column).
+          rows.sort((a, b) => {
+            const al = a.planned_payment_id ? 0 : 1
+            const bl = b.planned_payment_id ? 0 : 1
+            return al - bl || String(a.id).localeCompare(String(b.id))
+          })
           toDelete.push(...rows.slice(1))
         }
 
