@@ -72,7 +72,7 @@ export default function TuitionPage() {
   const [genLoading, setGenLoading]   = useState(false)
   const [genPreview, setGenPreview]   = useState<PreviewData | null>(null)
   const [genExecuting, setGenExecuting] = useState(false)
-  const [genResult, setGenResult]     = useState<{ created: number; skipped: number } | null>(null)
+  const [genResult, setGenResult]     = useState<{ created: number; skipped: number; relinked?: number } | null>(null)
   const [genError, setGenError]       = useState('')
   const [futureOnly, setFutureOnly]   = useState(false)
   const [genMode, setGenMode]         = useState<'future' | 'month'>('future')
@@ -284,7 +284,9 @@ export default function TuitionPage() {
           )}
           {genResult && (
             <span className="text-sm text-emerald-700 font-medium">
-              ✅ נוצרו {genResult.created} תשלומים
+              {genResult.created > 0
+                ? `✅ נוצרו ${genResult.created} תשלומים${genResult.relinked ? ` · קושרו וחושבו זיכויים ל-${genResult.relinked} אנשים` : ''}`
+                : '✅ אין תשלומי שכ"ל חסרים — הכל כבר קיים'}
               <button onClick={() => setGenResult(null)} className="mr-2 text-xs text-gray-400 underline">סגור</button>
             </span>
           )}
