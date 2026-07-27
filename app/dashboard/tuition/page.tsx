@@ -98,19 +98,64 @@ export default function TuitionPage() {
   }
 
   const executeGen = async () => {
+    if (genExecuting) return   // guard against a double-submit
     setGenExecuting(true); setGenError('')
     try {
+      // Single-month mode sends the chosen month so ONLY it is generated;
+      // otherwise generate the (future or full) Hebrew year.
+      const payload = genMode === 'month'
+        ? { month: selectedGenMonth }
+        : { futureOnly }
       const res  = await fetch('/api/planned-payments/generate-year-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ futureOnly }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (data.error) { setGenError(data.error); return }
       setGenResult(data)
       setGenPreview(null)
+      load(month)
     } catch { setGenError('שגיאת רשת') }
     finally { setGenExecuting(false) }
+  }
+
+  const [dedupeLoading, setDedupeLoading] = useState(false)
+  const dedupePPs = async () => {
+    if (dedupeLoading) return
+    setDedupeLoading(true); setGenError('')
+    try {
+      const drain = async (res: Response) => {
+        if (!res.body) return null
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''
+        let last: Record<string, unknown> | null = null
+        for (;;) {
+          const { done, value } = await reader.read(); if (done) break
+          buf += dec.decode(value, { stream: true })
+          const lines = buf.split('\n'); buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try { const ev = JSON.parse(line); if (ev.type === 'done' || ev.type === 'error') last = ev } catch {}
+          }
+        }
+        return last
+      }
+      const prev = await drain(await fetch('/api/planned-payments/dedupe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: true }),
+      }))
+      if (prev?.type === 'error') { setGenError(String(prev.message)); return }
+      const dupes = Number(prev?.duplicates ?? 0)
+      const ppl   = Number(prev?.parents ?? 0)
+      if (dupes === 0) { alert('לא נמצאו תשלומים מתוכננים כפולים 🎉'); return }
+      if (!confirm(`נמצאו ${dupes} תשלומים מתוכננים כפולים אצל ${ppl} אנשים.\nהתנועות המקושרות יועברו לתשלום שנשמר, והכפילויות יימחקו (ניתן לשחזר מ-🗑️ אשפה). להמשיך?`)) return
+      const res = await drain(await fetch('/api/planned-payments/dedupe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: false }),
+      }))
+      if (res?.type === 'error') { setGenError(String(res.message)); return }
+      alert(`✓ נמחקו ${res?.duplicates ?? 0} תשלומים כפולים · קושרו מחדש ${res?.parents ?? 0} אנשים`)
+      load(month)
+    } catch { setGenError('שגיאת רשת') }
+    finally { setDedupeLoading(false) }
   }
 
   const executeReset = async () => {
@@ -194,11 +239,18 @@ export default function TuitionPage() {
             )}
             <button
               onClick={() => setGenConfirm(true)}
-              disabled={genLoading || (genMode === 'month' && !selectedGenMonth)}
+              disabled={genLoading || genExecuting || (genMode === 'month' && !selectedGenMonth)}
               className="px-3 py-2 text-sm font-semibold rounded-xl transition-all disabled:opacity-60 flex items-center gap-1.5 whitespace-nowrap"
               style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)', color: '#d4a921' }}
             >
-              {genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים'}
+              {genExecuting ? <><span className="animate-spin inline-block text-xs">⟳</span> יוצר...</> : genLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> טוען...</> : '⚡ צור תשלומים'}
+            </button>
+            <button
+              onClick={dedupePPs}
+              disabled={dedupeLoading}
+              className="px-3 py-2 text-sm font-semibold rounded-xl border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {dedupeLoading ? <><span className="animate-spin inline-block text-xs">⟳</span> בודק...</> : '🧹 נקה PP כפולים'}
             </button>
           </div>
           {/* Reset button */}
@@ -514,9 +566,10 @@ export default function TuitionPage() {
               </button>
               <button
                 onClick={() => { setGenConfirm(false); executeGen() }}
-                className="flex-1 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                disabled={genExecuting}
+                className="flex-1 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                כן, צור
+                {genExecuting ? 'יוצר...' : 'כן, צור'}
               </button>
             </div>
           </div>
