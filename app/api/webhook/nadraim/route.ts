@@ -122,6 +122,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'חסרים שדות חובה: Amount, TransactionTime' }, { status: 400 })
     }
 
+    // 0. Idempotency — Nedarim/Make.com retry webhook deliveries on timeout or
+    //    network error. Without this guard, each retry created ANOTHER identical
+    //    transaction AND re-applied the payment to the PPs (double-reducing
+    //    balances and inflating credit) — the source of the duplicate הו"ק rows
+    //    and phantom credits. If this TransactionId was already processed, ack
+    //    success and do nothing. The id is recorded in the transaction notes as
+    //    "#<TransactionId>" (kept as a whole ' · '-separated segment).
+    const externalTxId = String(TransactionId ?? '').trim()
+    if (externalTxId) {
+      const token = `#${externalTxId}`
+      const { data: existing } = await supabaseAdmin
+        .from('transactions')
+        .select('id, notes')
+        .ilike('notes', `%${token}%`)
+        .limit(25)
+      const already = (existing ?? []).some(t =>
+        String(t.notes ?? '').split(' · ').some(seg => seg.trim() === token))
+      if (already) {
+        return NextResponse.json({ success: true, duplicate: true, transactionId: externalTxId })
+      }
+    }
+
     // 1. Currency conversion
     const rawAmount = parseFloat(Amount) || 0
     const { amount, currencyNote } = await convertToILS(rawAmount, String(Currency ?? '1'))

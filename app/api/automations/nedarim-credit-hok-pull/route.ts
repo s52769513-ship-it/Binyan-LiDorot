@@ -139,6 +139,26 @@ export async function POST(req: NextRequest) {
               }
               if (status !== '1' || !amount || !dateStr) { totalSkipped++; continue }
 
+              // Bulletproof dedup independent of the TransactionId log set: the
+              // same charge may already exist from the real-time webhook (which
+              // labels it 'נדרים', not 'הו"ק'). A standing order is charged at
+              // most once per (date, amount), so skip if a matching transaction
+              // already exists — prevents webhook↔pull cross-source duplicates.
+              {
+                const { data: dupe } = await supabaseAdmin
+                  .from('transactions')
+                  .select('id')
+                  .eq('standing_order_id', so.id)
+                  .eq('amount', amount)
+                  .eq('date', dateStr)
+                  .limit(1)
+                if (dupe && dupe.length > 0) {
+                  totalSkipped++
+                  if (txId) { newTxIds.push(txId); seenTxIds.add(txId) }
+                  continue
+                }
+              }
+
               // Apply to open PPs of the matching debt type (shared cascade
               // logic; project דמי מגבית → donation PP, otherwise tuition PP)
               const ppParentId = billingParentId ?? payerParentId
