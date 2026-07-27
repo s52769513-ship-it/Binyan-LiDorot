@@ -8,6 +8,35 @@ import { supabaseAdmin } from '@/lib/supabase'
 let generateLockUntil = 0
 const GENERATE_LOCK_MS = 120_000
 
+/**
+ * Load every existing PP in the given months, PAGINATED.
+ * PostgREST caps a single response at ~1000 rows, so an unpaginated select
+ * silently truncated the "already exists" set — parents whose PPs fell outside
+ * the first page looked like they had none, and generation created DUPLICATES
+ * for them. Paginating is what makes the existence check trustworthy.
+ */
+async function loadExistingKeys(monthYears: string[]): Promise<Set<string>> {
+  const keys = new Set<string>()
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from('planned_payments')
+      .select('parent_ids, month_year')
+      .in('month_year', monthYears)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = data ?? []
+    for (const pp of rows) {
+      for (const pid of (pp.parent_ids as string[]) ?? []) {
+        keys.add(`${pid}|${pp.month_year}`)
+      }
+    }
+    if (rows.length < PAGE) break
+  }
+  return keys
+}
+
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
   const curMonth = today.getMonth() + 1
@@ -78,19 +107,8 @@ export async function GET(req: NextRequest) {
     // For each parent find which months already have a PP
     const parentIds = parents.map(p => p.id)
 
-    // Fetch all existing PPs in those months for any of these parents
-    const { data: existing } = await supabaseAdmin
-      .from('planned_payments')
-      .select('parent_ids, month_year')
-      .in('month_year', monthYears)
-
-    // Build set of "parentId|monthYear" that already exist
-    const existingSet = new Set<string>()
-    for (const pp of existing ?? []) {
-      for (const pid of (pp.parent_ids as string[]) ?? []) {
-        existingSet.add(`${pid}|${pp.month_year}`)
-      }
-    }
+    // Set of "parentId|monthYear" that already exist (paginated — see helper)
+    const existingSet = await loadExistingKeys(monthYears)
 
     const preview = parents
       .map(p => {
@@ -148,17 +166,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ created: 0, skipped: 0 })
     }
 
-    const { data: existing } = await supabaseAdmin
-      .from('planned_payments')
-      .select('parent_ids, month_year')
-      .in('month_year', monthYears)
-
-    const existingSet = new Set<string>()
-    for (const pp of existing ?? []) {
-      for (const pid of (pp.parent_ids as string[]) ?? []) {
-        existingSet.add(`${pid}|${pp.month_year}`)
-      }
-    }
+    const existingSet = await loadExistingKeys(monthYears)
 
     let created = 0
     let skipped = 0

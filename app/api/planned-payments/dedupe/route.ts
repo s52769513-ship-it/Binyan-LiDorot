@@ -51,12 +51,17 @@ export async function POST(req: NextRequest) {
           if (rows.length < PAGE) break
         }
 
-        // Group exact duplicates: same parents + month + type + amount.
+        // Group duplicates: same parents + month + type. Deliberately NOT keyed
+        // on the amount — a partially-paid duplicate shows a smaller amount/
+        // balance (e.g. 306 and 2,700 for the same month are the SAME debt, one
+        // partly paid), and keying on amount let those escape. Two PPs for the
+        // same person, month and type are one debt; the payments are merged onto
+        // the keeper and relink recomputes the balance from the transactions.
         const groups = new Map<string, PPRow[]>()
         for (const pp of all) {
           const parents = [...((pp.parent_ids as string[]) ?? [])].sort().join(',')
           if (!parents || !pp.month_year) continue
-          const key = `${parents}|${pp.month_year}|${pp.pp_type ?? ''}|${pp.amount}`
+          const key = `${parents}|${pp.month_year}|${pp.pp_type ?? ''}`
           if (!groups.has(key)) groups.set(key, [])
           groups.get(key)!.push(pp)
         }
@@ -71,7 +76,10 @@ export async function POST(req: NextRequest) {
         const affectedParents = new Set<string>()
         for (const rows of groups.values()) {
           if (rows.length <= 1) continue
-          rows.sort((a, b) => (a.balance - b.balance) || String(a.id).localeCompare(String(b.id)))
+          // Keep the PP holding the FULL total amount (what's actually owed for
+          // that month), not the one with the least left to pay — a partially
+          // paid twin carries a reduced amount and must not become the keeper.
+          rows.sort((a, b) => (Number(b.amount) - Number(a.amount)) || String(a.id).localeCompare(String(b.id)))
           const keep = rows[0]
           for (const drop of rows.slice(1)) removals.push({ keepId: keep.id, drop })
           for (const pid of (keep.parent_ids as string[]) ?? []) affectedParents.add(pid)
