@@ -146,6 +146,38 @@ export async function POST(req: NextRequest) {
           const projectName = category || 'בנין לדורות'
           const notes = ['נדרים', rowId ? `DT:${rowId}` : null, status || null].filter(Boolean).join(' · ')
 
+          // Bulletproof dedup independent of DT_RowId: a bank standing order is
+          // charged at most once per date for a given amount. If Nedarim omits/
+          // rotates DT_RowId, or this pull runs more than once (daily cron + a
+          // manual run, or a transferred הו"ק), the RowId set alone would let the
+          // same charge import again — so also skip when a matching transaction
+          // already exists in the DB. This is what prevents the duplicate 1,800
+          // rows (and the phantom overpayment credit they created).
+          if (standingOrderDbId) {
+            const wantAmount = isReturned ? -amount : amount
+            // Match on standing order + amount + charge-key, NOT on the type
+            // label: the same charge may already exist from the real-time
+            // webhook (which labels it 'נדרים', not 'הו"ק'), and a standing
+            // order is charged at most once per (date, amount) — so this catches
+            // both a repeated pull AND a webhook↔pull cross-source duplicate.
+            let dupeQ = supabaseAdmin
+              .from('transactions')
+              .select('id')
+              .eq('standing_order_id', standingOrderDbId)
+              .eq('amount', wantAmount)
+              .limit(1)
+            // Successful charge: match on the charge date. Return: date is stored
+            // as "today", so match on the charge month instead (stable across days).
+            dupeQ = isReturned ? dupeQ.eq('month_year', monthYear) : dupeQ.eq('date', date)
+            const { data: dupe } = await dupeQ
+            if (dupe && dupe.length > 0) {
+              totalSkipped++
+              if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
+              actions.push({ hokNumber, donorName, amount, status, skipped: true, reason: 'תנועה זהה כבר קיימת' })
+              continue
+            }
+          }
+
           if (isReturned) {
             // Returned charge → negative transaction + 25₪ return fee
             if (!dryRun) {
