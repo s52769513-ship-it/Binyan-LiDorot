@@ -699,25 +699,6 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showAddParent, setShowAddParent] = useState(false)
   const [showAddTx, setShowAddTx]   = useState(false)
-  const [relinkingAll, setRelinkingAll] = useState(false)
-  const [dedupingHok, setDedupingHok] = useState(false)
-
-  // Drain an NDJSON stream, returning the final 'done'/'complete'/'error' event.
-  const drainNdjson = async (res: Response): Promise<Record<string, unknown> | null> => {
-    if (!res.body) return null
-    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''
-    let last: Record<string, unknown> | null = null
-    for (;;) {
-      const { done, value } = await reader.read(); if (done) break
-      buf += dec.decode(value, { stream: true })
-      const lines = buf.split('\n'); buf = lines.pop() ?? ''
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try { const ev = JSON.parse(line); if (ev.type === 'done' || ev.type === 'complete' || ev.type === 'error') last = ev } catch {}
-      }
-    }
-    return last
-  }
   const [deptModal, setDeptModal]   = useState<string | null>(null)
 
   const [view, setView]             = useState<ViewMode>('current')
@@ -840,71 +821,6 @@ export default function Dashboard() {
         }}
           className="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-medium transition-colors">
           🧹 נקה PP ריקים
-        </button>
-
-        <button
-          disabled={relinkingAll}
-          onClick={async () => {
-            if (!confirm('לקשר מחדש את כל התנועות לכל האנ"ש? פעולה זו מריצה ריענון על כל ההורים (קישורים ידניים נשמרים). להמשיך?')) return
-            setRelinkingAll(true)
-            try {
-              const res = await fetch('/api/parents/relink-all', { method: 'POST' })
-              if (!res.body) throw new Error('no stream')
-              const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''
-              let summary = 'הושלם'
-              for (;;) {
-                const { done, value } = await reader.read(); if (done) break
-                buf += dec.decode(value, { stream: true })
-                const lines = buf.split('\n'); buf = lines.pop() ?? ''
-                for (const line of lines) {
-                  if (!line.trim()) continue
-                  try {
-                    const ev = JSON.parse(line)
-                    if (ev.type === 'complete') summary = `✓ קושרו מחדש ${ev.applied} הורים${ev.skipped ? ` · ${ev.skipped} נכשלו` : ''}`
-                    else if (ev.type === 'error') summary = `שגיאה: ${ev.message}`
-                  } catch {}
-                }
-              }
-              alert(summary)
-              load()
-            } catch (err) {
-              alert(`שגיאה: ${err}`)
-            } finally {
-              setRelinkingAll(false)
-            }
-          }}
-          className="px-3 py-1.5 text-xs rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium transition-colors disabled:opacity-60">
-          {relinkingAll ? '...מקשר' : '🔗 קישור מחדש לכולם'}
-        </button>
-
-        <button
-          disabled={dedupingHok}
-          onClick={async () => {
-            setDedupingHok(true)
-            try {
-              // Preview first (dry run) — no writes
-              const prev = await drainNdjson(await fetch('/api/automations/dedupe-hok', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: true }),
-              }))
-              if (prev?.type === 'error') { alert(`שגיאה: ${prev.message}`); return }
-              const dupes = Number(prev?.duplicates ?? 0)
-              const ppl   = Number(prev?.parents ?? 0)
-              if (dupes === 0) { alert('לא נמצאו תנועות הו"ק כפולות 🎉'); return }
-              if (!confirm(`נמצאו ${dupes} תנועות הו"ק כפולות אצל ${ppl} אנשים.\nלמחוק את הכפילויות (ניתן לשחזר מ-🗑️ אשפה) ולקשר מחדש?`)) return
-              const res = await drainNdjson(await fetch('/api/automations/dedupe-hok', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: false }),
-              }))
-              if (res?.type === 'error') { alert(`שגיאה: ${res.message}`); return }
-              alert(`✓ נמחקו ${res?.duplicates ?? 0} כפילויות · קושרו מחדש ${res?.parents ?? 0} אנשים`)
-              load()
-            } catch (err) {
-              alert(`שגיאה: ${err}`)
-            } finally {
-              setDedupingHok(false)
-            }
-          }}
-          className="px-3 py-1.5 text-xs rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 font-medium transition-colors disabled:opacity-60">
-          {dedupingHok ? '...בודק' : '🧹 נקה כפילויות הו"ק'}
         </button>
 
         {lastSyncLabel && (
