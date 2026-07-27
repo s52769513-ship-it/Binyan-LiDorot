@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { softDelete } from '@/lib/trash'
 import { relinkParent } from '@/lib/relink'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 
 export const maxDuration = 300
 
@@ -60,42 +61,52 @@ export async function POST(req: NextRequest) {
           groups.get(key)!.push(pp)
         }
 
-        // For each dup group choose the keeper (most paid = lowest balance),
-        // the rest are removed after their transactions move to the keeper.
-        const removals: { keepId: string; dropId: string }[] = []
+        // For each dup group choose the keeper (most paid = lowest balance).
+        // Carry the in-memory PPRow for each dropped PP so soft-delete needs no
+        // extra query. A dropped PP that is fully unpaid (balance == amount)
+        // can't have linked payments, so removing it needs only a cheap
+        // tuition-balance recompute — NOT a full relink (the slow part that made
+        // this time out when everyone had duplicates).
+        const removals: { keepId: string; drop: PPRow }[] = []
         const affectedParents = new Set<string>()
         for (const rows of groups.values()) {
           if (rows.length <= 1) continue
           rows.sort((a, b) => (a.balance - b.balance) || String(a.id).localeCompare(String(b.id)))
           const keep = rows[0]
-          for (const drop of rows.slice(1)) removals.push({ keepId: keep.id, dropId: drop.id })
+          for (const drop of rows.slice(1)) removals.push({ keepId: keep.id, drop })
           for (const pid of (keep.parent_ids as string[]) ?? []) affectedParents.add(pid)
         }
 
         send({ type: 'log', message: `נמצאו ${removals.length} תשלומים מתוכננים כפולים · ${affectedParents.size} אנשים מושפעים${dryRun ? ' (בדיקה בלבד)' : ''}` })
 
         if (!dryRun) {
+          const relinkParents = new Set<string>()   // parents where txs actually moved
+          const balanceParents = new Set<string>()  // parents needing only a balance refresh
           let done = 0
-          for (const { keepId, dropId } of removals) {
-            // Move ALL transactions linked to the duplicate PP onto the keeper —
-            // this is the "handle everything linked" requirement; no orphans.
-            await supabaseAdmin
-              .from('transactions')
-              .update({ planned_payment_id: keepId })
-              .eq('planned_payment_id', dropId)
-            // Load + soft-delete the now-empty duplicate PP (recoverable).
-            const { data: ppRow } = await supabaseAdmin
-              .from('planned_payments').select('*').eq('id', dropId).single()
-            if (ppRow) await softDelete(supabaseAdmin, 'planned_payment', dropId, ppRow, deletedBy)
+          for (const { keepId, drop } of removals) {
+            const dropParents = (drop.parent_ids as string[]) ?? []
+            // Only a possibly-paid duplicate can have linked transactions to move.
+            if (Number(drop.balance) < Number(drop.amount)) {
+              const { data: moved } = await supabaseAdmin
+                .from('transactions')
+                .update({ planned_payment_id: keepId })
+                .eq('planned_payment_id', drop.id)
+                .select('id')
+              if (moved && moved.length > 0) dropParents.forEach(p => relinkParents.add(p))
+            }
+            dropParents.forEach(p => balanceParents.add(p))
+            await softDelete(supabaseAdmin, 'planned_payment', drop.id, drop, deletedBy)
             done++
-            if (done % 20 === 0) send({ type: 'progress', current: done, total: removals.length })
+            if (done % 25 === 0) send({ type: 'progress', current: done, total: removals.length })
           }
-          // Recompute balances + credits from the consolidated PPs.
-          let relinked = 0
-          for (const pid of affectedParents) {
+          // Full relink only where payments moved; everyone else just needs the
+          // tuition_balance re-summed (one quick query) — keeps us under the limit.
+          for (const pid of relinkParents) {
             try { await relinkParent(pid) } catch { /* keep going */ }
-            relinked++
-            if (relinked % 10 === 0) send({ type: 'progress', current: relinked, total: affectedParents.size })
+          }
+          for (const pid of balanceParents) {
+            if (relinkParents.has(pid)) continue
+            try { await recalcParentTuitionBalance(pid) } catch { /* keep going */ }
           }
         }
 
