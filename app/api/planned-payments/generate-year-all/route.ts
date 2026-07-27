@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Guard against a double-click racing two generations past the "already exists"
+// check (which is what created the duplicate PPs). A second POST while one is
+// running is rejected instead of inserting duplicates.
+let generateInFlight = false
+
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
   const curMonth = today.getMonth() + 1
@@ -112,10 +117,24 @@ export async function GET(req: NextRequest) {
 
 /** POST — execute: create all missing planned payments */
 export async function POST(req: NextRequest) {
+  if (generateInFlight) {
+    return NextResponse.json({ error: 'יצירת תשלומים כבר רצה — נסה שוב בעוד רגע' }, { status: 429 })
+  }
+  generateInFlight = true
   try {
     const body = await req.json().catch(() => ({}))
     const futureOnly = body?.futureOnly === true
-    const months     = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    // Single-month mode: create ONLY the chosen month (was previously ignored,
+    // so choosing "06/2026" wrongly generated the whole future year).
+    const singleMonth = typeof body?.month === 'string' && body.month.trim() ? body.month.trim() : null
+    let months: { monthYear: string; date: string }[]
+    if (singleMonth) {
+      const [m, y] = singleMonth.split('/').map(Number)
+      const mm = String(m).padStart(2, '0')
+      months = [{ monthYear: `${mm}/${y}`, date: `${y}-${mm}-01` }]
+    } else {
+      months = futureOnly ? getFutureHebrewYearMonths() : getFullHebrewYearMonths()
+    }
     const monthYears = months.map(m => m.monthYear)
 
     const { data: parents } = await supabaseAdmin
@@ -176,5 +195,7 @@ export async function POST(req: NextRequest) {
       { error: (err as { message?: string })?.message ?? String(err) },
       { status: 500 }
     )
+  } finally {
+    generateInFlight = false
   }
 }
