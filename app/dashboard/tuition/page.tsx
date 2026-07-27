@@ -151,8 +151,21 @@ export default function TuitionPage() {
       const res = await drain(await fetch('/api/planned-payments/dedupe', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: false }),
       }))
-      if (res?.type === 'error') { setGenError(String(res.message)); return }
-      alert(`✓ נמחקו ${res?.duplicates ?? 0} תשלומים כפולים · קושרו מחדש ${res?.parents ?? 0} אנשים`)
+      if (!res) {
+        // Stream cut before completion (e.g. timeout). It's safe to run again —
+        // the cleanup is idempotent and continues where it left off.
+        setGenError('הניקוי לא הסתיים עד הסוף (ייתכן timeout). לחץ שוב "נקה PP כפולים" כדי להמשיך.')
+        load(month); return
+      }
+      if (res.type === 'error') { setGenError(String(res.message)); return }
+      // Re-check how many remain so the message is honest about leftovers.
+      const after = await drain(await fetch('/api/planned-payments/dedupe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: true }),
+      }))
+      const remaining = Number(after?.duplicates ?? 0)
+      alert(remaining > 0
+        ? `✓ נמחקו ${res.duplicates} כפילויות. נשארו עוד ${remaining} — לחץ שוב "נקה PP כפולים" כדי להשלים.`
+        : `✓ הושלם — נמחקו ${res.duplicates} תשלומים כפולים · אין יותר כפילויות 🎉`)
       load(month)
     } catch { setGenError('שגיאת רשת') }
     finally { setDedupeLoading(false) }
