@@ -61,7 +61,12 @@ export function relinkParent(parentId: string): Promise<RelinkStats> {
 }
 
 async function doRelinkParent(parentId: string): Promise<RelinkStats> {
-  // 1. Delete previously generated spillover rows — the replay recreates them.
+  // 1. Delete ALL system-generated credit rows — the replay recreates the ones
+  //    it needs. Covers: spillover rows (source_transaction_id / 'זיכוי מעודף
+  //    תשלום' notes) AND the legacy 'זיכוי שמור' rows the older recalc created,
+  //    which all use type='זיכוי'. Without deleting these, they linger linked to
+  //    PPs and (in the old recalc) stacked another credit row every run — the
+  //    duplicate "זיכוי 1,800" rows. Credit now lives only in credit_balance.
   const delBySource = await supabaseAdmin
     .from('transactions')
     .delete()
@@ -74,6 +79,12 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     .contains('parent_ids', [parentId])
     .like('notes', `${SPILLOVER_NOTES_PREFIX}%`)
   if (delByNotes.error) throw delByNotes.error
+  const delByType = await supabaseAdmin
+    .from('transactions')
+    .delete()
+    .contains('parent_ids', [parentId])
+    .eq('type', 'זיכוי')
+  if (delByType.error) throw delByType.error
 
   // 2. Non-salary PPs, reset in memory to the full amount
   const { data: ppsRaw, error: ppErr } = await supabaseAdmin
@@ -224,6 +235,11 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
   }
   await insertSpilloverRows(spillovers)
   await updateParentCredits(parentId, { tuition: creditTuition, donation: creditDonation })
+  // Zero the legacy pp_credit column: credit now lives solely in credit_balance,
+  // and the parent API sums BOTH — a stale pp_credit would double the displayed
+  // credit. Best-effort; ignore if the column isn't present.
+  const { error: ppcErr } = await supabaseAdmin.from('parents').update({ pp_credit: 0 }).eq('id', parentId)
+  if (ppcErr && !MISSING_COLUMN_CODES.has(ppcErr.code)) { /* non-fatal */ }
   await recalcParentTuitionBalance(parentId)
 
   return {
