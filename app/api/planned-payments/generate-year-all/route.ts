@@ -21,13 +21,19 @@ async function loadExistingKeys(monthYears: string[]): Promise<Set<string>> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabaseAdmin
       .from('planned_payments')
-      .select('parent_ids, month_year')
+      .select('parent_ids, month_year, pp_type')
       .in('month_year', monthYears)
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error) throw error
     const rows = data ?? []
     for (const pp of rows) {
+      // Only a TUITION PP means "this month is covered". Counting every type
+      // made a parent who merely had a מגבית/משכורת PP that month look covered,
+      // so their missing שכ"ל was skipped and nothing got created for them.
+      // Empty pp_type = legacy Airtable rows, which are tuition.
+      const t = (pp.pp_type as string | null) ?? ''
+      if (t !== '' && t !== 'tuition') continue
       for (const pid of (pp.parent_ids as string[]) ?? []) {
         keys.add(`${pid}|${pp.month_year}`)
       }
@@ -35,6 +41,25 @@ async function loadExistingKeys(monthYears: string[]): Promise<Set<string>> {
     if (rows.length < PAGE) break
   }
   return keys
+}
+
+/** All parents that owe tuition, paginated (same ~1000-row cap applies). */
+async function loadTuitionParents(): Promise<{ id: string; name?: string; tuition_total: number }[]> {
+  const out: { id: string; name?: string; tuition_total: number }[] = []
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from('parents')
+      .select('id, name, tuition_total')
+      .gt('tuition_total', 0)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as { id: string; name?: string; tuition_total: number }[]
+    out.push(...rows)
+    if (rows.length < PAGE) break
+  }
+  return out
 }
 
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
@@ -157,10 +182,7 @@ export async function POST(req: NextRequest) {
     }
     const monthYears = months.map(m => m.monthYear)
 
-    const { data: parents } = await supabaseAdmin
-      .from('parents')
-      .select('id, tuition_total')
-      .gt('tuition_total', 0)
+    const parents = await loadTuitionParents()
 
     if (!parents || parents.length === 0) {
       return NextResponse.json({ created: 0, skipped: 0 })
