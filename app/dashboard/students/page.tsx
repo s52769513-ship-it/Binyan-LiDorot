@@ -21,15 +21,38 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [bulkClass, setBulkClass] = useState<string | null>(null)   // class whose status panel is open
+  const [bulkStatus, setBulkStatus] = useState('סיים לימודים')
+  const [bulkSaving, setBulkSaving] = useState(false)
 
-  useEffect(() => {
+  const STATUS_OPTIONS = ['סיים לימודים', 'פעיל', 'ממתין', 'עזב']
+
+  const load = () => {
     setLoading(true)
     fetch('/api/students')
       .then(r => r.json())
       .then(d => { if (!d.error) setStudents(d.data ?? []); else setError(d.error) })
       .catch(() => setError('שגיאה'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+  useEffect(() => { load() }, [])
+
+  const applyClassStatus = async (className: string, list: Student[]) => {
+    if (!confirm(`לשנות את הסטטוס של כל ${list.length} התלמידים בכיתה "${className}" ל־"${bulkStatus}"?`)) return
+    setBulkSaving(true)
+    try {
+      const res = await fetch('/api/students/bulk-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: list.map(s => s.id), status: bulkStatus }),
+      })
+      const data = await res.json()
+      if (data.error) { alert(`שגיאה: ${data.error}`); return }
+      setBulkClass(null)
+      load()
+    } catch { alert('שגיאת רשת') }
+    finally { setBulkSaving(false) }
+  }
 
   const filtered = students.filter(s => {
     if (search && !s.name.includes(search)) return false
@@ -81,9 +104,34 @@ export default function StudentsPage() {
           {classes.map(([className, list]) => (
             <div key={className} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(90deg, #0d1f52, #1a3a7a)' }}>
-                <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#d4a921', color: '#0d1f52' }}>{list.length}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#d4a921', color: '#0d1f52' }}>{list.length}</span>
+                  <button
+                    onClick={() => setBulkClass(bulkClass === className ? null : className)}
+                    title="שינוי סטטוס לכל הכיתה"
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-white/30 text-white/80 hover:text-white hover:border-white/60 transition-colors">
+                    סטטוס לכיתה
+                  </button>
+                </div>
                 <span className="font-bold text-white">{className}</span>
               </div>
+              {bulkClass === className && (
+                <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2 flex-wrap" dir="rtl">
+                  <select
+                    value={bulkStatus}
+                    onChange={e => setBulkStatus(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border border-amber-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <button
+                    onClick={() => applyClassStatus(className, list)}
+                    disabled={bulkSaving}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-60">
+                    {bulkSaving ? 'מחיל...' : `החל על ${list.length} תלמידים`}
+                  </button>
+                  <button onClick={() => setBulkClass(null)} className="text-xs text-gray-500 hover:text-gray-700">ביטול</button>
+                </div>
+              )}
               <div className="divide-y divide-gray-50">
                 {list.map(s => (
                   <div key={s.id} onClick={() => setSelectedStudentId(s.id)}
