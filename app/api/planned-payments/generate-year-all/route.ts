@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { relinkParent } from '@/lib/relink'
+
+export const maxDuration = 300  // creating + relinking many parents takes time
 
 // Guard against a double-click racing two generations past the "already exists"
 // check (which is what created the duplicate PPs). Time-based so it can NEVER
@@ -219,6 +222,7 @@ export async function POST(req: NextRequest) {
     }
 
     const CHUNK = 500
+    const createdForParents = new Set<string>()
     for (let i = 0; i < toInsert.length; i += CHUNK) {
       const chunk = toInsert.slice(i, i + CHUNK)
       const { error } = await supabaseAdmin.from('planned_payments').insert(chunk)
@@ -226,15 +230,28 @@ export async function POST(req: NextRequest) {
         // Salvage the chunk row-by-row so one bad row doesn't drop the rest.
         for (const row of chunk) {
           const { error: e } = await supabaseAdmin.from('planned_payments').insert(row)
-          if (!e) created++
+          if (!e) { created++; ((row.parent_ids as string[]) ?? []).forEach(p => createdForParents.add(p)) }
           else console.error('generate-year-all insert error:', row.parent_ids, row.month_year, e.message)
         }
       } else {
         created += chunk.length
+        for (const row of chunk) ((row.parent_ids as string[]) ?? []).forEach(p => createdForParents.add(p))
       }
     }
 
-    return NextResponse.json({ created, skipped })
+    // Finish the job: for every parent who got a new PP, replay their payments
+    // so a saved credit is applied to the new PP and any unlinked payment links
+    // to it. Without this the new PPs sit open until someone hits "ריענון" on
+    // each person. Skipped when nothing was created. Failures are per-parent and
+    // never undo the creation (which already succeeded above).
+    let relinked = 0
+    for (const pid of createdForParents) {
+      try { await relinkParent(pid); relinked++ } catch (e) {
+        console.error('generate-year-all relink error:', pid, e)
+      }
+    }
+
+    return NextResponse.json({ created, skipped, relinked })
   } catch (err) {
     return NextResponse.json(
       { error: (err as { message?: string })?.message ?? String(err) },
