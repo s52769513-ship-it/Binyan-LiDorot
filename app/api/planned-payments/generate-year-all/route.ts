@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
 // Guard against a double-click racing two generations past the "already exists"
-// check (which is what created the duplicate PPs). A second POST while one is
-// running is rejected instead of inserting duplicates.
-let generateInFlight = false
+// check (which is what created the duplicate PPs). Time-based so it can NEVER
+// stick permanently: if a run is killed mid-way (e.g. a timeout) and the
+// `finally` never runs, the lock auto-expires and generation works again.
+let generateLockUntil = 0
+const GENERATE_LOCK_MS = 120_000
 
 function getFullHebrewYearMonths(): { monthYear: string; date: string }[] {
   const today    = new Date()
@@ -117,10 +119,10 @@ export async function GET(req: NextRequest) {
 
 /** POST — execute: create all missing planned payments */
 export async function POST(req: NextRequest) {
-  if (generateInFlight) {
+  if (Date.now() < generateLockUntil) {
     return NextResponse.json({ error: 'יצירת תשלומים כבר רצה — נסה שוב בעוד רגע' }, { status: 429 })
   }
-  generateInFlight = true
+  generateLockUntil = Date.now() + GENERATE_LOCK_MS
   try {
     const body = await req.json().catch(() => ({}))
     const futureOnly = body?.futureOnly === true
@@ -161,16 +163,18 @@ export async function POST(req: NextRequest) {
     let created = 0
     let skipped = 0
 
+    // Collect every missing row, then BULK-insert in chunks — one round-trip per
+    // ~500 rows instead of per row. Inserting one at a time for all parents ×
+    // months was slow enough to hit the function timeout on a full-year run.
+    const toInsert: Record<string, unknown>[] = []
     for (const parent of parents) {
       const amount = Number(parent.tuition_total) || 0
       if (!amount) continue
-
       for (const { monthYear, date } of months) {
-        if (existingSet.has(`${parent.id}|${monthYear}`)) {
-          skipped++
-          continue
-        }
-        const { error } = await supabaseAdmin.from('planned_payments').insert({
+        if (existingSet.has(`${parent.id}|${monthYear}`)) { skipped++; continue }
+        // Guard against the same (parent, month) appearing twice within this run.
+        existingSet.add(`${parent.id}|${monthYear}`)
+        toInsert.push({
           id:         crypto.randomUUID(),
           name:       'שכ"ל',
           pp_type:    'tuition',
@@ -181,11 +185,22 @@ export async function POST(req: NextRequest) {
           parent_ids: [parent.id],
           synced_at:  '2099-12-31T23:59:59.999Z',
         })
-        if (error) {
-          console.error('generate-year-all insert error:', parent.id, monthYear, error.message)
-        } else {
-          created++
+      }
+    }
+
+    const CHUNK = 500
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const chunk = toInsert.slice(i, i + CHUNK)
+      const { error } = await supabaseAdmin.from('planned_payments').insert(chunk)
+      if (error) {
+        // Salvage the chunk row-by-row so one bad row doesn't drop the rest.
+        for (const row of chunk) {
+          const { error: e } = await supabaseAdmin.from('planned_payments').insert(row)
+          if (!e) created++
+          else console.error('generate-year-all insert error:', row.parent_ids, row.month_year, e.message)
         }
+      } else {
+        created += chunk.length
       }
     }
 
@@ -196,6 +211,6 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   } finally {
-    generateInFlight = false
+    generateLockUntil = 0
   }
 }
