@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
-const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
+import { MOSAD_ID, API_PASS } from '@/lib/nedarim'
 
 function fmtExpiry(raw: string): string {
   const s = String(raw ?? '').replace(/\D/g, '')

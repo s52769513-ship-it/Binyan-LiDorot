@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
-
-declare const process: { env: Record<string, string | undefined> }
+import { MOSAD_ID, API_PASS } from '@/lib/nedarim'
 
 function emit(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: object) {
   controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
@@ -52,8 +51,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'חסרים from/to' }, { status: 400 })
   }
 
-  const mosadId   = process.env.NEDARIM_MOSAD_ID    ?? '7015093'
-  const apiPass   = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
+  const mosadId   = MOSAD_ID
+  const apiPass   = API_PASS
 
   const encoder = new TextEncoder()
   const stream  = new ReadableStream({
