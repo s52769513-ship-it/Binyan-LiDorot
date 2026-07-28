@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import StudentCard from '@/components/StudentCard'
 import EmployeeCard from '@/components/EmployeeCard'
 import PaymentCard from '@/components/PaymentCard'
+import PromoteClassesModal from '@/components/PromoteClassesModal'
 
 interface Student {
   id: string; name: string; gender: string; age: string
@@ -21,6 +22,7 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [showPromote, setShowPromote] = useState(false)
   const [bulkClass, setBulkClass] = useState<string | null>(null)   // class whose status panel is open
   const [bulkStatus, setBulkStatus] = useState('סיים לימודים')
   const [bulkSaving, setBulkSaving] = useState(false)
@@ -78,6 +80,11 @@ export default function StudentsPage() {
             <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
             <button onClick={() => setView('list')}  className={`px-3 py-1.5 ${view==='list'  ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>רשימה</button>
           </div>
+          <button onClick={() => setShowPromote(true)}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white"
+            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+            ⬆️ העלאת כיתה
+          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
@@ -174,6 +181,17 @@ export default function StudentsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {showPromote && (
+        <PromoteClassesModal
+          students={students.map(s => ({
+            id: s.id, name: s.name, className: s.className,
+            framework: s.framework, status: s.status,
+          }))}
+          onClose={() => setShowPromote(false)}
+          onDone={() => { setShowPromote(false); load() }}
+        />
       )}
 
       {selectedStudentId && (
