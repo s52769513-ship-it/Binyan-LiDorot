@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
                   project_names:      [projectName],
                   planned_payment_id: linkedPPId,
                   standing_order_id:  so.id,
-                  synced_at:          '2099-12-31T23:59:59.999Z',
+                  synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-credit',
                 })
               }
 

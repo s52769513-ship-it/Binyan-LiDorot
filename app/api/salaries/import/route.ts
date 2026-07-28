@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
               type:               'ניכוי שכ"ל',
               project_ids:        [],
               project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
+              synced_at:          '2099-12-31T23:59:59.999Z', source: 'import',
             })
             currentPPBalance -= newOffset
             await supabaseAdmin.from('planned_payments')
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
               project_ids:        [],
               project_names:      ['משכורת'],
               planned_payment_id: pp?.id ?? null,
-              synced_at:          '2099-12-31T23:59:59.999Z',
+              synced_at:          '2099-12-31T23:59:59.999Z', source: 'import',
             })
           }
           txIds.push(txId)

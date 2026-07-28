@@ -320,7 +320,7 @@ export async function POST(req: NextRequest) {
         project_names: ['בנין לדורות'],
         planned_payment_id: target?.id ?? null,
         is_legacy: true,
-        synced_at: FAR_FUTURE,
+        synced_at: FAR_FUTURE, source: 'import',
       })
 
       let remaining = Math.abs(amount)

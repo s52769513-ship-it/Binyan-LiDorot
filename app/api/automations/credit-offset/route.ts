@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
               type:               'זיכוי שכ"ל',
               project_ids:        [],
               project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
+              synced_at:          '2099-12-31T23:59:59.999Z', source: 'system',
             })
             await supabaseAdmin.from('planned_payments')
               .update({ balance: Math.max(0, ppBalance - offset) })

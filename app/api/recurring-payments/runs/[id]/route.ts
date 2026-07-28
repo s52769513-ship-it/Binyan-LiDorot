@@ -59,7 +59,7 @@ export async function PATCH(
         project_ids:   [],
         project_names: ['הוצאה'],
         framework:     '',
-        synced_at:     FAR_FUTURE,
+        synced_at:     FAR_FUTURE, source: 'system',
       })
       if (txErr) throw txErr
       transactionId = txId

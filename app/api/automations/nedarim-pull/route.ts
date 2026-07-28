@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
                 project_names:      [projectName],
                 planned_payment_id: null,
                 standing_order_id:  standingOrderDbId,
-                synced_at:          '2099-12-31T23:59:59.999Z',
+                synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
               // Return fee (25 NIS)
               await supabaseAdmin.from('transactions').insert({
@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
                 project_names:      ['עמלות'],
                 planned_payment_id: null,
                 standing_order_id:  standingOrderDbId,
-                synced_at:          '2099-12-31T23:59:59.999Z',
+                synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
             }
             if (rowId) newRowIds.push(rowId)
@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
               project_names:      [projectName],
               planned_payment_id: linkedPPId,
               standing_order_id:  standingOrderDbId,
-              synced_at:          '2099-12-31T23:59:59.999Z',
+              synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
             })
           }
 

@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
           project_ids:        [],
           project_names:      project ? [project] : [],
           planned_payment_id: plannedPaymentId,
-          synced_at:          '2099-12-31T23:59:59.999Z',
+          synced_at:          '2099-12-31T23:59:59.999Z', source: 'import',
         })
         if (error) throw error
 
