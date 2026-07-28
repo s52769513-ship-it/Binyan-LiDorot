@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // committee_approved may not exist yet (REGISTRATION_MIGRATION.sql not run) —
     // fall back to the base columns so the screen keeps working meanwhile.
-    let res = await build(`${BASE_COLS}, committee_approved`)
+    let res = await build(`${BASE_COLS}, committee_approved, graduation_year`)
     if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) {
       res = await build(BASE_COLS)
     }
@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
         framework,
         status: s.status ?? '',
         committeeApproved: s.committee_approved === true,
+        graduationYear: String(s.graduation_year ?? ''),
         transportation: normalizeTransport(s.transportation),
         transportationCost: calcTransportCost(s.transportation),
         parentIds: Array.isArray(s.parent_ids) ? s.parent_ids : [],

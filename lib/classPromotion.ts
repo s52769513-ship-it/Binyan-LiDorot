@@ -32,6 +32,18 @@ export function nextClassName(className: string): string | null {
   return null
 }
 
+/** אות הכיתה שבתחילת השם ("ט'1" → "ט"), או null אם אין. */
+export function gradeOf(className: string): string | null {
+  const name = String(className ?? '').trim()
+  for (const g of GRADES_BY_LEN) {
+    if (!name.startsWith(g)) continue
+    const rest = name.slice(g.length)
+    if (rest && HEB_LETTER.test(rest[0])) continue
+    return g
+  }
+  return null
+}
+
 /** האם זו הכיתה האחרונה (תלמידיה מסיימים לימודים ולא עולים כיתה). */
 export function isFinalGrade(className: string): boolean {
   const name = String(className ?? '').trim()

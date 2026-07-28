@@ -84,6 +84,7 @@ const ALLOWED_FIELDS: Record<string, string> = {
   healthFund:         'health_fund',
   previousSchool:     'previous_school',
   committeeApproved:  'committee_approved',
+  graduationYear:     'graduation_year',
 }
 
 export async function PATCH(
