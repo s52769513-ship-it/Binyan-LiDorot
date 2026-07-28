@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 
-const MOSAD_ID = process.env.NEDARIM_MOSAD_ID ?? '7015093'
-const API_PASS = process.env.NEDARIM_API_PASSWORD ?? 'nu247'
+import { MOSAD_ID, API_PASS } from '@/lib/nedarim'
 
 const AUTOMATION_ID = 'nedarim-bank-hok-pull'
 // Dedup reads from this id AND the legacy 'nedarim-pull' id, so rows already

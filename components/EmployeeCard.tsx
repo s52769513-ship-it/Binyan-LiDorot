@@ -1101,7 +1101,9 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'details',     label: 'פרטים' },
-    { key: 'children',    label: `ילדים${parent ? ` (${parent.students.length})` : ''}` },
+    // סופר ילדים בפועל; נרשמים שטרם נכנסו מוצגים בנפרד ולא מנפחים את המספר
+    { key: 'children',    label: `ילדים${parent ? ` (${parent.students.filter(s => !s.pending).length}${
+      parent.students.some(s => s.pending) ? `+${parent.students.filter(s => s.pending).length}` : ''})` : ''}` },
     { key: 'payments',    label: '📋 תשלומים' },
     { key: 'salary',      label: '💼 משכורת' },
     { key: 'horaatkeva',  label: `הו"ק${parent?.standingOrders?.length ? ` (${parent.standingOrders.length})` : ''}` },
@@ -1181,7 +1183,12 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               </div>
               <div className="flex-1 bg-white/10 px-3 py-2 text-center">
                 <p className="text-base font-bold text-white/80 tabular-nums">{parent.childrenCount}</p>
-                <p className="text-[10px] text-white/50">ילדים</p>
+                {/* ילד שנרשם וטרם נכנס מוצג בנפרד — לא מנופח לתוך מספר הילדים */}
+                <p className="text-[10px] text-white/50">
+                  ילדים{(parent.pendingChildrenCount ?? 0) > 0 && (
+                    <span className="text-amber-300"> · {parent.pendingChildrenCount} ממתין</span>
+                  )}
+                </p>
               </div>
               <div className="flex-1 bg-white/10 px-3 py-2 text-center">
                 <p className="text-base font-bold text-white/80 tabular-nums">{fmt(parent.tuitionTotal)}</p>
@@ -1410,6 +1417,11 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   >
                     <div className="flex items-center justify-between mb-2.5">
                       <div className="flex items-center gap-1.5">
+                        {s.pending && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                            ממתין — טרם נכנס
+                          </span>
+                        )}
                         {s.status && (
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             s.status === 'פעיל' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'

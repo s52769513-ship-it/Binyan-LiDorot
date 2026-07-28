@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
 import { calcTransportCost, normalizeTransport } from '@/lib/transport'
+import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 
 async function classFrameworkMap(): Promise<Record<string, string>> {
   const { data } = await supabaseAdmin.from('classes').select('class_name, framework')
@@ -34,31 +35,41 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl
     const search = searchParams.get('search') ?? ''
 
-    let query = supabaseAdmin
-      .from('students')
-      .select('id, name, gender, age, class_name, status, transportation, transportation_cost, parent_ids, birth_date_gregorian, birth_date_hebrew, id_number, health_fund, previous_school')
-      .order('class_name', { ascending: true })
-      .order('name', { ascending: true })
-
-    if (search.trim()) {
-      query = query.ilike('name', `%${search.trim()}%`)
+    const BASE_COLS = 'id, name, gender, age, class_name, status, transportation, transportation_cost, parent_ids, birth_date_gregorian, birth_date_hebrew, id_number, health_fund, previous_school'
+    const build = (cols: string) => {
+      let q = supabaseAdmin
+        .from('students')
+        .select(cols)
+        .order('class_name', { ascending: true })
+        .order('name', { ascending: true })
+      if (search.trim()) q = q.ilike('name', `%${search.trim()}%`)
+      return q
     }
 
-    const [{ data, error }, frameMap] = await Promise.all([query, classFrameworkMap()])
+    // committee_approved may not exist yet (REGISTRATION_MIGRATION.sql not run) —
+    // fall back to the base columns so the screen keeps working meanwhile.
+    let res = await build(`${BASE_COLS}, committee_approved`)
+    if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) {
+      res = await build(BASE_COLS)
+    }
+    const { error } = res
     if (error) throw error
+    const data = (res.data ?? []) as unknown as Record<string, unknown>[]
+    const frameMap = await classFrameworkMap()
 
     const students = (data ?? []).map(s => {
-      const cn = s.class_name ?? ''
+      const cn = String(s.class_name ?? '')
       const framework = frameMap[cn] || detectFramework(cn)
-      const birthGreg = s.birth_date_gregorian ?? ''
+      const birthGreg = String(s.birth_date_gregorian ?? '')
       return {
-        id: s.id,
+        id: s.id as string,
         name: s.name ?? '',
         gender: s.gender ?? '',
         age: s.age ?? calcAge(birthGreg),
         className: cn,
         framework,
         status: s.status ?? '',
+        committeeApproved: s.committee_approved === true,
         transportation: normalizeTransport(s.transportation),
         transportationCost: calcTransportCost(s.transportation),
         parentIds: Array.isArray(s.parent_ids) ? s.parent_ids : [],

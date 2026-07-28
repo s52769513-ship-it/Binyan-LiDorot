@@ -5,10 +5,13 @@ import StudentCard from '@/components/StudentCard'
 import EmployeeCard from '@/components/EmployeeCard'
 import PaymentCard from '@/components/PaymentCard'
 import PromoteClassesModal from '@/components/PromoteClassesModal'
+import RegistrantsTab from '@/components/RegistrantsTab'
+import { isPendingRegistrant } from '@/lib/registration'
 
 interface Student {
   id: string; name: string; gender: string; age: string
   className: string; framework: string; status: string
+  committeeApproved: boolean
   transportation: string[]; transportationCost: number; parentIds: string[]
 }
 
@@ -19,6 +22,7 @@ export default function StudentsPage() {
   const [search, setSearch]       = useState('')
   const [framework, setFramework] = useState<'all' | 'tt' | 'bs'>('all')
   const [view, setView]           = useState<'class' | 'list'>('class')
+  const [tab, setTab]             = useState<'students' | 'registrants'>('students')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
@@ -56,7 +60,12 @@ export default function StudentsPage() {
     finally { setBulkSaving(false) }
   }
 
-  const filtered = students.filter(s => {
+  // נרשמים שטרם נכנסו מנוהלים בלשונית נפרדת ואינם חלק ברשימת התלמידים —
+  // ברגע שתלמיד מאושר ואינו "ממתין" הוא עובר לכאן ומופיע בכיתה שלו.
+  const enrolled   = students.filter(s => !isPendingRegistrant(s))
+  const registrants = students.filter(s => isPendingRegistrant(s))
+
+  const filtered = enrolled.filter(s => {
     if (search && !s.name.includes(search)) return false
     if (framework === 'tt' && s.framework !== 'תלמוד תורה') return false
     if (framework === 'bs' && s.framework !== 'בית חינוך לבנות') return false
@@ -75,19 +84,50 @@ export default function StudentsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">{filtered.length} תלמידים</span>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
-            <button onClick={() => setView('list')}  className={`px-3 py-1.5 ${view==='list'  ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>רשימה</button>
-          </div>
-          <button onClick={() => setShowPromote(true)}
-            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
-            ⬆️ העלאת כיתה
-          </button>
+          {tab === 'students' && <>
+            <span className="text-sm text-gray-400">{filtered.length} תלמידים</span>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+              <button onClick={() => setView('class')} className={`px-3 py-1.5 ${view==='class' ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>לפי כיתה</button>
+              <button onClick={() => setView('list')}  className={`px-3 py-1.5 ${view==='list'  ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>רשימה</button>
+            </div>
+            <button onClick={() => setShowPromote(true)}
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white"
+              style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+              ⬆️ העלאת כיתה
+            </button>
+          </>}
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { key: 'students',    label: 'תלמידים' },
+          { key: 'registrants', label: `📝 נרשמים${registrants.length ? ` (${registrants.length})` : ''}` },
+        ] as { key: 'students' | 'registrants'; label: string }[]).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              tab === t.key ? 'border-[#1a3a7a] text-[#1a3a7a]' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'registrants' ? (
+        loading
+          ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+          : <RegistrantsTab
+              registrants={registrants.map(s => ({
+                id: s.id, name: s.name, className: s.className,
+                framework: s.framework, status: s.status,
+                committeeApproved: s.committeeApproved,
+              }))}
+              onOpenStudent={id => setSelectedStudentId(id)}
+              onChanged={load}
+            />
+      ) : (<>
 
       <div className="flex flex-wrap gap-3">
         <input type="text" placeholder="חיפוש לפי שם..." value={search} onChange={e => setSearch(e.target.value)}
@@ -182,10 +222,11 @@ export default function StudentsPage() {
           </table>
         </div>
       )}
+      </>)}
 
       {showPromote && (
         <PromoteClassesModal
-          students={students.map(s => ({
+          students={enrolled.map(s => ({
             id: s.id, name: s.name, className: s.className,
             framework: s.framework, status: s.status,
           }))}

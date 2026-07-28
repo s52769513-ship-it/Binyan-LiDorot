@@ -23,6 +23,10 @@ export interface StudentDetail {
   classDepartment: string   // formula: "כיתה X – אגף Y"
   framework: string
   status: string
+  /** אושר ע"י הוועד — תנאי (יחד עם סטטוס שאינו "ממתין") ליציאה מרשימת הנרשמים */
+  committeeApproved?: boolean
+  /** נרשם שטרם נכנס בפועל — לא נספר כילד פעיל */
+  pending?: boolean
   transportation: string[]
   transportationCost: number
 }
@@ -96,6 +100,8 @@ export interface ParentDetail extends ParentSummary {
   address: string
   building: string
   notes: string
+  /** ילדים שנרשמו וטרם נכנסו — מוצגים בנפרד ואינם נספרים ב-childrenCount */
+  pendingChildrenCount?: number
   students: StudentDetail[]
   debts: DebtItem[]
   plannedPayments: PlannedPaymentItem[]
