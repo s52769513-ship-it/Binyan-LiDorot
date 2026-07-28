@@ -482,7 +482,7 @@ export async function POST(req: NextRequest) {
           bank_classification:  c.bankClassification,
           payment_method:       c.paymentMethod,
           planned_payment_id:   target?.id ?? null,
-          synced_at:            new Date().toISOString(),
+          synced_at:            new Date().toISOString(), source: 'airtable',
         })
         created++
       } else if (c.status === 'link' && target) {

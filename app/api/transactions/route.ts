@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     if (plannedPaymentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, standing_order_id, synced_at')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, standing_order_id, synced_at, source')
         .eq('planned_payment_id', plannedPaymentId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
     if (standingOrderId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, standing_order_id, synced_at')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, standing_order_id, synced_at, source')
         .eq('standing_order_id', standingOrderId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url, standing_order_id, synced_at', { count: 'exact' })
+      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url, standing_order_id, synced_at, source', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
       planned_payment_id: plannedPaymentId || null,
       framework: framework || '',
       receipt_url: receiptUrl || '',
-      synced_at: syncedAt,
+      synced_at: syncedAt, source: 'manual',
     }
     const { error } = await supabaseAdmin.from('transactions').insert(row)
     if (error) throw error

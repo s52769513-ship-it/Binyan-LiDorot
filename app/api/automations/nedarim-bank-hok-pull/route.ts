@@ -186,14 +186,14 @@ export async function POST(req: NextRequest) {
                 parent_ids: Array.from(new Set([payerParentId, ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : [])])),
                 project_ids: [], project_names: [projectName],
                 planned_payment_id: null, standing_order_id: standingOrderDbId,
-                synced_at: '2099-12-31T23:59:59.999Z',
+                synced_at: '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
               await supabaseAdmin.from('transactions').insert({
                 id: crypto.randomUUID(), amount: -25, type: 'עמלת החזרת הו"ק',
                 date: today, month_year: monthYear, notes: `עמלת החזרת הו"ק · ${donorName}`,
                 parent_ids: [payerParentId], project_ids: [], project_names: ['עמלות'],
                 planned_payment_id: null, standing_order_id: standingOrderDbId,
-                synced_at: '2099-12-31T23:59:59.999Z',
+                synced_at: '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
             }
             if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
               parent_ids: Array.from(new Set([payerParentId, ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : [])])),
               project_ids: [], project_names: [projectName],
               planned_payment_id: linkedPPId, standing_order_id: standingOrderDbId,
-              synced_at: '2099-12-31T23:59:59.999Z',
+              synced_at: '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
             })
           }
 

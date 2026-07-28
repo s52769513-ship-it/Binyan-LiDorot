@@ -193,7 +193,7 @@ export async function PATCH(
               type:               'ניכוי שכ"ל',
               project_ids:        [],
               project_names:      [],
-              synced_at:          '2099-12-31T23:59:59.999Z',
+              synced_at:          '2099-12-31T23:59:59.999Z', source: 'manual',
             })
             const { data: spp } = await supabaseAdmin
               .from('planned_payments').select('balance').eq('id', salaryPP.id).single()

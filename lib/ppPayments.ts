@@ -102,7 +102,7 @@ export async function insertSpilloverRows(rows: SpilloverRowInput[]): Promise<vo
     // כאן חייב להתאים לסוג ה-PP כדי שהשורה תשרוד חישוב מחדש
     project_names:      [r.ppType === 'donation' ? 'דמי מגבית' : 'בנין לדורות'],
     planned_payment_id: r.ppId,
-    synced_at:          FAR_FUTURE,
+    synced_at:          FAR_FUTURE, source: 'system',
     ...(withSource ? { source_transaction_id: r.sourceTxId } : {}),
   })
   const CHUNK = 500

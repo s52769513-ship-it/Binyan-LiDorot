@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
                   type:               'ניכוי שכ"ל',
                   project_ids:        [],
                   project_names:      [],
-                  synced_at:          '2099-12-31T23:59:59.999Z',
+                  synced_at:          '2099-12-31T23:59:59.999Z', source: 'system',
                 })
                 const currentBalance = existingPP ? Number(existingPP.balance) : salary
                 await supabaseAdmin.from('planned_payments')

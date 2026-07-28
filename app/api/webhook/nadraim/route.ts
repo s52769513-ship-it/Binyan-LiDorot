@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
       project_names:      [projectName],
       planned_payment_id: linkedPPId,
       standing_order_id:  standingOrderDbId,
-      synced_at:          '2099-12-31T23:59:59.999Z',
+      synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-webhook',
     }
     const { error: txErr } = await supabaseAdmin.from('transactions').insert(txRow)
     if (txErr && MISSING_COLUMN_CODES.has(txErr.code)) {
