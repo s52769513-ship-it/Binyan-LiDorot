@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { parseGregorian, formatGregorian, gregorianToHebrew, hebrewToGregorian } from '@/lib/hebrewDate'
 
 interface ParentOption { id: string; name: string }
 interface ClassOption { class_name: string; framework: string }
@@ -71,6 +72,27 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
   const filteredClasses = classes.filter(c => !form.className || c.class_name.includes(form.className))
 
   const transportCost = calcTransportCost(transportation)
+
+  // ── השלמה הדדית של תאריך הלידה ──
+  // ממלאים את השדה השני ביציאה מהשדה שנערך (blur) ולא תוך כדי הקלדה, כדי לא
+  // "לקפוץ" למשתמש באמצע. תאריך שאינו ניתן לפענוח פשוט לא משלים — בלי שגיאה.
+  const [dateSync, setDateSync] = useState('')
+
+  const syncFromGregorian = () => {
+    const d = parseGregorian(form.birthGregorian)
+    if (!d) { setDateSync(''); return }
+    const heb = gregorianToHebrew(d)
+    setForm(f => ({ ...f, birthHebrew: heb }))
+    setDateSync(`הושלם תאריך עברי: ${heb}`)
+  }
+
+  const syncFromHebrew = () => {
+    const d = hebrewToGregorian(form.birthHebrew)
+    if (!d) { setDateSync(''); return }
+    const greg = formatGregorian(d)
+    setForm(f => ({ ...f, birthGregorian: greg }))
+    setDateSync(`הושלם תאריך לועזי: ${greg}`)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -195,12 +217,15 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
         <Section title="תאריך לידה * (מספיק אחד מהשניים)">
           <div className="grid grid-cols-2 gap-4">
             <Field label="תאריך לועזי (DD/MM/YYYY)">
-              <input value={form.birthGregorian} onChange={e => set('birthGregorian', e.target.value)} className={INPUT} placeholder="15/03/2020" dir="ltr" />
+              <input value={form.birthGregorian} onChange={e => set('birthGregorian', e.target.value)}
+                onBlur={syncFromGregorian} className={INPUT} placeholder="15/03/2020" dir="ltr" />
             </Field>
             <Field label='תאריך עברי'>
-              <input value={form.birthHebrew} onChange={e => set('birthHebrew', e.target.value)} className={INPUT} placeholder='כ"ב אדר תשפ"ה' />
+              <input value={form.birthHebrew} onChange={e => set('birthHebrew', e.target.value)}
+                onBlur={syncFromHebrew} className={INPUT} placeholder='כ"ב אדר תשפ"ה' />
             </Field>
           </div>
+          {dateSync && <p className="text-xs text-emerald-700 mt-1">✓ {dateSync}</p>}
         </Section>
 
         {/* כתובת */}
