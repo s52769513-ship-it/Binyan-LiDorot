@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { PENDING_STATUS } from '@/lib/registration'
+import RegisterStudentForm from '@/components/RegisterStudentForm'
 
 export interface Registrant {
   id: string
@@ -26,6 +27,7 @@ export default function RegistrantsTab({
   const [classes, setClasses]     = useState<string[]>([])   // ריק = כל הכיתות
   const [savingId, setSavingId]   = useState<string | null>(null)
   const [error, setError]         = useState('')
+  const [showRegister, setShowRegister] = useState(false)
 
   const classOptions = useMemo(() => {
     const set = new Set(registrants.map(r => r.className || 'ללא כיתה'))
@@ -66,6 +68,11 @@ export default function RegistrantsTab({
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
+          <button onClick={() => setShowRegister(true)}
+            className="px-3 py-2 rounded-lg text-sm font-semibold text-white whitespace-nowrap"
+            style={{ background: 'linear-gradient(135deg, #0d1f52, #1a3a7a)' }}>
+            ➕ רישום תלמיד
+          </button>
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="חיפוש נרשם לפי שם..."
@@ -178,6 +185,24 @@ export default function RegistrantsTab({
       <p className="text-xs text-gray-400 text-center">
         תלמיד יוצא מרשימת הנרשמים כשהוא מאושר ע"י הוועד <strong>וגם</strong> הסטטוס שלו אינו "{PENDING_STATUS}" — ואז מופיע בכיתה שלו עם שאר התלמידים.
       </p>
+
+      {/* חלון רישום תלמיד — אותו טופס של עמוד "רישום תלמיד" */}
+      {showRegister && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowRegister(false) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" dir="rtl">
+            <div className="px-5 py-4 flex items-center justify-between shrink-0"
+              style={{ background: 'linear-gradient(90deg, #0d1f52, #1a3a7a)' }}>
+              <button onClick={() => setShowRegister(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <h2 className="text-lg font-bold text-white">➕ רישום תלמיד חדש</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <RegisterStudentForm embedded onSaved={onChanged} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
