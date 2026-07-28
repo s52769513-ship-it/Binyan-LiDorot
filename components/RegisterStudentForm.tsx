@@ -74,7 +74,19 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.firstName || !form.lastName) { setError('שם פרטי ושם משפחה הם שדות חובה'); return }
+    // שדות חובה ברישום. תאריך לידה — מספיק אחד מהשניים (עברי או לועזי).
+    const missing = [
+      !form.firstName.trim()                                    && 'שם פרטי',
+      !form.lastName.trim()                                     && 'שם משפחה',
+      !selectedParent                                           && 'קישור לאב',
+      !form.idNumber.trim()                                     && 'ת"ז',
+      !form.birthGregorian.trim() && !form.birthHebrew.trim()   && 'תאריך לידה (עברי או לועזי)',
+      !form.className.trim()                                    && 'כיתה',
+    ].filter(Boolean) as string[]
+    if (missing.length > 0) {
+      setError(`חסרים שדות חובה: ${missing.join(' · ')}`)
+      return
+    }
     setSubmitting(true); setError('')
     try {
       const res = await fetch('/api/students', {
@@ -125,7 +137,7 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label='ת"ז'>
+            <Field label='ת"ז *'>
               <input value={form.idNumber} onChange={e => set('idNumber', e.target.value)} className={INPUT} placeholder="123456789" dir="ltr" />
             </Field>
             <Field label="סטטוס">
@@ -154,7 +166,7 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
           </div>
 
           {/* Class with autocomplete */}
-          <Field label="כיתה">
+          <Field label="כיתה *">
             <div className="relative">
               <input
                 value={form.className}
@@ -180,7 +192,7 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
         </Section>
 
         {/* תאריך לידה */}
-        <Section title="תאריך לידה">
+        <Section title="תאריך לידה * (מספיק אחד מהשניים)">
           <div className="grid grid-cols-2 gap-4">
             <Field label="תאריך לועזי (DD/MM/YYYY)">
               <input value={form.birthGregorian} onChange={e => set('birthGregorian', e.target.value)} className={INPUT} placeholder="15/03/2020" dir="ltr" />
@@ -226,7 +238,7 @@ export default function RegisterStudentForm({ embedded = false, onSaved }: {
 
         {/* קישור להורה */}
         <Section title="קישור להורה">
-          <Field label="חיפוש הורה">
+          <Field label="חיפוש הורה *">
             <div className="relative">
               {selectedParent ? (
                 <div className="flex items-center justify-between px-4 py-2 rounded-lg border border-[#1a3a7a] bg-blue-50">

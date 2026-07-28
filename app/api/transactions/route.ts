@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     if (plannedPaymentId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, standing_order_id, synced_at')
         .eq('planned_payment_id', plannedPaymentId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -95,6 +95,12 @@ export async function GET(req: NextRequest) {
         parentIds:    (t.parent_ids as string[]) ?? [],
         projectNames: (t.project_names as string[]) ?? [],
         isCredit:     String(t.notes || '').startsWith('זיכוי'),
+        sourceInfo:   deriveTxSource({
+          source:          (t as { source?: string | null }).source ?? null,
+          notes:           t.notes as string | null,
+          standingOrderId: (t.standing_order_id as string | null) ?? null,
+          syncedAt:        (t.synced_at as string | null) ?? null,
+        }),
       })))
     }
 
@@ -102,7 +108,7 @@ export async function GET(req: NextRequest) {
     if (standingOrderId) {
       const { data, error } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id')
+        .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, standing_order_id, synced_at')
         .eq('standing_order_id', standingOrderId)
         .order('date', { ascending: false })
       if (error) throw error
@@ -118,6 +124,12 @@ export async function GET(req: NextRequest) {
         projectNames:     (t.project_names as string[]) ?? [],
         plannedPaymentId: t.planned_payment_id ?? null,
         isCredit:         String(t.notes || '').startsWith('זיכוי'),
+        sourceInfo:       deriveTxSource({
+          source:          (t as { source?: string | null }).source ?? null,
+          notes:           t.notes as string | null,
+          standingOrderId: (t.standing_order_id as string | null) ?? null,
+          syncedAt:        (t.synced_at as string | null) ?? null,
+        }),
       })))
     }
 

@@ -7,6 +7,7 @@ import { ppBeforeStart } from '@/lib/cutoffs'
 import { actorFromRequest, logActivity, summarizeFieldChanges } from '@/lib/activityLog'
 import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 import { isPendingRegistrant } from '@/lib/registration'
+import { deriveTxSource } from '@/lib/txSource'
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -440,6 +441,12 @@ export async function GET(
         projectNames: (tx.project_names as string[]) ?? [],
         plannedPaymentId: tx.planned_payment_id ?? null,
         standingOrderId: tx.standing_order_id ?? null,
+        sourceInfo: deriveTxSource({
+          source:          (tx as { source?: string | null }).source ?? null,
+          notes:           tx.notes,
+          standingOrderId: tx.standing_order_id ?? null,
+          syncedAt:        tx.synced_at ?? null,
+        }),
       })),
 
       standingOrders: (standingOrdersRes.data ?? []).map(so => ({
