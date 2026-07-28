@@ -6,6 +6,7 @@ import { calcTransportCost, normalizeTransport } from '@/lib/transport'
 import { ppBeforeStart } from '@/lib/cutoffs'
 import { actorFromRequest, logActivity, summarizeFieldChanges } from '@/lib/activityLog'
 import { recalcParentTuitionBalance } from '@/lib/ppPayments'
+import { isPendingRegistrant } from '@/lib/registration'
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -296,6 +297,11 @@ export async function GET(
     // ── Calculate tuition dynamically from active students ──────────────────
     const activeStudents = (studentsRes.data ?? []).filter(s => s.status === 'פעיל')
     const activeCount    = activeStudents.length
+    // ילדים שנרשמו וטרם נכנסו — נספרים בנפרד כדי שלא ייראה כאילו יש להורה יותר
+    // ילדים ממה שיש בפועל (4 ילדים + 1 ממתין, ולא 5).
+    const pendingChildrenCount = (studentsRes.data ?? []).filter(s =>
+      isPendingRegistrant({ status: s.status, committeeApproved: s.committee_approved })
+    ).length
     // Derive from the legs directly so it's correct even for rows whose stored
     // transportation_cost predates the backfill (see lib/transport).
     const transportTotal = activeStudents.reduce((sum, s) => sum + calcTransportCost(s.transportation), 0)
@@ -332,6 +338,7 @@ export async function GET(
       status: toArray(p.status),
       personType: toArray(p.person_type),
       childrenCount: activeCount,
+      pendingChildrenCount,
       tuitionTotal: computedTuitionTotal,
       tuitionBalance: computedBalance,
       notes: p.notes ?? '',
@@ -395,6 +402,8 @@ export async function GET(
         classDepartment: s.class_department ?? s.class_name ?? '',
         framework: frameMap[s.class_name ?? ''] ?? '',
         status: s.status ?? '',
+        committeeApproved: s.committee_approved === true,
+        pending: isPendingRegistrant({ status: s.status, committeeApproved: s.committee_approved }),
         transportation: normalizeTransport(s.transportation),
         transportationCost: calcTransportCost(s.transportation),
       })),
