@@ -247,7 +247,7 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
   const [loadingPPs, setLoadingPPs]           = useState(true)
   const [donationSOs, setDonationSOs]         = useState<{ id: string; type: string; amount: number; status: string }[]>([])
   const [expandedPP, setExpandedPP]           = useState<string | null>(null)
-  const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean }[]>>({})
+  const [ppTxs, setPpTxs]                     = useState<Record<string, { id: string; amount: number; type: string; date: string; monthYear: string; notes: string; isCredit?: boolean; projectNames?: string[] }[]>>({})
   const [loadingTx, setLoadingTx]             = useState<string | null>(null)
   const [addPaymentPP, setAddPaymentPP]       = useState<{ id: string; name: string; balance: number; monthYear: string } | null>(null)
   const [showAddDonationPP, setShowAddDonationPP] = useState(false)
@@ -570,14 +570,25 @@ function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () 
                           ) : txs && txs.length > 0 ? (
                             <div className="space-y-1 mb-2">
                               <div className="text-[10px] font-semibold text-gray-500">תשלומים מקושרים</div>
-                              {txs.map(t => (
-                                <div key={t.id} className="flex justify-between bg-white rounded px-2 py-1 border border-gray-100">
-                                  <span className="text-gray-500">
-                                    {t.date || t.monthYear}{t.type ? ` • ${t.type}` : ''}{t.isCredit ? ' • זיכוי' : ''}
-                                  </span>
-                                  <span className="font-medium tabular-nums">{fmt2(Math.abs(t.amount))}</span>
-                                </div>
-                              ))}
+                              {txs.map(t => {
+                                // הקטגוריה היא שקובעת לאיזה חוב התשלום שייך —
+                                // מציגים אותה, ומסמנים תשלום שקטגוריתו אינה
+                                // תואמת את סוג ה-PP (כך שקישור שגוי בולט לעין).
+                                const cats = (t.projectNames ?? []).join(', ')
+                                // הטבלה הזו היא של תשלומי מגבית — קטגוריה שאינה
+                                // מגבית מסמנת תשלום שקושר לכאן שלא בצדק.
+                                const mismatch = !t.isCredit && cats !== '' && !cats.includes('מגבית')
+                                return (
+                                  <div key={t.id} className={`flex justify-between rounded px-2 py-1 border ${mismatch ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
+                                    <span className="text-gray-500">
+                                      {t.date || t.monthYear}{t.type ? ` • ${t.type}` : ''}{t.isCredit ? ' • זיכוי' : ''}
+                                      {cats ? ` • ${cats}` : ''}
+                                      {mismatch && <span className="text-amber-700 font-medium"> ⚠ קטגוריה לא תואמת</span>}
+                                    </span>
+                                    <span className="font-medium tabular-nums">{fmt2(Math.abs(t.amount))}</span>
+                                  </div>
+                                )
+                              })}
                             </div>
                           ) : (
                             <div className="text-[11px] text-gray-400 mb-2">אין תשלומים מקושרים עדיין</div>

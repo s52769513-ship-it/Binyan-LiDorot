@@ -171,9 +171,15 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     // תנועה שכבר הייתה מקושרת: סוג החוב נקבע לפי ה-PP עצמו (מקור אמת).
     // תנועה חופשית: סוג החוב נקבע לפי הפרויקט שלה — קטגוריה שאינה
     // שכ"ל/מגבית (משכורות, הוצאות וכו') נשארת בלי קישור, כמו בכל שאר הקוד.
-    const poolType: PayablePPType | null = wasLinked
-      ? (linked?.pp_type ?? 'tuition')
-      : ppTypeForProject((tx.project_names as string[] | null)?.join(' '))
+    // סוג החוב נקבע קודם כל לפי הפרויקט של התנועה עצמה — הוא מקור האמת.
+    // קודם לכן, תנועה שכבר הייתה מקושרת ירשה את הסוג מה-PP שאליו קושרה, כך
+    // שתנועה שקושרה בטעות ל-PP מגבית (או שכ"ל) נותרה שם לנצח וכל ריענון קיבע
+    // אותה מחדש — ומגבית "קיבלה" תשלומים שאינם מגבית. עכשיו הפרויקט מנצח ומחזיר
+    // אותה לסוג הנכון. כשהפרויקט אינו חד-משמעי (למשל שורות ישנות בלי קטגוריה)
+    // נשארת הנפילה-לאחור לסוג ה-PP המקושר, כדי לא לנתק תשלומים אמיתיים.
+    const projectType = ppTypeForProject((tx.project_names as string[] | null)?.join(' '))
+    const poolType: PayablePPType | null = projectType
+      ?? (wasLinked ? (linked?.pp_type ?? 'tuition') : null)
     if (!poolType) continue
 
     // תנועה שכ"ל לפני 04/2026 / מגבית לפני 06/2026 — היסטורית, לא מקושרת ולא
