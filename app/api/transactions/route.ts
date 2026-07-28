@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { insertSpilloverRows, applyPaymentToParentPPs, ppTypeForProject } from '@/lib/ppPayments'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
+import { deriveTxSource } from '@/lib/txSource'
 
 const fmtILS = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
@@ -161,7 +162,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('transactions')
-      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url', { count: 'exact' })
+      .select('id, amount, type, date, time, month_year, notes, parent_ids, project_names, planned_payment_id, framework, receipt_url, standing_order_id, synced_at', { count: 'exact' })
       .order('date', { ascending: dir !== 'desc' })
       .order('synced_at', { ascending: false })
 
@@ -250,6 +251,13 @@ export async function GET(req: NextRequest) {
       plannedPaymentId: t.planned_payment_id ?? null,
       framework:    String(t.framework || ''),
       receiptUrl:   String(t.receipt_url || ''),
+      // "איך התנועה נכנסה" — נשמר מפורשות בתנועות חדשות, ונגזר מסימנים בישנות.
+      sourceInfo:   deriveTxSource({
+        source:          (t as { source?: string | null }).source ?? null,
+        notes:           t.notes as string | null,
+        standingOrderId: (t.standing_order_id as string | null) ?? null,
+        syncedAt:        (t.synced_at as string | null) ?? null,
+      }),
     }))
 
     return NextResponse.json({ data: rows, total: count ?? 0, months, types, projects, totalIncome, totalExpense })

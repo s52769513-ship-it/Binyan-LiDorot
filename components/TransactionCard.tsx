@@ -21,6 +21,8 @@ export interface Transaction {
   plannedPaymentId?: string | null
   framework?: string
   receiptUrl?: string
+  /** איך התנועה נכנסה למערכת (אוטומציה / קליטה / ידני) — מחושב בשרת */
+  sourceInfo?: { source: string; label: string; icon: string; inferred: boolean }
 }
 
 const FRAMEWORKS = ['', 'תלמוד תורה', 'בית חינוך לבנות']
@@ -714,6 +716,22 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
               rows={2} className="w-full text-sm text-gray-800 text-right bg-transparent focus:outline-none resize-none" />
           </Field>
+
+          {/* איך התנועה נכנסה למערכת */}
+          {tx.sourceInfo && (
+            <Field label="מקור התנועה">
+              <div className="flex items-center justify-end gap-2 text-sm text-gray-800">
+                {tx.sourceInfo.inferred && (
+                  <span className="text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5"
+                    title="נגזר מסימנים בתנועה — נשמר במפורש רק בתנועות חדשות">
+                    משוער
+                  </span>
+                )}
+                <span>{tx.sourceInfo.label}</span>
+                <span>{tx.sourceInfo.icon}</span>
+              </div>
+            </Field>
+          )}
 
           {/* Linked PP */}
           {draft.plannedPaymentId && !showPpPicker && (
