@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recalcTuitionForParent } from '@/lib/recalcTuition'
+import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
+import { schoolYearHebrew } from '@/lib/hebrewYear'
 
 export const maxDuration = 300
 
@@ -60,10 +62,19 @@ export async function POST(req: NextRequest) {
       const payload: Record<string, unknown> = {}
       if (className) payload.class_name = className
       if (status)    payload.status     = status
+      // רישום שנתון הסיום, כדי שהבוגרים יקובצו לפי מחזור בלשונית "בוגרים".
+      if (status === 'סיים לימודים') payload.graduation_year = schoolYearHebrew()
       const CH = 500
       for (let i = 0; i < ids.length; i += CH) {
         const slice = ids.slice(i, i + CH)
-        const { error } = await supabaseAdmin.from('students').update(payload).in('id', slice)
+        let { error } = await supabaseAdmin.from('students').update(payload).in('id', slice)
+        // graduation_year עשויה לא להתקיים עדיין (ALUMNI_MIGRATION.sql לא הורץ) —
+        // ההעלאה עצמה חשובה מהשנתון, ולכן חוזרים בלעדיו במקום להיכשל.
+        if (error && MISSING_COLUMN_CODES.has(error.code) && 'graduation_year' in payload) {
+          const { graduation_year: _omit, ...rest } = payload
+          void _omit
+          ;({ error } = await supabaseAdmin.from('students').update(rest).in('id', slice))
+        }
         if (error) throw error
         updated += slice.length
       }

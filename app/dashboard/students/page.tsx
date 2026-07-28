@@ -6,12 +6,14 @@ import EmployeeCard from '@/components/EmployeeCard'
 import PaymentCard from '@/components/PaymentCard'
 import PromoteClassesModal from '@/components/PromoteClassesModal'
 import RegistrantsTab from '@/components/RegistrantsTab'
-import { isPendingRegistrant } from '@/lib/registration'
+import AlumniTab from '@/components/AlumniTab'
+import { isPendingRegistrant, isAlumnus } from '@/lib/registration'
 
 interface Student {
   id: string; name: string; gender: string; age: string
   className: string; framework: string; status: string
   committeeApproved: boolean
+  graduationYear: string
   transportation: string[]; transportationCost: number; parentIds: string[]
 }
 
@@ -22,7 +24,7 @@ export default function StudentsPage() {
   const [search, setSearch]       = useState('')
   const [framework, setFramework] = useState<'all' | 'tt' | 'bs'>('all')
   const [view, setView]           = useState<'class' | 'list'>('class')
-  const [tab, setTab]             = useState<'students' | 'registrants'>('students')
+  const [tab, setTab]             = useState<'students' | 'registrants' | 'alumni'>('students')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
@@ -62,8 +64,10 @@ export default function StudentsPage() {
 
   // נרשמים שטרם נכנסו מנוהלים בלשונית נפרדת ואינם חלק ברשימת התלמידים —
   // ברגע שתלמיד מאושר ואינו "ממתין" הוא עובר לכאן ומופיע בכיתה שלו.
-  const enrolled   = students.filter(s => !isPendingRegistrant(s))
-  const registrants = students.filter(s => isPendingRegistrant(s))
+  // היומיום: בלי נרשמים שטרם נכנסו ובלי בוגרים שסיימו/עזבו
+  const enrolled   = students.filter(s => !isPendingRegistrant(s) && !isAlumnus(s))
+  const registrants = students.filter(s => isPendingRegistrant(s) && !isAlumnus(s))
+  const alumni      = students.filter(s => isAlumnus(s))
 
   const filtered = enrolled.filter(s => {
     if (search && !s.name.includes(search)) return false
@@ -105,7 +109,8 @@ export default function StudentsPage() {
         {([
           { key: 'students',    label: 'תלמידים' },
           { key: 'registrants', label: `📝 נרשמים${registrants.length ? ` (${registrants.length})` : ''}` },
-        ] as { key: 'students' | 'registrants'; label: string }[]).map(t => (
+          { key: 'alumni',      label: `🎓 בוגרים${alumni.length ? ` (${alumni.length})` : ''}` },
+        ] as { key: 'students' | 'registrants' | 'alumni'; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
               tab === t.key ? 'border-[#1a3a7a] text-[#1a3a7a]' : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -115,7 +120,18 @@ export default function StudentsPage() {
         ))}
       </div>
 
-      {tab === 'registrants' ? (
+      {tab === 'alumni' ? (
+        loading
+          ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
+          : <AlumniTab
+              alumni={alumni.map(s => ({
+                id: s.id, name: s.name, className: s.className,
+                framework: s.framework, status: s.status,
+                graduationYear: s.graduationYear,
+              }))}
+              onOpenStudent={id => setSelectedStudentId(id)}
+            />
+      ) : tab === 'registrants' ? (
         loading
           ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
           : <RegistrantsTab

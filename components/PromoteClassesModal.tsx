@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { nextClassName, isFinalGrade } from '@/lib/classPromotion'
+import { nextClassName, isFinalGrade, gradeOf } from '@/lib/classPromotion'
 
 export interface PromoteStudent {
   id: string
@@ -67,15 +67,29 @@ export default function PromoteClassesModal({
       return f === '' || f === framework
     })
 
-  /** יעד ברירת המחדל לכל כיתה: הכיתה הבאה, או סיום לימודים בכיתה האחרונה. */
+  /**
+   * יעד ברירת המחדל לכל כיתה: הכיתה הבאה, או סיום לימודים כשאין המשך.
+   * "אין המשך" נקבע לפי הכיתות שקיימות בפועל ולא לפי רשימה קשיחה — למוסד אין
+   * כיתה ט', ולכן תלמידי ח' מסיימים. אם תיפתח כיתה המשך בעתיד, ההעלאה תתחיל
+   * להציע אותה מעצמה בלי שינוי קוד.
+   */
   const defaultTargets = useMemo(() => {
+    // חשוב: לפי הכיתות האמיתיות בלבד. allClassNames מוסיף לתוכו את כיתות היעד
+    // המחושבות (כולל ט' שאינה קיימת), ולכן בדיקה מולו תמיד הייתה מצליחה.
+    const realClasses = [...new Set(students.map(s => s.className).filter(Boolean))]
+    const existing = new Set(realClasses)
+    const existingGrades = new Set(realClasses.map(gradeOf).filter(Boolean) as string[])
     const m: Record<string, string> = {}
     for (const c of classNames) {
-      if (isFinalGrade(c)) m[c] = GRADUATE
-      else m[c] = nextClassName(c) ?? STAY
+      const next = isFinalGrade(c) ? null : nextClassName(c)
+      if (next && existing.has(next)) { m[c] = next; continue }
+      const nextGrade = next ? gradeOf(next) : null
+      // השכבה קיימת אבל השם לא תואם בדיוק (למשל "ד'1" מול "ד1") — לא מסיימים
+      // כיתה שלמה בגלל הבדל כתיב; משאירים למשתמש לבחור.
+      m[c] = nextGrade && existingGrades.has(nextGrade) ? STAY : GRADUATE
     }
     return m
-  }, [classNames])
+  }, [classNames, students])
 
   const [targets, setTargets] = useState<Record<string, string>>(defaultTargets)
   // חריגים ברמת תלמיד: studentId → יעד (שם כיתה / STAY / GRADUATE)
