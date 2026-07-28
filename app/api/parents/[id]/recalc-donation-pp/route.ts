@@ -95,14 +95,27 @@ async function doRecalcDonationPPs(parentId: string): Promise<RecalcResult> {
   let unlinkedWrong = 0
 
   if (ppIdList.length > 0) {
+    // `not.cs` לבדו מחמיץ תנועות שבהן project_names הוא NULL: בשאילתה
+    // NOT (project_names @> '{"דמי מגבית"}') מחזיר NULL ולא TRUE, ולכן השורות
+    // האלה לא חוזרות כלל ונשארות מקושרות ל-PP המגבית לנצח — הן אינן נספרות
+    // ביתרה (שלב 3 סופר רק "דמי מגבית") אבל כן מוצגות ברשימת התשלומים
+    // המקושרים, וכך מגבית "קיבלה" תשלומים שאינם שלה. מוסיפים במפורש is.null.
     const { data: wrongTxs } = await supabaseAdmin
       .from('transactions')
-      .select('id')
+      .select('id, notes, manual_link')
       .in('planned_payment_id', ppIdList)
-      .not('project_names', 'cs', '{"דמי מגבית"}')
-    for (const tx of wrongTxs ?? []) {
-      await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).eq('id', tx.id)
-      unlinkedWrong++
+      .or('project_names.is.null,project_names.not.cs.{"דמי מגבית"}')
+    const toUnlink = (wrongTxs ?? []).filter(tx => {
+      // קישור ידני — המשתמש קבע אותו בעצמו, לא נוגעים.
+      if ((tx as { manual_link?: boolean }).manual_link === true) return false
+      // שורות זיכוי/גלישה של המערכת מטופלות בשלב 0 (נמחקות ונוצרות מחדש).
+      const n = String(tx.notes ?? '')
+      return !n.startsWith(SPILLOVER_NOTES_PREFIX) && n !== 'זיכוי שמור'
+    }).map(tx => tx.id as string)
+
+    if (toUnlink.length > 0) {
+      await supabaseAdmin.from('transactions').update({ planned_payment_id: null }).in('id', toUnlink)
+      unlinkedWrong = toUnlink.length
     }
   }
 
