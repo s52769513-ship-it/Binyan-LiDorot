@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 
 import { MOSAD_ID, API_PASS } from '@/lib/nedarim'
+import { reverseReturnedHokCharge, RETURN_FEE } from '@/lib/hokReturn'
+import { recalcParentTuitionBalance } from '@/lib/ppPayments'
 
 const AUTOMATION_ID = 'nedarim-bank-hok-pull'
 // Dedup reads from this id AND the legacy 'nedarim-pull' id, so rows already
@@ -195,6 +197,26 @@ export async function POST(req: NextRequest) {
                 planned_payment_id: null, standing_order_id: standingOrderDbId,
                 synced_at: '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
+              // ביטול החיוב המקורי → החוב חוזר, ועמלת ההחזרה נזקפת לחובת ההורה
+              try {
+                const rev = await reverseReturnedHokCharge({
+                  standingOrderDbId, parentId: payerParentId,
+                  amount, monthYear, date: today, donorName,
+                })
+                if (rev.restoredAmount > 0) {
+                  send({ type: 'log', message: `  ↩ החוב הוחזר: ₪${rev.restoredAmount}` })
+                }
+                if (rev.feePPId) {
+                  send({ type: 'log', message: `  ↩ נוצר חיוב עמלת החזרה ₪${RETURN_FEE}` })
+                }
+                if (!rev.reversedTxId) {
+                  send({ type: 'log', message: `  ⚠ לא נמצא החיוב המקורי — החוב לא הוחזר אוטומטית` })
+                }
+                // רק חישוב מחדש של יתרת החוב הכוללת — בלי לגעת בסכומי ה-PP עצמם
+                await recalcParentTuitionBalance(payerParentId).catch(() => {})
+              } catch (e) {
+                send({ type: 'log', message: `  ⚠ ביטול החיוב נכשל: ${String(e)}` })
+              }
             }
             if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
             totalReturned++

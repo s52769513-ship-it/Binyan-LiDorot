@@ -24,7 +24,7 @@ import { isTxBeforeStart, ppBeforeStart } from '@/lib/cutoffs'
  * לגעת בהם.
  */
 
-export type PayablePPType = 'tuition' | 'donation'
+export type PayablePPType = 'tuition' | 'donation' | 'fee'
 
 /**
  * שורות "גלישה" — כשתשלום גדול מיתרת ה-PP המקושר, העודף יורד מ-PPs אחרים.
@@ -124,6 +124,8 @@ export function ppTypeForProject(projectName: string | null | undefined): Payabl
   const name = projectName ?? ''
   if (name.includes('מגבית')) return 'donation'
   if (name.includes('בנין לדורות')) return 'tuition'
+  // עמלות (למשל החזרת הו"ק) הן חוב נפרד — לא שכ"ל ולא מגבית
+  if (name.includes('עמלות')) return 'fee'
   return null
 }
 

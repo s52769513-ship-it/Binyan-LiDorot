@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyPaymentToParentPPs, findPaymentTarget, ppTypeForProject } from '@/lib/ppPayments'
 import { MOSAD_ID, API_PASS } from '@/lib/nedarim'
+import { reverseReturnedHokCharge } from '@/lib/hokReturn'
 
 function emit(controller: ReadableStreamDefaultController, encoder: TextEncoder, event: object) {
   controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
@@ -208,6 +209,18 @@ export async function POST(req: NextRequest) {
                 standing_order_id:  standingOrderDbId,
                 synced_at:          '2099-12-31T23:59:59.999Z', source: 'nedarim-hok',
               })
+              // ביטול החיוב המקורי → החוב חוזר, ועמלת ההחזרה נזקפת לחובת ההורה
+              try {
+                const rev = await reverseReturnedHokCharge({
+                  standingOrderDbId, parentId: payerParentId,
+                  amount, monthYear, date: today, donorName,
+                })
+                if (!rev.reversedTxId) {
+                  console.warn(`nedarim-pull: לא נמצא החיוב המקורי להו"ק ${hokNumber} (${donorName}) — החוב לא הוחזר אוטומטית`)
+                }
+              } catch (e) {
+                console.error(`nedarim-pull: ביטול חיוב שחזר נכשל (${donorName}):`, e)
+              }
             }
             if (rowId) newRowIds.push(rowId)
             totalReturned++
