@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { actorFromRequest, logActivity } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 // POST /api/planned-payments/[id]/reassign — changes who a planned payment is
 // linked to. Refused when the PP already has linked transactions: moving the

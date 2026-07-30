@@ -9,9 +9,9 @@ import dynamic from 'next/dynamic'
 const AddTransactionModal = dynamic(() => import('@/components/AddTransactionModal'), { ssr: false })
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 const fmtCur = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 const STATUS_STYLE: Record<string, string> = {
   'שולם':  'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -741,13 +741,13 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
         <div className="bg-emerald-50 rounded-xl border border-emerald-100 p-3 text-center">
           <p className="text-xs text-gray-500">שולם</p>
           <p className="text-lg font-bold text-emerald-700">
-            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalAmount - totalBalance)}
+            ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalAmount - totalBalance)}
           </p>
         </div>
         <div className="bg-red-50 rounded-xl border border-red-100 p-3 text-center">
           <p className="text-xs text-gray-500">יתרה לגביה</p>
           <p className="text-lg font-bold text-red-600">
-            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalBalance)}
+            ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalBalance)}
           </p>
         </div>
       </div>
@@ -790,7 +790,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
             <div className="space-y-2 mb-4">
               <div className="flex justify-between items-center">
                 <span className="text-2xl font-bold text-gray-800">
-                  ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(selectedPP.amount)}
+                  ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(selectedPP.amount)}
                 </span>
                 <span className="text-xs text-gray-400">סכום מתוכנן</span>
               </div>
@@ -800,7 +800,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                   {paid > 0 && (
                     <div className="flex justify-between items-center bg-emerald-50 rounded-lg px-3 py-2">
                       <span className="text-base font-bold text-emerald-600">
-                        ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(paid)}
+                        ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(paid)}
                       </span>
                       <span className="text-xs text-emerald-500">שולם</span>
                     </div>
@@ -808,7 +808,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                   {selectedPP.balance > 0 ? (
                     <div className="flex justify-between items-center bg-red-50 rounded-lg px-3 py-2">
                       <span className="text-lg font-bold text-red-600">
-                        ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(selectedPP.balance)}
+                        ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(selectedPP.balance)}
                       </span>
                       <span className="text-xs text-red-400">יתרה לתשלום</span>
                     </div>
@@ -856,7 +856,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                       {tx.isCredit ? (
                         <div className="flex items-center gap-2 flex-1">
                           <span className="text-sm font-bold text-emerald-600">
-                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(tx.amount))}
+                            ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(tx.amount))}
                           </span>
                           <span className="text-xs text-emerald-500">{tx.notes}</span>
                         </div>
@@ -875,7 +875,7 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                             {tx.date && <span className="text-xs text-gray-400">{new Intl.DateTimeFormat('he-IL').format(new Date(tx.date))}</span>}
                           </div>
                           <span className="text-sm font-bold text-emerald-700">
-                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(tx.amount))}
+                            ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(tx.amount))}
                           </span>
                         </button>
                       )}
@@ -989,13 +989,13 @@ function PlannedPaymentsTab({ onOpenParent }: { onOpenParent: (id: string) => vo
                       {r.monthYear && <div className="text-[10px] text-gray-400">{HEBREW_MONTH[r.monthYear.split('/')[0]] || ''}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-left tabular-nums text-gray-700">
-                      ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(r.amount)}
+                      ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r.amount)}
                     </td>
                     <td className="px-4 py-2.5 text-left tabular-nums font-semibold">
                       {isPaid
                         ? <span className="text-emerald-600">✓</span>
                         : <span className={isOverdue ? 'text-red-600' : 'text-amber-600'}>
-                            ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(r.balance)}
+                            ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r.balance)}
                           </span>
                       }
                     </td>

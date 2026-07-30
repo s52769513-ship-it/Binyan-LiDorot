@@ -42,7 +42,7 @@ const MONTHLY_MODAL_CONFIG: Record<MonthlyModalType, {
 }
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 const fmtDate = (d: string) => {
   if (!d) return '—'
@@ -636,7 +636,7 @@ function SupplierExpensesSection() {
   const [month, setMonth] = useState(curMY())
   const [runs, setRuns]   = useState<{ id: string; supplierName: string; amountDue: number; amountPaid: number; paymentMethod: string; status: string }[]>([])
   const [loading, setLoading] = useState(true)
-  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
   const myToInp = (my: string) => { const [m, y] = my.split('/'); return `${y}-${m}` }
   const inpToMY = (v: string) => { const [y, m] = v.split('-'); return `${m}/${y}` }
 

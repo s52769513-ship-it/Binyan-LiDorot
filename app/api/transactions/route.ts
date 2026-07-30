@@ -5,7 +5,7 @@ import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 import { deriveTxSource } from '@/lib/txSource'
 
 const fmtILS = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 const PAGE_SIZE = 50
 

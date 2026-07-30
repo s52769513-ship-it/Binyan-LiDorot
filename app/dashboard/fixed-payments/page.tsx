@@ -12,7 +12,7 @@ const PayRunModal           = dynamic(() => import('@/components/PayRunModal'), 
 const CardPaymentTaskModal  = dynamic(() => import('@/components/CardPaymentTaskModal'),  { ssr: false })
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 const myToInp = (my: string) => { const [m, y] = my.split('/'); return `${y}-${m}` }
 const inpToMY = (v: string) => { const [y, m] = v.split('-'); return `${m}/${y}` }
 function currentMY() {

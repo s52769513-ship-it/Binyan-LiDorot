@@ -25,7 +25,7 @@ const donationRecalcDone = new Set<string>()
 const tuitionCreditAutoApplyDone = new Set<string>()
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 function fmtDate(d: string) {
   if (!d) return '—'
@@ -238,7 +238,7 @@ function WomanLinkField({ women, parentId, onUpdate }: {
 /* ─── DonationTab ────────────────────────────────────── */
 function DonationTab({ parent, onUpdate }: { parent: ParentDetail; onUpdate: () => void }) {
   const fmt2 = (n: number) =>
-    new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+    new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
   const [editingAmount, setEditingAmount]     = useState(false)
   const [amountDraft, setAmountDraft]         = useState(String(parent.monthlyDonation || ''))

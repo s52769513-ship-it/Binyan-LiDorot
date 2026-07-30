@@ -52,7 +52,7 @@ interface Transaction {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 }
 function fmtDate(d: string) {
   if (!d) return '—'
@@ -574,7 +574,7 @@ function ImportResultsTable({ res, compact }: {
   res: { dryRun?: boolean; totalCreated: number; results: ImportRow[] }
   compact?: boolean
 }) {
-  const fmtN = (n: number) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(n)
+  const fmtN = (n: number) => new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
   const totalPaid = res.results.reduce((s, r) => s + r.totalPaid, 0)
   return (
     <div className={`border shadow-sm overflow-hidden rounded-2xl ${res.dryRun ? 'border-amber-200' : 'border-emerald-100'}`}>

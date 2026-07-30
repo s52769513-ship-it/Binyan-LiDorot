@@ -7,7 +7,7 @@ const EmployeeCard        = dynamic(() => import('./EmployeeCard'),        { ssr
 const AddTransactionModal = dynamic(() => import('./AddTransactionModal'), { ssr: false })
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 const fmtDate = (d: string) => {
   if (!d) return '—'

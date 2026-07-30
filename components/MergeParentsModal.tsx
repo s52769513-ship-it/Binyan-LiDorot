@@ -62,7 +62,7 @@ const fmtVal = (v: unknown): string => {
 }
 
 const fmtAmt = (n: number) =>
-  `${n < 0 ? '-' : ''}₪${Math.abs(n).toLocaleString('he-IL', { maximumFractionDigits: 0 })}`
+  `${n < 0 ? '-' : ''}₪${Math.abs(n).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 /* ─── Data fetching ─────────────────────────────────────────────── */
 async function fetchParentData(id: string): Promise<ParentData> {

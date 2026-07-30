@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
+import { round2 } from '@/lib/money'
 
 /**
  * GET /api/cashflow/breakdown?month=MM/YYYY&pool=tuition|donation|salary&field=planned|collected|remaining
@@ -72,9 +73,9 @@ export async function GET(req: NextRequest) {
       .map(([parentId, v]) => ({
         parentId,
         parentName: parentId ? (nameMap.get(parentId) || '—') : 'ללא הורה משויך',
-        amount: Math.round(v.value),
+        amount: round2(v.value),
         // שולם במלואו כשאין יתרה פתוחה (מאפשר צביעה ירוקה בחלון)
-        paid: Math.round(v.remaining) <= 0,
+        paid: round2(v.remaining) <= 0,
       }))
       .filter(r => Math.abs(r.amount) > 0)
       .sort((a, b) => b.amount - a.amount)

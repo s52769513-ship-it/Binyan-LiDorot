@@ -52,7 +52,7 @@ const ACTION_COLOR: Record<string, string> = {
 }
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 export default function DonationImportModal({ onClose, onSuccess }: {
   onClose:   () => void

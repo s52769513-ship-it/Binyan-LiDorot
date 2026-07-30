@@ -18,7 +18,7 @@ interface Woman {
 }
 
 function fmt(n: number) {
-  return n > 0 ? `₪${new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(n)}` : '—'
+  return n > 0 ? `₪${new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}` : '—'
 }
 
 function NumCell({ value, onSave, highlight = false }: { value: number; onSave: (v: number) => void; highlight?: boolean }) {
@@ -108,7 +108,7 @@ export default function WomenPage() {
         <h1 className="text-xl font-bold text-gray-900">נשים — שכר</h1>
         <span className="text-sm text-gray-400">{filtered.length} מורות / עובדות</span>
         <div className="mr-auto text-sm font-semibold text-[#1a3a7a]">
-          סה״כ: ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalGross)}
+          סה״כ: ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGross)}
         </div>
       </div>
 
@@ -202,7 +202,7 @@ export default function WomenPage() {
               <tr className="border-t border-gray-200 bg-gray-50">
                 <td colSpan={7} className="px-4 py-2 text-xs text-gray-500">סה״כ</td>
                 <td className="px-4 py-2 text-center font-bold text-[#1a3a7a] tabular-nums">
-                  ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(totalGross)}
+                  ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGross)}
                 </td>
                 <td colSpan={2} />
               </tr>

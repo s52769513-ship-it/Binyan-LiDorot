@@ -15,7 +15,7 @@ const fmtMY = (my: string) => { const [m, y] = my.split('/'); return `${HM[m] ||
 const myToInp = (my: string) => { const [m, y] = my.split('/'); return `${y}-${m}` }
 const inpToMY = (v: string) => { const [y, m] = v.split('-'); return `${m}/${y}` }
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 function currentMY() {
   const d = new Date()

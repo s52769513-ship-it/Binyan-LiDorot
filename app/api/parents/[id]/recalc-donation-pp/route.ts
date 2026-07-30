@@ -208,7 +208,7 @@ async function doRecalcDonationPPs(parentId: string): Promise<RecalcResult> {
   if (newlyLinked > 0 || unlinkedWrong > 0 || spillovers.length > 0) {
     void logActivity({
       parentId, actor: SYSTEM_ACTOR, action: 'automation',
-      summary: `ריענון מגבית אוטומטי: ${newlyLinked} תנועות קושרו${unlinkedWrong ? ` · ${unlinkedWrong} נותקו` : ''}${spillovers.length ? ` · ${spillovers.length} גלישות` : ''}${credit > 0 ? ` · זיכוי מגבית ₪${Math.round(credit)}` : ''}`,
+      summary: `ריענון מגבית אוטומטי: ${newlyLinked} תנועות קושרו${unlinkedWrong ? ` · ${unlinkedWrong} נותקו` : ''}${spillovers.length ? ` · ${spillovers.length} גלישות` : ''}${credit > 0 ? ` · זיכוי מגבית ₪${round2(credit)}` : ''}`,
     })
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { round2 } from '@/lib/money'
 
 export async function GET() {
   try {
@@ -138,34 +139,34 @@ export async function GET() {
         isPast,
         isCurrent,
         tuition: {
-          planned: Math.round(t.planned),
-          collected: Math.round(t.collected),
-          remaining: Math.round(t.remaining),
+          planned: round2(t.planned),
+          collected: round2(t.collected),
+          remaining: round2(t.remaining),
           collectionPct: t.planned > 0 ? Math.round((t.collected / t.planned) * 100) : 0,
           byDept: Object.fromEntries(
             Object.entries(t.byDept).map(([k, v]) => [
               k,
               {
-                planned: Math.round(v.planned),
-                collected: Math.round(v.collected),
-                remaining: Math.round(v.remaining),
+                planned: round2(v.planned),
+                collected: round2(v.collected),
+                remaining: round2(v.remaining),
               },
             ])
           ),
         },
         salary: {
-          planned: Math.round(s.planned),
-          paid: Math.round(s.paid),
-          remaining: Math.round(s.remaining),
+          planned: round2(s.planned),
+          paid: round2(s.paid),
+          remaining: round2(s.remaining),
         },
         donation: {
-          planned: Math.round(d.planned),
-          collected: Math.round(d.collected),
-          remaining: Math.round(d.remaining),
+          planned: round2(d.planned),
+          collected: round2(d.collected),
+          remaining: round2(d.remaining),
           collectionPct: d.planned > 0 ? Math.round((d.collected / d.planned) * 100) : 0,
         },
-        net: Math.round(t.planned + d.planned - s.planned),
-        netActual: Math.round(t.collected + d.collected - s.paid),
+        net: round2(t.planned + d.planned - s.planned),
+        netActual: round2(t.collected + d.collected - s.paid),
       }
     })
 

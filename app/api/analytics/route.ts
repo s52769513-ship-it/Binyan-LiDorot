@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { isCashFundTransaction } from '@/lib/cashFund'
+import { round2 } from '@/lib/money'
 
 export async function GET(req: NextRequest) {
   try {
@@ -82,9 +83,9 @@ export async function GET(req: NextRequest) {
 
     const monthlyData = months.map(m => ({
       month: m,
-      income: Math.round(incByMonth[m]),
-      expenses: Math.round(expByMonth[m]),
-      balance: Math.round(incByMonth[m] - expByMonth[m]),
+      income: round2(incByMonth[m]),
+      expenses: round2(expByMonth[m]),
+      balance: round2(incByMonth[m] - expByMonth[m]),
     }))
 
     // Type breakdown (income only)
@@ -108,19 +109,19 @@ export async function GET(req: NextRequest) {
     }
 
     const typeBreakdown = Object.entries(typeMap)
-      .map(([type, amount]) => ({ type, amount: Math.round(amount) }))
+      .map(([type, amount]) => ({ type, amount: round2(amount) }))
       .sort((a, b) => b.amount - a.amount)
 
     const bankClassBreakdown = Object.entries(bankMap)
-      .map(([name, amount]) => ({ name, amount: Math.round(amount) }))
+      .map(([name, amount]) => ({ name, amount: round2(amount) }))
       .sort((a, b) => b.amount - a.amount)
 
     const paymentMethodBreakdown = Object.entries(methodMap)
-      .map(([name, amount]) => ({ name, amount: Math.round(amount) }))
+      .map(([name, amount]) => ({ name, amount: round2(amount) }))
       .sort((a, b) => b.amount - a.amount)
 
-    const totalIncome = Math.round(monthlyData.reduce((s, m) => s + m.income, 0))
-    const totalExpenses = Math.round(monthlyData.reduce((s, m) => s + m.expenses, 0))
+    const totalIncome = round2(monthlyData.reduce((s, m) => s + m.income, 0))
+    const totalExpenses = round2(monthlyData.reduce((s, m) => s + m.expenses, 0))
 
     return NextResponse.json({
       monthlyData,

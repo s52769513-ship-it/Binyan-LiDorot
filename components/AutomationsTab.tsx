@@ -17,7 +17,7 @@ const HM: Record<string, string> = {
 const fmtMY   = (my: string) => { const [m,y]=my.split('/'); return `${HM[m]||m} ${y}` }
 const myToInp = (my: string) => { const [m,y]=my.split('/'); return `${y}-${m}` }
 const inpToMY = (v: string)  => { const [y,m]=v.split('-'); return `${m}/${y}` }
-const fmtN    = (n: number)  => new Intl.NumberFormat('he-IL',{maximumFractionDigits:0}).format(n)
+const fmtN    = (n: number)  => new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)
 
 function currentMY() {
   const d=new Date(); return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
