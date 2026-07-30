@@ -1186,6 +1186,90 @@ function ScheduleTableRow({ def, enabled }: { def: ScheduleRowDef; enabled: bool
   )
 }
 
+/* ─── FixPastHokReturnsCard — תיקון חד-פעמי להחזרות הו"ק קודמות ────────── */
+function FixPastHokReturnsCard() {
+  const [running, setRunning] = useState(false)
+  const [lines, setLines]     = useState<{ ok: boolean; text: string }[]>([])
+  const [summary, setSummary] = useState<string | null>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight }) }, [lines])
+
+  const run = async (dryRun: boolean) => {
+    if (!dryRun && !confirm('להחיל את התיקון? החוב של ההורים הרלוונטיים יעודכן ותיווצר להם עמלת החזרה.')) return
+    setRunning(true); setLines([]); setSummary(null)
+    try {
+      const resp = await fetch('/api/automations/fix-past-hok-returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun }),
+      })
+      const reader = resp.body?.getReader()
+      if (!reader) throw new Error('no stream')
+      const dec = new TextDecoder()
+      let buf = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const parts = buf.split('\n'); buf = parts.pop() ?? ''
+        for (const line of parts) {
+          if (!line.trim()) continue
+          const ev = JSON.parse(line)
+          if (ev.type === 'log') setLines(p => [...p, { ok: true, text: ev.message }])
+          else if (ev.type === 'progress') {
+            setLines(p => [...p, {
+              ok: !ev.skipped,
+              text: `${ev.current}/${ev.total} · ${ev.label}${ev.skipped ? ` — דולג (${ev.reason})` : ' — תוקן'}`,
+            }])
+          } else if (ev.type === 'complete') {
+            setSummary(`${ev.dryRun ? '[בדיקה] ' : ''}${ev.applied} תוקנו · ${ev.skipped} דולגו · חוב שיוחזר ₪${Number(ev.totalRestored).toLocaleString('he-IL')} · ${ev.feesAdded} חיובי עמלה`)
+          } else if (ev.type === 'error') {
+            setLines(p => [...p, { ok: false, text: ev.message }])
+          }
+        }
+      }
+    } catch (e) {
+      setLines(p => [...p, { ok: false, text: String(e) }])
+    } finally { setRunning(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 flex items-center justify-between gap-4 bg-gradient-to-r from-amber-50 to-orange-50">
+        <div>
+          <h3 className="font-bold text-gray-800">↩️ תיקון החזרות הו"ק קודמות</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            החזרות שנרשמו לפני התיקון השאירו את החיוב המקורי מקושר, ולכן החוב לא חזר וההורה
+            נראה כמי ששילם. הסריקה מבטלת לכל החזרה כזו את החיוב המקורי, מחזירה את החוב
+            ומחייבת עמלת החזרה. הרץ קודם "בדיקה" — היא לא משנה כלום.
+          </p>
+        </div>
+        <div className="shrink-0 flex gap-2">
+          <button onClick={() => run(true)} disabled={running}
+            className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:border-amber-400 disabled:opacity-50">
+            בדיקה
+          </button>
+          <button onClick={() => run(false)} disabled={running}
+            className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50">
+            {running ? 'מתקן...' : 'החל תיקון'}
+          </button>
+        </div>
+      </div>
+      {(lines.length > 0 || summary) && (
+        <div className="px-6 py-3 border-t border-gray-100">
+          {summary && <p className="text-sm font-semibold text-gray-700 mb-2">{summary}</p>}
+          {lines.length > 0 && (
+            <div ref={logRef} className="max-h-40 overflow-y-auto space-y-0.5 text-xs font-mono" dir="rtl">
+              {lines.map((l, i) => <div key={i} className={l.ok ? 'text-gray-500' : 'text-red-500'}>{l.text}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ─── RelinkAllCard — ריענון יתרות לכל ההורים ─────────────────────────── */
 function RelinkAllCard() {
   const [running, setRunning] = useState(false)
@@ -1351,6 +1435,7 @@ export default function AutomationsTab() {
       </div>
 
       {/* Relink all parents — one-click balance reconciliation */}
+      <FixPastHokReturnsCard />
       <RelinkAllCard />
 
       {/* Automation selector pills */}
