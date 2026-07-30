@@ -9,7 +9,7 @@ const HMONTHS: Record<string, string> = {
   '07': 'יולי', '08': 'אוגוסט', '09': 'ספטמבר', '10': 'אוקטובר', '11': 'נובמבר', '12': 'דצמבר',
 }
 const fmtMonth = (my: string) => { const [m, y] = (my || '').split('/'); return m && y ? `${HMONTHS[m] ?? m} ${y}` : my }
-const fmt = (n: number) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+const fmt = (n: number) => new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 export type CashflowPool = 'tuition' | 'donation' | 'salary'
 export type CashflowField = 'planned' | 'collected' | 'remaining'

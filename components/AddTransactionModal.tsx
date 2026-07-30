@@ -331,7 +331,9 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                       type="button"
                       onClick={() => {
                         setLinkedPayment(pp)
-                        setAmount(String(Math.round(pp.balance)))
+                        // היתרה המדויקת כולל אגורות — עיגול כאן היה יוצר תשלום
+                        // שאינו סוגר את החוב (או חורג ממנו) באגורות בודדות.
+                        setAmount(String(pp.balance))
                       }}
                       className={`w-full text-right px-3 py-2 rounded-lg border text-sm transition-colors ${
                         linkedPayment?.id === pp.id
@@ -341,7 +343,7 @@ export default function AddTransactionModal({ parentId, parentName, fixedLabel, 
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-amber-700 tabular-nums text-xs">
-                          יתרה: ₪{new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(pp.balance)}
+                          יתרה: ₪{new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pp.balance)}
                         </span>
                         <span className="truncate">{pp.name || pp.monthYear || '—'}</span>
                       </div>

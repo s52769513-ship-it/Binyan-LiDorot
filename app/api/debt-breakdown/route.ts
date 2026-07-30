@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
 import { monthKey } from '@/lib/months'
+import { round2 } from '@/lib/money'
 
 /**
  * GET /api/debt-breakdown?pool=tuition|donation|salary&dueOnly=1
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const round = (n: number) => Math.round(n)
+    const round = (n: number) => round2(n)
     const months: MonthBucket[] = [...byMonth.entries()]
       .map(([monthYear, parentBalances]) => {
         const parents: ParentRecord[] = [...parentBalances.entries()]

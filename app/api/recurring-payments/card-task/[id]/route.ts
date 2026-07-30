@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 const FAR_FUTURE = '2099-12-31T23:59:59.999Z'
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 function isCredit(method: string): boolean {
   return (method || '').trim() === 'אשראי'

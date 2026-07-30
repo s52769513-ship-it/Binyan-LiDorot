@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
 import { isCashFundTransaction } from '@/lib/cashFund'
+import { round2 } from '@/lib/money'
 
 export async function GET() {
   try {
@@ -212,9 +213,9 @@ export async function GET() {
       .filter(([, v]) => v.planned > 0 || v.actual > 0 || v.debt > 0)
       .map(([name, v]) => ({
         name,
-        planned:       Math.round(v.planned),
-        actual:        Math.round(v.actual),
-        debt:          Math.round(v.debt),
+        planned:       round2(v.planned),
+        actual:        round2(v.actual),
+        debt:          round2(v.debt),
         parentsInDebt: v.parentsInDebt.size,
         collectionPct: v.planned > 0 ? Math.round((v.actual / v.planned) * 100) : 0,
       }))
@@ -246,8 +247,8 @@ export async function GET() {
     }
     const monthlyData = months.map(m => ({
       month: m,
-      planned: Math.round(plannedByMonth[m]),
-      actual: Math.round(actualByMonth[m]),
+      planned: round2(plannedByMonth[m]),
+      actual: round2(actualByMonth[m]),
     }))
 
     const plannedThisMonth = (plannedThisMonthRes.data ?? []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
@@ -354,11 +355,11 @@ export async function GET() {
 
     return NextResponse.json({
       // New rich fields
-      plannedThisMonth: Math.round(plannedThisMonth),
-      actualThisMonth:  Math.round(actualThisMonth),
-      totalDebt:        Math.round(totalDebt),
+      plannedThisMonth: round2(plannedThisMonth),
+      actualThisMonth:  round2(actualThisMonth),
+      totalDebt:        round2(totalDebt),
       parentsInDebt,
-      donationDebt:         Math.round(donationDebt),
+      donationDebt:         round2(donationDebt),
       donationDebtFamilies,
       debtAlerts,
       recentTransactions,
@@ -366,13 +367,13 @@ export async function GET() {
       lastSync: lastSyncRes.data?.synced_at ?? null,
       departmentStats,
       // New financial alert fields
-      salaryDebt:       Math.round(salaryDebt),
+      salaryDebt:       round2(salaryDebt),
       salaryDebtCount,
-      overdueAmount:    Math.round(overdueAmount),
+      overdueAmount:    round2(overdueAmount),
       overdueCount,
-      ppCreditTotal:         Math.round(ppCreditTotal),
-      ppCreditTuitionTotal:  Math.round(ppCreditTuitionTotal),
-      ppCreditDonationTotal: Math.round(ppCreditDonationTotal),
+      ppCreditTotal:         round2(ppCreditTotal),
+      ppCreditTuitionTotal:  round2(ppCreditTuitionTotal),
+      ppCreditDonationTotal: round2(ppCreditDonationTotal),
       ppCreditList,
       overdueAlerts,
       salaryAlerts,
@@ -380,12 +381,12 @@ export async function GET() {
       activeStudents,
       activeFamilies,
       employeesCount,
-      salaryPaidThisMonth: Math.round(salaryPaidThisMonth),
-      netThisMonth:        Math.round(actualThisMonth - salaryPaidThisMonth),
+      salaryPaidThisMonth: round2(salaryPaidThisMonth),
+      netThisMonth:        round2(actualThisMonth - salaryPaidThisMonth),
       // Legacy fields
-      totalDebts:              Math.round(totalDebts),
-      totalPlannedPayments:    Math.round(totalPlannedPayments),
-      currentMonthTransactions: Math.round(actualThisMonth),
+      totalDebts:              round2(totalDebts),
+      totalPlannedPayments:    round2(totalPlannedPayments),
+      currentMonthTransactions: round2(actualThisMonth),
     })
   } catch (err) {
     console.error('summary error:', err)

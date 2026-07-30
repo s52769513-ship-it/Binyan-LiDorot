@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
+import { round2 } from '@/lib/money'
 
 const PAGE_SIZE = 50
 
@@ -168,7 +169,7 @@ export async function GET(req: NextRequest) {
       childrenCount: p.children_count ?? 0,
       tuitionTotal: p.tuition_total ?? 0,
       tuitionBalance: p.tuition_balance ?? 0,
-      overdueBalance: Math.round(overdueByParent[p.id as string] ?? 0),
+      overdueBalance: round2(overdueByParent[p.id as string] ?? 0),
     }))
 
     return NextResponse.json({ data: mapped, total: count ?? 0, statusOptions })

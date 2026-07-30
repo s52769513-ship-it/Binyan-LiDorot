@@ -4,7 +4,7 @@ import { actorFromRequest, logActivity } from '@/lib/activityLog'
 import { relinkParent } from '@/lib/relink'
 
 const fmtILS = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 // POST /api/transactions/[id]/reassign — changes who a transaction is linked
 // to. Refused when the transaction is already linked to a planned payment

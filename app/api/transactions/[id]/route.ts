@@ -5,7 +5,7 @@ import { MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 
 const fmtILS = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 export async function GET(
   _req: NextRequest,

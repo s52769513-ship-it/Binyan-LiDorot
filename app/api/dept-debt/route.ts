@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
+import { round2 } from '@/lib/money'
 
 export async function GET(req: NextRequest) {
   const framework = req.nextUrl.searchParams.get('framework') ?? ''
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest) {
       parents: debtParents.map(p => ({
         id: p.id as string,
         name: p.name as string,
-        balance: Math.round(balanceByParent[p.id] ?? 0),
+        balance: round2(balanceByParent[p.id] ?? 0),
         childrenCount: Number(p.children_count) || 0,
         openPayments: ppByParent[p.id as string] ?? [],
       })),

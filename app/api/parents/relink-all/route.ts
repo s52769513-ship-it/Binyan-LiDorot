@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { relinkParent } from '@/lib/relink'
 import { logActivity, SYSTEM_ACTOR } from '@/lib/activityLog'
+import { round2 } from '@/lib/money'
 
 export const maxDuration = 300 // ריצה על כל ההורים יכולה לקחת דקות
 
@@ -59,7 +60,7 @@ export async function POST() {
             if (stats.txsProcessed > 0 || stats.spilloverCreated > 0) {
               void logActivity({
                 parentId: pid, actor: SYSTEM_ACTOR, action: 'automation',
-                summary: `ריענון כולל (כל ההורים): ${stats.txsProcessed} תנועות עובדו · ${stats.spilloverCreated} גלישות · זיכוי ₪${Math.round(stats.credit)}`,
+                summary: `ריענון כולל (כל ההורים): ${stats.txsProcessed} תנועות עובדו · ${stats.spilloverCreated} גלישות · זיכוי ₪${round2(stats.credit)}`,
               })
             }
             send({
@@ -83,7 +84,7 @@ export async function POST() {
             dry_run:       false,
             actions_count: done,
             status:        failed > 0 ? 'partial' : 'success',
-            summary:       `ריענון כל ההורים: ${done} הצליחו · ${failed} נכשלו · גלישות ₪${Math.round(totalSpill).toLocaleString('he-IL')} · זיכויים ₪${Math.round(totalCredit).toLocaleString('he-IL')}`,
+            summary:       `ריענון כל ההורים: ${done} הצליחו · ${failed} נכשלו · גלישות ₪${round2(totalSpill).toLocaleString('he-IL')} · זיכויים ₪${round2(totalCredit).toLocaleString('he-IL')}`,
           })
         } catch { /* best-effort */ }
 

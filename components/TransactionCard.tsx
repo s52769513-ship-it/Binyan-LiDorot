@@ -65,7 +65,7 @@ function hebrewDate(iso: string): string {
 
 function fmt(n: number) {
   return new Intl.NumberFormat('he-IL', {
-    style: 'currency', currency: 'ILS', maximumFractionDigits: 0,
+    style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(n)
 }
 
@@ -366,7 +366,7 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
   onSaved?: (updated: Transaction) => void
   onDeleted?: (id: string) => void
 }) {
-  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(Math.abs(n))
+  const fmtIL = (n: number) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
   const [draft, setDraft]       = useState<Transaction>(tx)
   const [saving, setSaving]     = useState(false)

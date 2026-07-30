@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sortByMonth } from '@/lib/months'
+import { round2 } from '@/lib/money'
 
 export async function GET(req: NextRequest) {
   try {
@@ -81,9 +82,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       rows,
       summary: {
-        totalAmount:    Math.round(totalAmount),
-        totalPaid:      Math.round(totalPaid),
-        totalRemaining: Math.round(totalRemaining),
+        totalAmount:    round2(totalAmount),
+        totalPaid:      round2(totalPaid),
+        totalRemaining: round2(totalRemaining),
       },
       months,
     })

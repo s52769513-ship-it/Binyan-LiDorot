@@ -11,7 +11,7 @@ function fmtMonth(my: string): string {
   const [m, y] = (my || '').split('/')
   return m && y ? `${HMONTHS[m] ?? m} ${y}` : (my || '—')
 }
-const fmt = (n: number) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(Math.abs(n))
+const fmt = (n: number) => new Intl.NumberFormat('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
 
 interface ParentRecord {
   parentId: string

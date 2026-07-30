@@ -34,7 +34,7 @@ interface Props {
 }
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 const STATUS_OPTIONS    = ['פעיל', 'לא פעיל', 'בוגר', 'הורחק', 'ממתין', 'סיים לימודים']
 /* ─── InlineField (free text / date) ────────────────── */
