@@ -33,8 +33,10 @@ export async function reverseReturnedHokCharge(opts: {
   monthYear: string
   date: string
   donorName: string
+  /** לא לבטל חיוב שנוצר אחרי ההחזרה — רלוונטי לתיקון החזרות היסטוריות */
+  chargeBefore?: string | null
 }): Promise<HokReturnResult> {
-  const { standingOrderDbId, parentId, amount, monthYear, date, donorName } = opts
+  const { standingOrderDbId, parentId, amount, monthYear, date, donorName, chargeBefore } = opts
   const out: HokReturnResult = { reversedTxId: null, restoredPPId: null, restoredAmount: 0, feePPId: null }
   if (!standingOrderDbId) return out
 
@@ -42,13 +44,16 @@ export async function reverseReturnedHokCharge(opts: {
   const before = await parentDebt(parentId)
 
   // ── החיוב המקורי: התנועה החיובית האחרונה של אותה הו"ק בסכום הזהה שטרם בוטלה
-  const { data: charges } = await supabaseAdmin
+  let chargeQ = supabaseAdmin
     .from('transactions')
-    .select('id, amount, planned_payment_id, notes, manual_link')
+    .select('id, amount, date, planned_payment_id, notes, manual_link')
     .eq('standing_order_id', standingOrderDbId)
     .gt('amount', 0)
     .order('date', { ascending: false })
     .limit(20)
+  // חיוב שנוצר אחרי ההחזרה הוא חיוב חדש ותקין — אין לבטלו
+  if (chargeBefore) chargeQ = chargeQ.lte('date', chargeBefore)
+  const { data: charges } = await chargeQ
 
   const original = (charges ?? []).find(t =>
     round2(Number(t.amount)) === round2(amount) &&
