@@ -17,6 +17,34 @@ export async function exportRowsToExcel(rows: ExportRow[], filename: string, she
   XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`)
 }
 
+/**
+ * מוריד אקסל מרובה גיליונות — גיליון לכל כיתה. שמות גיליונות באקסל מוגבלים
+ * ל-31 תווים ואינם יכולים להכיל : \ / ? * [ ] , ולכן הם מנוקים כאן; שם כפול
+ * אחרי הניקוי מקבל סיומת מספרית כדי שגיליון לא ידרוס אחר.
+ */
+export async function exportSheetsToExcel(
+  sheets: { name: string; rows: ExportRow[] }[],
+  filename: string,
+) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  const used = new Set<string>()
+  for (const sheet of sheets) {
+    if (sheet.rows.length === 0) continue
+    let name = (sheet.name || 'ללא כיתה').replace(/[:\\/?*[\]]/g, '-').slice(0, 31)
+    if (used.has(name)) {
+      let i = 2
+      while (used.has(`${name.slice(0, 28)}-${i}`)) i++
+      name = `${name.slice(0, 28)}-${i}`
+    }
+    used.add(name)
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet.rows), name)
+  }
+  if (wb.SheetNames.length === 0) return false
+  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`)
+  return true
+}
+
 /** ממיר אלמנט ל-PDF (A4) ושומר. משמר עברית ע"י צילום ל-canvas. */
 export async function exportElementToPDF(el: HTMLElement, filename: string) {
   const [{ jsPDF }, html2canvas] = await Promise.all([

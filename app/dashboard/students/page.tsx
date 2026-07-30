@@ -7,6 +7,7 @@ import PaymentCard from '@/components/PaymentCard'
 import PromoteClassesModal from '@/components/PromoteClassesModal'
 import RegistrantsTab from '@/components/RegistrantsTab'
 import AlumniTab from '@/components/AlumniTab'
+import ExportStudentsModal from '@/components/ExportStudentsModal'
 import { isPendingRegistrant, isAlumnus } from '@/lib/registration'
 
 interface Student {
@@ -29,6 +30,7 @@ export default function StudentsPage() {
   const [selectedParentId, setSelectedParentId]   = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
   const [showPromote, setShowPromote] = useState(false)
+  const [showExport, setShowExport]   = useState(false)
   const [bulkClass, setBulkClass] = useState<string | null>(null)   // class whose status panel is open
   const [bulkStatus, setBulkStatus] = useState('סיים לימודים')
   const [bulkSaving, setBulkSaving] = useState(false)
@@ -100,6 +102,11 @@ export default function StudentsPage() {
               ⬆️ העלאת כיתה
             </button>
           </>}
+          {/* זמין בכל הלשוניות — הייצוא עצמו נבחר בחלון */}
+          <button onClick={() => setShowExport(true)}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-200 text-gray-700 hover:border-[#1a3a7a] hover:text-[#1a3a7a] bg-white">
+            📊 הורדת אקסל
+          </button>
         </div>
         <h2 className="text-2xl font-bold text-gray-800">תלמידים</h2>
       </div>
@@ -119,6 +126,13 @@ export default function StudentsPage() {
           </button>
         ))}
       </div>
+
+      {showExport && (
+        <ExportStudentsModal
+          defaultScope={tab === 'registrants' ? 'registrants' : tab === 'alumni' ? 'alumni' : 'students'}
+          onClose={() => setShowExport(false)}
+        />
+      )}
 
       {tab === 'alumni' ? (
         loading
