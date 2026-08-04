@@ -11,6 +11,14 @@ import { supabase } from '@/lib/supabase'
 // elsewhere until the user manually reloads it.
 const POLL_INTERVAL_MS = 15000
 
+// מזהה ייחודי לכל מנוי. supabase.channel(name) מחזיר ערוץ *קיים* אם כבר יש
+// אחד בשם הזה — וקודם השם נגזר רק מרשימת הטבלאות. לכן שני רכיבים שמאזינים
+// לאותן טבלאות (או רכיב שמתרנדר מחדש לפני שהניקוי הספיק לרוץ) קיבלו את אותו
+// ערוץ שכבר עבר subscribe(), והקריאה ל-.on() אחריו זרקה:
+//   "cannot add `postgres_changes` callbacks ... after `subscribe()`"
+// השגיאה לא נתפסה ולכן הפילה את כל המסך. שם ייחודי לכל מנוי פותר את השורש.
+let channelSeq = 0
+
 /**
  * Subscribes to Supabase Realtime changes on one or more tables.
  * Calls `onRefresh` whenever any INSERT / UPDATE / DELETE happens.
@@ -28,17 +36,30 @@ export function useRealtimeRefresh(
   useEffect(() => {
     const tableList = Array.isArray(tables) ? tables : [tables]
 
-    const channel = supabase.channel('realtime-refresh-' + tableList.join('-'))
+    // ערוץ נפרד לכל מנוי — לעולם לא נתפס ערוץ קיים של רכיב אחר
+    const name = `realtime-refresh-${tableList.join('-')}-${++channelSeq}`
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    for (const table of tableList) {
-      channel.on(
-        'postgres_changes' as Parameters<typeof channel.on>[0],
-        { event: '*', schema: 'public', table },
-        () => cb.current(),
-      )
+    // Realtime הוא שיפור, לא תלות: אם ההרשמה נכשלת (ערוץ תפוס, WebSocket חסום,
+    // הרשאות) נשארים עם הפולינג ועם רענון בחזרה ללשונית — ובשום מקרה לא מפילים
+    // את המסך.
+    try {
+      channel = supabase.channel(name)
+      for (const table of tableList) {
+        channel.on(
+          'postgres_changes' as Parameters<typeof channel.on>[0],
+          { event: '*', schema: 'public', table },
+          () => cb.current(),
+        )
+      }
+      channel.subscribe()
+    } catch (err) {
+      console.error('[realtime] subscribe failed, falling back to polling:', err)
+      if (channel) {
+        try { supabase.removeChannel(channel) } catch { /* ignore */ }
+        channel = null
+      }
     }
-
-    channel.subscribe()
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') cb.current()
@@ -50,7 +71,9 @@ export function useRealtimeRefresh(
     }, POLL_INTERVAL_MS)
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channel) {
+        try { supabase.removeChannel(channel) } catch { /* ignore */ }
+      }
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(pollId)
     }
