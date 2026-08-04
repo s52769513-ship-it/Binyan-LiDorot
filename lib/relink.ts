@@ -33,6 +33,8 @@ interface PoolPP {
   balance: number
   month_year: string
   pp_type: PayablePPType | null
+  date: string | null
+  is_legacy: boolean
 }
 
 /**
@@ -87,18 +89,24 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
   if (delByType.error) throw delByType.error
 
   // 2. Non-salary PPs, reset in memory to the full amount
-  const { data: ppsRaw, error: ppErr } = await supabaseAdmin
+  const ppQ = (cols: string) => supabaseAdmin
     .from('planned_payments')
-    .select('id, amount, month_year, pp_type')
+    .select(cols)
     .contains('parent_ids', [parentId])
     .neq('pp_type', 'salary')
-  if (ppErr) throw ppErr
-  const pps: PoolPP[] = sortByMonth(ppsRaw ?? [], true).map(p => ({
+  let ppRes = await ppQ('id, amount, month_year, date, pp_type, is_legacy')
+  if (ppRes.error && MISSING_COLUMN_CODES.has(ppRes.error.code)) {
+    ppRes = await ppQ('id, amount, month_year, date, pp_type')
+  }
+  if (ppRes.error) throw ppRes.error
+  const pps: PoolPP[] = sortByMonth((ppRes.data ?? []) as unknown as Record<string, unknown>[], true).map(p => ({
     id: p.id as string,
     amount: Number(p.amount) || 0,
     balance: Number(p.amount) || 0,
     month_year: (p.month_year as string) ?? '',
+    date: (p.date as string) ?? null,
     pp_type: (p.pp_type as PayablePPType | null) ?? null,
+    is_legacy: p.is_legacy === true,
   }))
 
   // 3. All positive transactions (linked or not), oldest first — a
@@ -190,13 +198,14 @@ async function doRelinkParent(parentId: string): Promise<RelinkStats> {
     }
     processed++
 
-    // אוטומטי לעולם לא יורד מ-PP שלפני החיתוך — אלה משויכים רק ידנית.
-    const open = pps.filter(p =>
-      p.balance > 0 && p.pp_type === poolType &&
-      !ppBeforeStart(p.pp_type, { month_year: p.month_year })
-    )
+    // אוטומטי לעולם לא יורד מחוב ישן: לא מ-PP שלפני החיתוך ולא מ-PP שסומן
+    // is_legacy (לחלקם אין חודש/תאריך כלל, ואז בדיקת החיתוך לבדה לא תופסת
+    // אותם). חובות ישנים משויכים בקישור ידני בלבד.
+    const payable = (p: PoolPP) =>
+      !p.is_legacy && !ppBeforeStart(p.pp_type, { date: p.date, month_year: p.month_year })
+    const open = pps.filter(p => p.balance > 0 && p.pp_type === poolType && payable(p))
     const monthMatch = open.find(p => p.month_year === tx.month_year)
-    const stickyLink = linked && linked.balance > 0 && !ppBeforeStart(linked.pp_type, { month_year: linked.month_year }) ? linked : undefined
+    const stickyLink = linked && linked.balance > 0 && payable(linked) ? linked : undefined
     const preferred = monthMatch ?? stickyLink
     const cascade = preferred ? [preferred, ...open.filter(p => p.id !== preferred.id)] : open
 

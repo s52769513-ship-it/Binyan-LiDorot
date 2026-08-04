@@ -148,16 +148,28 @@ export interface ApplyResult extends PaymentTarget {
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 async function fetchOpenPPs(parentId: string, ppType: PayablePPType): Promise<OpenPP[]> {
-  const { data } = await supabaseAdmin
+  const q = (cols: string) => supabaseAdmin
     .from('planned_payments')
-    .select('id, balance, month_year')
+    .select(cols)
     .contains('parent_ids', [parentId])
     .eq('pp_type', ppType)
     .gt('balance', 0)
-  // תשלום אוטומטי לעולם לא יורד מ-PP שלפני החיתוך (שכ"ל 04/2026, מגבית 06/2026)
-  // — אלה משויכים רק בקישור ידני. כאן זה המסלול האוטומטי, אז מסננים אותם.
-  return (data ?? [])
-    .filter(p => !ppBeforeStart(ppType, { month_year: (p.month_year as string) ?? null }))
+
+  let res = await q('id, balance, month_year, date, is_legacy')
+  if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) res = await q('id, balance, month_year, date')
+  const data = (res.data ?? []) as unknown as Record<string, unknown>[]
+
+  // תשלום אוטומטי לעולם לא יורד מחוב ישן:
+  // 1. is_legacy — חוב שיובא מ"חובות ישנים". זהו הסימן האמין: לחלק מהם אין
+  //    חודש/תאריך כלל, ואז בדיקת החיתוך לבדה מחזירה false והם היו נבחרים.
+  // 2. חיתוך התאריך (שכ"ל 04/2026, מגבית 06/2026) — לפי date ואם אין, לפי החודש.
+  // חובות ישנים משויכים רק בקישור ידני, לא במסלול האוטומטי.
+  return data
+    .filter(p => p.is_legacy !== true)
+    .filter(p => !ppBeforeStart(ppType, {
+      date: (p.date as string) ?? null,
+      month_year: (p.month_year as string) ?? null,
+    }))
     .map(p => ({
       id: p.id as string,
       balance: Number(p.balance),
