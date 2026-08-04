@@ -117,11 +117,12 @@ export async function POST(req: NextRequest) {
           send({ type: 'progress', current: i + 1, total: records.length })
 
           if (parentHokNumbers !== null && !parentHokNumbers.has(hokNumber)) { totalSkipped++; continue }
-          if (rowId && importedRowIds.has(rowId)) {
-            totalSkipped++
-            actions.push({ hokNumber, donorName, skipped: true, reason: 'יובא כבר' })
-            continue
-          }
+          // רשומה שמופיעה ביומן ריצה קודם *אינה* הוכחה שהתנועה קיימת: היומן
+          // נרשם גם כשההכנסה נכשלה, והתנועה גם עשויה להימחק אחר כך. קודם לכן
+          // דילגנו כאן מיד, ולכן שורה כזו סומנה "יובא כבר" לנצח ולא נכנסה
+          // לעולם. עכשיו היומן הוא רמז בלבד, ובדיקת הכפילות מול מסד הנתונים
+          // (למטה) היא זו שמכריעה.
+          const seenInLog = !!rowId && importedRowIds.has(rowId)
 
           const isReturned = status === 'החזרת הוראת קבע' || status.includes('חזרה')
 
@@ -174,8 +175,12 @@ export async function POST(req: NextRequest) {
             if (dupe && dupe.length > 0) {
               totalSkipped++
               if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
-              actions.push({ hokNumber, donorName, amount, status, skipped: true, reason: 'תנועה זהה כבר קיימת' })
+              actions.push({ hokNumber, donorName, amount, status, skipped: true, reason: seenInLog ? 'יובא כבר' : 'תנועה זהה כבר קיימת' })
               continue
+            }
+            if (seenInLog) {
+              // ביומן אבל לא במסד — התנועה נמחקה או שההכנסה נכשלה בריצה קודמת
+              send({ type: 'log', message: `הו"ק ${hokNumber} (${donorName}): סומן כיובא אך לא נמצא במערכת — מייבא מחדש` })
             }
           }
 
