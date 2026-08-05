@@ -429,6 +429,8 @@ export async function GET(
           date: pp.date ?? '',
           monthYear: pp.month_year ?? '',
           balance: pp.balance ?? 0,
+          // חוב ישן שיובא — מוצג, אבל תשלום אוטומטי לא יורד ממנו
+          isLegacy: pp.is_legacy === true,
         })),
 
       transactions: (transactionsRes.data ?? []).map(tx => ({
