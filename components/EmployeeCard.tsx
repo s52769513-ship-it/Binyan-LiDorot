@@ -1040,10 +1040,16 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const overduePPs = tuitionPPs_all.filter(isOverdue)
   const pendingPPs = tuitionPPs_all.filter(pp => !isOverdue(pp) && pp.balance > 0)
   const paidPPs    = tuitionPPs_all.filter(pp => pp.balance <= 0)
-  // Summary totals count only from 04/2026 onwards
+  // Summary totals count only from 04/2026 onwards, and exclude חוב ישן:
+  // תשלום אוטומטי אינו יורד מחוב ישן, ולכן ספירתו כאן יצרה מספר שתשלום לא
+  // יכול להקטין — ההורה שילם, והחוב המוצג כמעט לא זז.
   const minSummaryDate = new Date('2026-04-01')
   const overdueTotal = overduePPs
-    .filter(pp => new Date(pp.date) >= minSummaryDate)
+    .filter(pp => !pp.isLegacy && new Date(pp.date) >= minSummaryDate)
+    .reduce((s, pp) => s + pp.balance, 0)
+  // חוב ישן מוצג בנפרד כדי שלא ייעלם מהעין
+  const legacyTotal = tuitionPPs_all
+    .filter(pp => pp.isLegacy && pp.balance > 0)
     .reduce((s, pp) => s + pp.balance, 0)
 
   // Salary PPs (for salary tab)
@@ -1504,6 +1510,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                   <p className="text-3xl font-bold text-red-700">{fmt(overdueTotal)}</p>
                   <p className="text-xs text-red-400 mt-1">{overduePPs.length} תשלומים שעברו תאריך · לחץ לתשלום</p>
                 </button>
+              )}
+
+              {/* חוב ישן — לא נכלל בסכום שבאיחור כי תשלום אוטומטי לא יורד ממנו */}
+              {legacyTotal > 0 && (
+                <div className="w-full text-right bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-600 mb-0.5">חוב ישן (לפני 04/2026)</p>
+                  <p className="text-xl font-bold text-amber-700">{fmt(legacyTotal)}</p>
+                  <p className="text-[11px] text-amber-500 mt-1">
+                    תשלום אוטומטי לא יורד מחוב ישן — לשיוך תשלום אליו יש לקשר אותו ידנית
+                  </p>
+                </div>
               )}
 
               {/* Credit badge */}

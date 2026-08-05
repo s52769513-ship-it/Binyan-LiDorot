@@ -56,6 +56,8 @@ export interface PlannedPaymentItem {
   date: string
   monthYear: string
   balance: number
+  /** חוב ישן שיובא — מוצג, אך תשלום אוטומטי לא יורד ממנו */
+  isLegacy?: boolean
 }
 
 export interface StandingOrderItem {
