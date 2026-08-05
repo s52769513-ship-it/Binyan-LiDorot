@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { insertSpilloverRows, applyPaymentToParentPPs, ppTypeForProject } from '@/lib/ppPayments'
 import { actorFromRequest, logActivityForParents } from '@/lib/activityLog'
 import { deriveTxSource } from '@/lib/txSource'
+import { ppBeforeStart } from '@/lib/cutoffs'
 
 const fmtILS = (n: number) =>
   new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
@@ -338,16 +339,30 @@ export async function POST(req: NextRequest) {
             const today = new Date().toISOString().split('T')[0]
 
             // Find ONE target PP: most overdue first, then closest to today
-            const { data: openPPs } = await supabaseAdmin
+            const { data: openPPsRaw } = await supabaseAdmin
               .from('planned_payments')
-              .select('id, balance, date, month_year, pp_type')
+              .select('id, balance, date, month_year, pp_type, is_legacy')
               .contains('parent_ids', [pid])
               .gt('balance', 0)
               .neq('id', plannedPaymentId)
               .order('date', { ascending: true })
 
-            const overdue  = (openPPs ?? []).filter(pp => pp.date && pp.date < today)
-            const upcoming = (openPPs ?? []).filter(pp => !pp.date || pp.date >= today)
+            // סוג החוב של ה-PP שנבחר — עודף חייב להישאר באותו סוג. בלי הסינון
+            // הזה עודף שכ"ל יכול היה לרדת מחוב מגבית, ממשכורת או מחוב ישן.
+            const { data: srcPP } = await supabaseAdmin
+              .from('planned_payments').select('pp_type').eq('id', plannedPaymentId).single()
+            const srcType = (srcPP?.pp_type as string) ?? 'tuition'
+
+            const openPPs = (openPPsRaw ?? []).filter(pp =>
+              (pp.pp_type ?? 'tuition') === srcType &&
+              pp.is_legacy !== true &&
+              !ppBeforeStart(pp.pp_type as string, {
+                date: pp.date as string | null,
+                month_year: pp.month_year as string | null,
+              }))
+
+            const overdue  = openPPs.filter(pp => pp.date && pp.date < today)
+            const upcoming = openPPs.filter(pp => !pp.date || pp.date >= today)
             const targetPP = overdue[0] ?? upcoming[0] ?? null
 
             let remaining = surplus
