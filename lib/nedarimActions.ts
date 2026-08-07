@@ -109,6 +109,42 @@ export function chargeCreditStandingOrder(opts: {
   })
 }
 
+// ── שינוי סטטוס הוראת קבע בנקאית ─────────────────────────────────────────────
+// כל הפעולות עוברות ב-Action=SetMasavStatus ונבדלות ב-StatusNumber:
+//   1 הפעלה · 7 הקפאה · 8 הקפצה לחודש קודם · 9 דחייה לחודש הבא
+// הפעלה דורשת Comments="אני מאשר" — נדרים מחייבים אישור מפורש, ולא במקרה:
+// הפעלת הו"ק שהבנק לא אישר גוררת עמלות חזרה מיותרות.
+
+export type MasavStatusAction = 'activate' | 'freeze' | 'prevMonth' | 'nextMonth'
+
+const STATUS_NUMBER: Record<MasavStatusAction, string> = {
+  activate: '1',
+  freeze: '7',
+  prevMonth: '8',
+  nextMonth: '9',
+}
+
+export const MASAV_ACTION_LABEL: Record<MasavStatusAction, string> = {
+  activate: 'הפעלת הוראת קבע',
+  freeze: 'הקפאת הוראת קבע',
+  prevMonth: 'הקפצה לחודש קודם',
+  nextMonth: 'דחיית הגבייה לחודש הבא',
+}
+
+export function setBankStandingOrderStatus(opts: {
+  masavId: string
+  action: MasavStatusAction
+}): Promise<NedarimResult> {
+  const params: Record<string, string> = {
+    Action: 'SetMasavStatus',
+    MasavId: opts.masavId,
+    StatusNumber: STATUS_NUMBER[opts.action],
+  }
+  // נדרשת מילולית בהפעלה בלבד, לפי התיעוד
+  if (opts.action === 'activate') params.Comments = 'אני מאשר'
+  return post(MASAV_URL, params)
+}
+
 // ── קבלות ────────────────────────────────────────────────────────────────────
 
 /**
