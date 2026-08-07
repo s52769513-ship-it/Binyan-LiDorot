@@ -91,6 +91,23 @@ async function detailRows(key: string): Promise<DetailRow[]> {
     })))
   }
 
+  if (key === 'positive-returns') {
+    const { data } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, date, notes, parent_ids')
+      .eq('type', 'החזרת הו"ק')
+      .gt('amount', 0)
+      .order('date', { ascending: false })
+    return withParents((data ?? []).map(t => ({
+      id: t.id as string,
+      parentIds: (t.parent_ids as string[]) ?? [],
+      amount: Number(t.amount) || 0,
+      date: String(t.date ?? ''),
+      label: 'החזרה בסכום חיובי',
+      sub: String(t.notes ?? '').slice(0, 60),
+    })))
+  }
+
   if (key === 'unlinked') {
     const { data } = await supabaseAdmin
       .from('transactions')
@@ -215,6 +232,30 @@ export async function GET(req: NextRequest) {
       count: r.error ? null : r.value.count,
       amount: r.value.amount,
       hint: 'החיוב המקורי עדיין נחשב כתשלום — החוב של ההורה נמוך מהאמת. הרץ "תיקון החזרות הו״ק קודמות" באוטומציות.',
+      error: r.error,
+    })
+  }
+
+  // ── החזרות הו"ק שנרשמו בסכום חיובי ────────────────────────────────────────
+  {
+    const r = await safe(async () => {
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('id, amount')
+        .eq('type', 'החזרת הו"ק')
+        .gt('amount', 0)
+      if (error) throw error
+      return {
+        count: (data ?? []).length,
+        amount: round2((data ?? []).reduce((s, t) => s + (Number(t.amount) || 0), 0)),
+      }
+    }, { count: 0, amount: 0 })
+    findings.push({
+      key: 'positive-returns',
+      title: 'החזרות הו"ק בסכום חיובי',
+      count: r.error ? null : r.value.count,
+      amount: r.value.amount,
+      hint: 'החזרה חייבת להיות שלילית. בסכום חיובי היא נספרת כתשלום ומקטינה את החוב במקום להגדיל אותו — טעות כפולה. פתח את הרשימה ותקן.',
       error: r.error,
     })
   }
