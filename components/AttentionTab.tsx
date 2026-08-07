@@ -85,41 +85,6 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
     openDetail(detail!.key, detail!.title)
   }
 
-  /**
-   * תיקון החזרות שנרשמו בסכום חיובי: הופך לשלילי ומחשב מחדש את ההורים.
-   * מציג תמיד תצוגה מקדימה עם המספרים לפני שנוגעים בכסף.
-   */
-  const fixPositiveReturns = async () => {
-    setBulkMsg('בודק...')
-    try {
-      const pre = await (await fetch('/api/dashboard/attention/fix-positive-returns', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: true }),
-      })).json()
-      if (pre.error) { setBulkMsg(`שגיאה: ${pre.error}`); return }
-      if (!pre.matched) { setBulkMsg('לא נמצאו החזרות בסכום חיובי'); return }
-
-      const ok = confirm(
-        `לתקן ${pre.matched} החזרות שנרשמו בסכום חיובי (${fmt(pre.total)})?\n\n` +
-        `הסכום יהפוך לשלילי כפי שהחזרה אמורה להיות, ו-${pre.parents} הורים יחושבו מחדש.\n` +
-        `החוב שלהם יעלה — הוא היה נמוך מהאמת.`,
-      )
-      if (!ok) { setBulkMsg('בוטל'); return }
-
-      setBulkMsg(`מתקן ${pre.matched} החזרות...`)
-      const res = await (await fetch('/api/dashboard/attention/fix-positive-returns', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false }),
-      })).json()
-      if (res.error) { setBulkMsg(`שגיאה: ${res.error}`); return }
-      setBulkMsg(`תוקנו ${res.flipped} החזרות · ${res.recalculated} הורים חושבו מחדש`)
-      load()
-      openDetail('positive-returns', 'החזרות הו"ק בסכום חיובי')
-    } catch {
-      setBulkMsg('שגיאת רשת')
-    }
-  }
-
   const load = useCallback(() => {
     setLoading(true)
     // שתי קריאות נפרדות בכוונה: בדיקת נדרים יוצאת לשרת חיצוני ועלולה להיות
@@ -345,12 +310,6 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                   className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700">
                   ↩️ לתיקון החזרות באוטומציות
                 </a>
-              )}
-              {detail.key === 'positive-returns' && (
-                <button onClick={fixPositiveReturns}
-                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700">
-                  ↩ הפוך לשלילי ותקן את החוב
-                </button>
               )}
               {(detail.key === 'unlinked' || detail.key === 'orphan-credit') && (
                 <button onClick={relinkListed}
