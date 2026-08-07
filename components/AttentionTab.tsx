@@ -86,37 +86,35 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
   }
 
   /**
-   * ניקוי תנועות ב-₪0 שמקורן Airtable. תמיד מציג קודם תצוגה מקדימה עם המספר
-   * המדויק, ורק אחריה מוחק — והמחיקה היא לאשפה, כך שהכל ניתן לשחזור.
+   * תיקון החזרות שנרשמו בסכום חיובי: הופך לשלילי ומחשב מחדש את ההורים.
+   * מציג תמיד תצוגה מקדימה עם המספרים לפני שנוגעים בכסף.
    */
-  const cleanupZeroAirtable = async () => {
-    setBulkMsg('בודק כמה תנועות מתאימות...')
+  const fixPositiveReturns = async () => {
+    setBulkMsg('בודק...')
     try {
-      const pre = await (await fetch('/api/dashboard/attention/cleanup-zero', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const pre = await (await fetch('/api/dashboard/attention/fix-positive-returns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true }),
       })).json()
       if (pre.error) { setBulkMsg(`שגיאה: ${pre.error}`); return }
-      if (!pre.matched) { setBulkMsg(`מתוך ${pre.zeroTotal} תנועות ב-₪0 — אף אחת אינה ממקור Airtable`); return }
+      if (!pre.matched) { setBulkMsg('לא נמצאו החזרות בסכום חיובי'); return }
 
       const ok = confirm(
-        `למחוק ${pre.matched} תנועות בסכום ₪0 שמקורן Airtable?\n` +
-        `(מתוך ${pre.zeroTotal} תנועות ב-₪0 בסך הכל)\n\n` +
-        `המחיקה היא לאשפה — ניתן לשחזר מ-🗑 אשפה במשך 30 יום.`,
+        `לתקן ${pre.matched} החזרות שנרשמו בסכום חיובי (${fmt(pre.total)})?\n\n` +
+        `הסכום יהפוך לשלילי כפי שהחזרה אמורה להיות, ו-${pre.parents} הורים יחושבו מחדש.\n` +
+        `החוב שלהם יעלה — הוא היה נמוך מהאמת.`,
       )
       if (!ok) { setBulkMsg('בוטל'); return }
 
-      setBulkMsg(`מוחק ${pre.matched} תנועות...`)
-      const res = await (await fetch('/api/dashboard/attention/cleanup-zero', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setBulkMsg(`מתקן ${pre.matched} החזרות...`)
+      const res = await (await fetch('/api/dashboard/attention/fix-positive-returns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       })).json()
       if (res.error) { setBulkMsg(`שגיאה: ${res.error}`); return }
-      setBulkMsg(`נמחקו ${res.deleted} תנועות — ניתן לשחזר מהאשפה`)
+      setBulkMsg(`תוקנו ${res.flipped} החזרות · ${res.recalculated} הורים חושבו מחדש`)
       load()
-      openDetail('zero', 'תנועות בסכום ₪0')
+      openDetail('positive-returns', 'החזרות הו"ק בסכום חיובי')
     } catch {
       setBulkMsg('שגיאת רשת')
     }
@@ -348,16 +346,16 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                   ↩️ לתיקון החזרות באוטומציות
                 </a>
               )}
+              {detail.key === 'positive-returns' && (
+                <button onClick={fixPositiveReturns}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700">
+                  ↩ הפוך לשלילי ותקן את החוב
+                </button>
+              )}
               {(detail.key === 'unlinked' || detail.key === 'orphan-credit') && (
                 <button onClick={relinkListed}
                   className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800">
                   🔄 ריענון לכל ההורים ברשימה
-                </button>
-              )}
-              {detail.key === 'zero' && (
-                <button onClick={cleanupZeroAirtable}
-                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700">
-                  🗑 מחק את אלה שמקורם Airtable
                 </button>
               )}
               {detail.key === 'so-no-parent' && (
