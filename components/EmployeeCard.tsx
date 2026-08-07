@@ -857,6 +857,49 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [settingsDraft, setSettingsDraft]             = useState<Record<string, string | number | boolean>>({})
   const [savingSettings, setSavingSettings]           = useState(false)
 
+  // פעולות סטטוס הו"ק בנדרים — הפעלה/הקפאה/הקפצת חודש
+  const [soActionBusy, setSoActionBusy] = useState<string | null>(null)
+  const [soActionMsg, setSoActionMsg]   = useState<{ soId: string; ok: boolean; text: string } | null>(null)
+
+  const runSoStatus = async (soId: string, action: 'activate' | 'freeze' | 'prevMonth' | 'nextMonth') => {
+    setSoActionBusy(`${soId}:${action}`); setSoActionMsg(null)
+    try {
+      // שלב 1 — תצוגה מקדימה: מה עומד לקרות, למי, ובאיזו הו"ק
+      const pre = await (await fetch(`/api/standing-orders/${soId}/nedarim-status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action, preview: true }),
+      })).json()
+      if (pre.error) { setSoActionMsg({ soId, ok: false, text: pre.error }); return }
+
+      // שלב 2 — אישור מפורש עם כל הפרטים לפני שנוגעים בנדרים
+      const lines = [
+        `${pre.actionLabel}`,
+        '',
+        `הורה: ${pre.parentName || '—'}`,
+        `הו"ק: ${pre.externalId}`,
+        pre.amount ? `סכום קבוע: ₪${Number(pre.amount).toLocaleString('he-IL')}` : '',
+        pre.currentStatus ? `סטטוס נוכחי: ${pre.currentStatus}` : '',
+        '',
+        pre.warning ? `⚠ ${pre.warning}` : '',
+        'הפעולה מתבצעת בנדרים בפועל. להמשיך?',
+      ].filter(Boolean).join('\n')
+      if (!confirm(lines)) { setSoActionBusy(null); return }
+
+      const res = await (await fetch(`/api/standing-orders/${soId}/nedarim-status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action, confirm: true }),
+      })).json()
+      setSoActionMsg({
+        soId,
+        ok: !!res.ok,
+        text: res.ok ? `${res.actionLabel} — בוצע בנדרים` : `נכשל: ${res.message || res.error || 'לא ידוע'}`,
+      })
+      if (res.ok) load()
+    } catch {
+      setSoActionMsg({ soId, ok: false, text: 'שגיאת רשת' })
+    } finally { setSoActionBusy(null) }
+  }
+
   // קישור תשלום אישי מנדרים — בונה כתובת בלבד, לא מחייב כלום
   const [payLinks, setPayLinks] = useState<{ key: string; label: string; project: string; amount: number; url: string }[] | null>(null)
   const [payLinkLoading, setPayLinkLoading] = useState(false)
@@ -2529,6 +2572,33 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                       </div>
                     </div>
                   )}
+                  {/* פעולות נדרים — הו"ק בנקאית בלבד */}
+                  {selectedSo?.id === so.id && so.standingOrderType === 'בנקאי' && so.externalId && (
+                    <div className="px-3 py-2 border-t border-gray-100 bg-indigo-50/40">
+                      <p className="text-[11px] font-semibold text-indigo-900 mb-1.5 text-right">פעולות בנדרים</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['nextMonth', 'דחה לחודש הבא',  'bg-white text-indigo-700 border-indigo-200'],
+                          ['prevMonth', 'הקפץ לחודש קודם', 'bg-white text-indigo-700 border-indigo-200'],
+                          ['freeze',    'הקפא',            'bg-white text-amber-700 border-amber-200'],
+                          ['activate',  'הפעל',            'bg-white text-emerald-700 border-emerald-200'],
+                        ] as ['activate'|'freeze'|'prevMonth'|'nextMonth', string, string][]).map(([act, label, cls]) => (
+                          <button key={act}
+                            disabled={soActionBusy !== null}
+                            onClick={e => { e.stopPropagation(); runSoStatus(so.id, act) }}
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold hover:brightness-95 disabled:opacity-40 ${cls}`}>
+                            {soActionBusy === `${so.id}:${act}` ? '...' : label}
+                          </button>
+                        ))}
+                      </div>
+                      {soActionMsg?.soId === so.id && (
+                        <p className={`text-[11px] mt-1.5 font-medium text-right ${soActionMsg.ok ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {soActionMsg.text}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {chargeResult?.soId === so.id && (
                     <div className={`px-3 py-2 text-xs ${chargeResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
                       {chargeResult.success
