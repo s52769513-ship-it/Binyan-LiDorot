@@ -28,8 +28,14 @@ const ajaxId = () => String(Date.now())
 
 /** dd/mm/yyyy — הפורמט היחיד שנדרים מקבלים. */
 export function toNedarimDate(d: Date | string): string {
-  const date = typeof d === 'string' ? new Date(d) : d
   const p = (n: number) => String(n).padStart(2, '0')
+  // 'YYYY-MM-DD' מתורגם ישירות: new Date() היה מפרש אותו כחצות UTC, ובאזור זמן
+  // שמאחורי UTC התאריך היה נסוג ביום — קבלה על יום שאינו יום התשלום.
+  if (typeof d === 'string') {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`
+  }
+  const date = typeof d === 'string' ? new Date(d) : d
   return `${p(date.getDate())}/${p(date.getMonth() + 1)}/${date.getFullYear()}`
 }
 
@@ -145,6 +151,99 @@ export function setBankStandingOrderStatus(opts: {
   return post(MASAV_URL, params)
 }
 
+// ── הכנסה חיצונית ────────────────────────────────────────────────────────────
+// תשלום שנכנס אצלנו במזומן / צ'ק / העברה אינו קיים אצל נדרים כלל, ולכן אי אפשר
+// להפיק עליו קבלה. Action=SaveAchnasot יוצר אצלם רשומת הכנסה ומחזיר מזהה —
+// והמזהה הזה הוא מה שמפיקים עליו קבלה. שים לב: זו *כתיבה של רשומה חדשה* אצל
+// נדרים, לא סנכרון של משהו קיים.
+
+export const EXTERNAL_INCOME_TYPE = {
+  cash:     '1',
+  check:    '2',
+  transfer: '3',
+  credit:   '4',
+  masav:    '5',
+  other:    '6',
+} as const
+
+export type ExternalIncomeKind = keyof typeof EXTERNAL_INCOME_TYPE
+
+export const EXTERNAL_INCOME_LABEL: Record<ExternalIncomeKind, string> = {
+  cash:     'מזומן',
+  check:    'צ\'ק',
+  transfer: 'העברה בנקאית',
+  credit:   'אשראי חיצוני',
+  masav:    'מס"ב חיצוני',
+  other:    'אחר',
+}
+
+export interface ExternalIncomeResult extends NedarimResult {
+  /** המזהה שנדרים החזירו — הקלט של הפקת הקבלה */
+  incomeId?: string
+  kabalaId?: string
+  invoiceId?: string
+}
+
+const pick = (o: Record<string, unknown>, ...keys: string[]): string | undefined => {
+  for (const k of keys) {
+    const v = o?.[k]
+    if (v != null && String(v).trim() && String(v).trim() !== '0') return String(v).trim()
+  }
+  return undefined
+}
+
+export async function saveExternalIncome(opts: {
+  kind: ExternalIncomeKind
+  /** מזהה התורם אצל נדרים (ת.ז. / מספר מזהה) — שדה חובה */
+  zeout: string
+  amount: number
+  date?: Date | string
+  /** קטגוריה בנדרים */
+  groupe?: string
+  /** "עבור" — הטקסט שיופיע בקבלה */
+  avour?: string
+  /** אסמכתא (מספר צ'ק, מספר העברה) */
+  asmahta?: string
+  specialName?: string
+  specialAddress?: string
+}): Promise<ExternalIncomeResult> {
+  const params: Record<string, string> = {
+    Action:   'SaveAchnasot',
+    Type:     EXTERNAL_INCOME_TYPE[opts.kind],
+    Zeout:    opts.zeout,
+    Amount:   String(Math.round(Math.abs(opts.amount) * 100) / 100),
+    Date:     toNedarimDate(opts.date ?? new Date()),
+    Currency: '1',                                   // שקל
+    AjaxId:   ajaxId(),
+  }
+  if (opts.groupe)         params.Groupe         = opts.groupe
+  if (opts.avour)          params.Avour          = opts.avour
+  if (opts.asmahta)        params.Asmahta        = opts.asmahta
+  if (opts.specialName)    params.SpecialName    = opts.specialName
+  if (opts.specialAddress) params.SpecialAdresse = opts.specialAddress
+
+  const res = await post(MANAGE_URL, params)
+  const ids = idsFromRaw(res.raw)
+
+  // הכנסה שנוצרה בלי מזהה מוחזר: הרשומה *כן* נכתבה אצל נדרים. לא מסמנים כישלון
+  // — סימון כזה יזמין ניסיון חוזר שייצור הכנסה כפולה. מדווחים שהקבלה לבדה
+  // נותרה לביצוע ידני.
+  return { ...res, ...ids }
+}
+
+function idsFromRaw(raw?: string): { incomeId?: string; kabalaId?: string; invoiceId?: string } {
+  try {
+    const j = JSON.parse(String(raw ?? '')) as Record<string, unknown>
+    return {
+      incomeId:  pick(j, 'ID', 'Id', 'AchnasotId'),
+      kabalaId:  pick(j, 'KabalaId', 'KabalaID'),
+      invoiceId: pick(j, 'InvoiceId', 'InvoiceID'),
+    }
+  } catch {
+    return {}
+  }
+}
+
 // ── קבלות ────────────────────────────────────────────────────────────────────
 
 /**
@@ -152,17 +251,18 @@ export function setBankStandingOrderStatus(opts: {
  * צ'ק, העברה) יש ליצור קודם הכנסה חיצונית בנדרים ולקבל ממנה מזהה.
  * TamalType: 405 קבלת תרומה · 400 קבלה רגילה · 320 חשבונית מס קבלה.
  */
-export function createReceipt(opts: {
+export async function createReceipt(opts: {
   transactionId: string
   type?: 'Achnasot' | 'Ashray'
   tamalType?: '400' | '405' | '320'
-}): Promise<NedarimResult> {
-  return post(TAMAL_URL, {
+}): Promise<ExternalIncomeResult> {
+  const res = await post(TAMAL_URL, {
     Action: 'CreateInvoice',
     ID: opts.transactionId,
     Type: opts.type ?? 'Achnasot',
     TamalType: opts.tamalType ?? '405',
   })
+  return { ...res, ...idsFromRaw(res.raw) }
 }
 
 /**
