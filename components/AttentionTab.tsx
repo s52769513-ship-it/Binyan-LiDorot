@@ -70,9 +70,15 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
 
   /** ריענון יתרות לכל ההורים שברשימה — מטפל בשיוך ובזיכויים יתומים בבת אחת. */
   const relinkListed = async () => {
-    const ids = [...new Set(rows.map(r => r.parentId).filter(Boolean))] as string[]
-    if (ids.length === 0) return
-    if (!confirm(`להריץ ריענון ל-${ids.length} הורים ברשימה?`)) return
+    // רק הורים שיש להם חוב פתוח מתאים — לשאר אין למה לשייך, וריענון עליהם
+    // הוא בזבוז זמן שלא ישנה כלום.
+    const relevant = rows.filter(r => !r.label.startsWith('אין חוב פתוח'))
+    const ids = [...new Set(relevant.map(r => r.parentId).filter(Boolean))] as string[]
+    if (ids.length === 0) {
+      setBulkMsg('אין ברשימה תשלום שריענון יכול לשייך — לכולם אין חוב פתוח מתאים')
+      return
+    }
+    if (!confirm(`להריץ ריענון ל-${ids.length} הורים שיש להם חוב פתוח מתאים?`)) return
     setBulkMsg(`מרענן 0/${ids.length}...`)
     let done = 0
     for (const id of ids) {
@@ -323,6 +329,17 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                   לשיוך הו"ק להורה
                 </a>
               )}
+              {detail.key === 'unlinked' && rows.length > 0 && (() => {
+                const fixable = rows.filter(r => !r.label.startsWith('אין חוב פתוח'))
+                const sum = (rs: typeof rows) => rs.reduce((a, r) => a + r.amount, 0)
+                return (
+                  <span className="text-xs text-gray-600">
+                    <strong className="text-amber-700">{fixable.length}</strong> עם חוב פתוח ({fmt(sum(fixable))})
+                    {' · '}
+                    <strong className="text-gray-500">{rows.length - fixable.length}</strong> בלי חוב פתוח ({fmt(sum(rows) - sum(fixable))})
+                  </span>
+                )
+              })()}
               {bulkMsg && <span className="text-xs font-semibold text-emerald-700">{bulkMsg}</span>}
               <span className="text-[11px] text-gray-400 mr-auto">לחיצה על שורה פותחת את כרטיס ההורה</span>
             </div>
