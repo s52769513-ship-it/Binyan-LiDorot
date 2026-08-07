@@ -105,14 +105,48 @@ async function detailRows(key: string): Promise<DetailRow[]> {
       if (String(t.notes ?? '').startsWith('זיכוי')) return false
       return !ppBeforeStart(ppType, { date: t.date as string | null, month_year: null })
     })
-    return withParents(rows.map(t => ({
-      id: t.id as string,
-      parentIds: (t.parent_ids as string[]) ?? [],
-      amount: Number(t.amount) || 0,
-      date: String(t.date ?? ''),
-      label: String(t.type ?? 'תנועה'),
-      sub: ((t.project_names as string[]) ?? []).join(', '),
-    })))
+
+    // ── למה התשלום לא שויך? ──
+    // תשלום מתקשר רק אם יש להורה חוב פתוח *מאותו סוג* שאינו ישן/לפני החיתוך.
+    // בלי הפילוח הזה הרשימה שטוחה ולא ברור אילו שורות ריענון בכלל יכול לתקן:
+    // "יש חוב פתוח" = הריענון אמור לשייך; "אין חוב פתוח" = אין למה לשייך,
+    // והכסף יושב כיתרת זכות עד שייווצר חוב.
+    const pids = [...new Set(rows.flatMap(t => (t.parent_ids as string[]) ?? []))]
+    const openByParent = new Map<string, Set<string>>()
+    const CH = 200
+    for (let i = 0; i < pids.length; i += CH) {
+      const slice = pids.slice(i, i + CH)
+      const q = (cols: string) => supabaseAdmin
+        .from('planned_payments').select(cols).overlaps('parent_ids', slice).gt('balance', 0)
+      let res = await q('parent_ids, pp_type, date, month_year, is_legacy')
+      if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) {
+        res = await q('parent_ids, pp_type, date, month_year')
+      }
+      for (const pp of ((res.data ?? []) as unknown as Record<string, unknown>[])) {
+        if (pp.is_legacy === true) continue
+        const t = (pp.pp_type as string) ?? 'tuition'
+        if (t === 'salary') continue
+        if (ppBeforeStart(t, { date: pp.date as string | null, month_year: pp.month_year as string | null })) continue
+        for (const pid of ((pp.parent_ids as string[]) ?? [])) {
+          if (!openByParent.has(pid)) openByParent.set(pid, new Set())
+          openByParent.get(pid)!.add(t)
+        }
+      }
+    }
+
+    return withParents(rows.map(t => {
+      const ppType = ppTypeForProject((t.project_names as string[] | null)?.join(' '))
+      const pid = ((t.parent_ids as string[]) ?? [])[0]
+      const hasOpen = !!(pid && ppType && openByParent.get(pid)?.has(ppType))
+      return {
+        id: t.id as string,
+        parentIds: (t.parent_ids as string[]) ?? [],
+        amount: Number(t.amount) || 0,
+        date: String(t.date ?? ''),
+        label: hasOpen ? '⚠ יש חוב פתוח — אמור להשתייך' : 'אין חוב פתוח מתאים',
+        sub: ((t.project_names as string[]) ?? []).join(', '),
+      }
+    }))
   }
 
   if (key === 'zero') {
