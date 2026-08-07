@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ppTypeForProject, MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 import { ppBeforeStart } from '@/lib/cutoffs'
@@ -20,6 +20,16 @@ export const dynamic = 'force-dynamic'
 /** סימון שהתיקון החד-פעמי מוסיף להחזרה שטופלה (app/api/automations/fix-past-hok-returns) */
 const HANDLED_NOTE = 'חוב הוחזר'
 
+export interface DetailRow {
+  id: string
+  parentId: string | null
+  parentName: string
+  amount: number
+  date: string
+  label: string
+  sub: string
+}
+
 export interface Finding {
   key: string
   title: string
@@ -40,7 +50,149 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<{ value: T; e
   }
 }
 
-export async function GET() {
+/** שורות הפירוט לכל ממצא — לרשימת הטיפול המהיר שנפתחת בלחיצה על קובייה. */
+async function detailRows(key: string): Promise<DetailRow[]> {
+  const withParents = async (rows: {
+    id: string; parentIds: string[]; amount?: number; date?: string; label: string; sub?: string
+  }[]): Promise<DetailRow[]> => {
+    const ids = [...new Set(rows.flatMap(r => r.parentIds))]
+    const names = new Map<string, string>()
+    const CH = 300
+    for (let i = 0; i < ids.length; i += CH) {
+      const { data } = await supabaseAdmin
+        .from('parents').select('id, name').in('id', ids.slice(i, i + CH))
+      for (const p of data ?? []) names.set(p.id as string, (p.name as string) ?? '')
+    }
+    return rows.map(r => ({
+      id: r.id,
+      parentId: r.parentIds[0] ?? null,
+      parentName: r.parentIds[0] ? (names.get(r.parentIds[0]) ?? '—') : '—',
+      amount: r.amount ?? 0,
+      date: r.date ?? '',
+      label: r.label,
+      sub: r.sub ?? '',
+    }))
+  }
+
+  if (key === 'returns') {
+    const { data } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, date, notes, parent_ids')
+      .eq('type', 'החזרת הו"ק')
+      .order('date', { ascending: false })
+    const pending = (data ?? []).filter(t => !String(t.notes ?? '').includes(HANDLED_NOTE))
+    return withParents(pending.map(t => ({
+      id: t.id as string,
+      parentIds: (t.parent_ids as string[]) ?? [],
+      amount: Math.abs(Number(t.amount) || 0),
+      date: String(t.date ?? ''),
+      label: 'החזרת הו"ק',
+      sub: String(t.notes ?? '').slice(0, 60),
+    })))
+  }
+
+  if (key === 'unlinked') {
+    const { data } = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, date, type, notes, project_names, parent_ids')
+      .is('planned_payment_id', null)
+      .gt('amount', 0)
+      .order('date', { ascending: false })
+      .limit(500)
+    const rows = (data ?? []).filter(t => {
+      const ppType = ppTypeForProject((t.project_names as string[] | null)?.join(' '))
+      if (!ppType) return false
+      if (String(t.notes ?? '').startsWith('זיכוי')) return false
+      return !ppBeforeStart(ppType, { date: t.date as string | null, month_year: null })
+    })
+    return withParents(rows.map(t => ({
+      id: t.id as string,
+      parentIds: (t.parent_ids as string[]) ?? [],
+      amount: Number(t.amount) || 0,
+      date: String(t.date ?? ''),
+      label: String(t.type ?? 'תנועה'),
+      sub: ((t.project_names as string[]) ?? []).join(', '),
+    })))
+  }
+
+  if (key === 'zero') {
+    const { data } = await supabaseAdmin
+      .from('transactions')
+      .select('id, date, type, notes, project_names, parent_ids')
+      .eq('amount', 0)
+      .order('date', { ascending: false })
+      .limit(500)
+    return withParents((data ?? []).map(t => ({
+      id: t.id as string,
+      parentIds: (t.parent_ids as string[]) ?? [],
+      amount: 0,
+      date: String(t.date ?? ''),
+      label: String(t.type ?? 'תנועה'),
+      sub: [((t.project_names as string[]) ?? []).join(', '), String(t.notes ?? '')].filter(Boolean).join(' · ').slice(0, 60),
+    })))
+  }
+
+  if (key === 'orphan-credit') {
+    const q = await supabaseAdmin
+      .from('transactions')
+      .select('id, amount, date, notes, parent_ids, source_transaction_id')
+      .eq('type', 'זיכוי')
+      .not('source_transaction_id', 'is', null)
+      .limit(1000)
+    if (q.error) return []
+    const srcIds = [...new Set((q.data ?? []).map(t => t.source_transaction_id as string))]
+    const alive = new Set<string>()
+    const CH = 300
+    for (let i = 0; i < srcIds.length; i += CH) {
+      const { data } = await supabaseAdmin
+        .from('transactions').select('id').in('id', srcIds.slice(i, i + CH))
+      for (const t of data ?? []) alive.add(t.id as string)
+    }
+    const orphans = (q.data ?? []).filter(t => !alive.has(t.source_transaction_id as string))
+    return withParents(orphans.map(t => ({
+      id: t.id as string,
+      parentIds: (t.parent_ids as string[]) ?? [],
+      amount: Math.abs(Number(t.amount) || 0),
+      date: String(t.date ?? ''),
+      label: 'זיכוי יתום',
+      sub: String(t.notes ?? '').slice(0, 60),
+    })))
+  }
+
+  if (key === 'so-no-parent') {
+    const { data } = await supabaseAdmin
+      .from('standing_orders')
+      .select('id, external_id, amount, bank_name, standing_order_type')
+      .is('parent_id', null)
+      .limit(500)
+    return (data ?? []).map(so => ({
+      id: so.id as string,
+      parentId: null,
+      parentName: '— ללא הורה —',
+      amount: Number(so.amount) || 0,
+      date: '',
+      label: `הו"ק ${so.external_id ?? ''}`,
+      sub: [so.standing_order_type, so.bank_name].filter(Boolean).join(' · '),
+    }))
+  }
+
+  return []
+}
+
+export async function GET(req: NextRequest) {
+  // מצב פירוט: מחזיר את השורות עצמן לרשימת הטיפול המהיר
+  const detailKey = req.nextUrl.searchParams.get('detail')
+  if (detailKey) {
+    try {
+      return NextResponse.json({ rows: await detailRows(detailKey) })
+    } catch (err) {
+      return NextResponse.json(
+        { rows: [], error: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      )
+    }
+  }
+
   const findings: Finding[] = []
 
   // ── החזרות הו"ק שטרם טופלו ────────────────────────────────────────────────

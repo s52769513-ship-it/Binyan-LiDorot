@@ -28,6 +28,16 @@ interface AgingRow {
   oldestDays: number
 }
 
+interface DetailRow {
+  id: string
+  parentId: string | null
+  parentName: string
+  amount: number
+  date: string
+  label: string
+  sub: string
+}
+
 interface NedarimStatus {
   ok: boolean
   usingApiKey?: boolean
@@ -43,6 +53,37 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
   const [nedarim, setNedarim]     = useState<NedarimStatus | null>(null)
   const [nedarimErr, setNedErr]   = useState<string | null>(null)
   const [loading, setLoading]     = useState(true)
+  // רשימת הטיפול המהיר שנפתחת בלחיצה על קובייה
+  const [detail, setDetail]       = useState<{ key: string; title: string } | null>(null)
+  const [rows, setRows]           = useState<DetailRow[]>([])
+  const [rowsLoading, setRowsLoad] = useState(false)
+  const [bulkMsg, setBulkMsg]     = useState('')
+
+  const openDetail = (key: string, title: string) => {
+    setDetail({ key, title }); setRows([]); setBulkMsg(''); setRowsLoad(true)
+    fetch(`/api/dashboard/attention?detail=${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(d => setRows(Array.isArray(d.rows) ? d.rows : []))
+      .catch(() => setRows([]))
+      .finally(() => setRowsLoad(false))
+  }
+
+  /** ריענון יתרות לכל ההורים שברשימה — מטפל בשיוך ובזיכויים יתומים בבת אחת. */
+  const relinkListed = async () => {
+    const ids = [...new Set(rows.map(r => r.parentId).filter(Boolean))] as string[]
+    if (ids.length === 0) return
+    if (!confirm(`להריץ ריענון ל-${ids.length} הורים ברשימה?`)) return
+    setBulkMsg(`מרענן 0/${ids.length}...`)
+    let done = 0
+    for (const id of ids) {
+      try { await fetch(`/api/parents/${id}/relink`, { method: 'POST' }) } catch { /* ממשיכים */ }
+      done++
+      setBulkMsg(`מרענן ${done}/${ids.length}...`)
+    }
+    setBulkMsg(`הושלם — ${done} הורים רועננו`)
+    load()
+    openDetail(detail!.key, detail!.title)
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -145,11 +186,14 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
           : findings.map(f => {
             const failed = f.count === null
             const open   = (f.count ?? 0) > 0
+            const clickable = open && !failed
             return (
-              <div key={f.key} className={`rounded-xl border p-4 ${
-                failed ? 'bg-gray-50 border-gray-200'
-                  : open ? 'bg-amber-50 border-amber-200'
-                  : 'bg-emerald-50 border-emerald-200'}`}>
+              <button key={f.key} type="button" disabled={!clickable}
+                onClick={() => clickable && openDetail(f.key, f.title)}
+                className={`text-right rounded-xl border p-4 transition-colors ${
+                failed ? 'bg-gray-50 border-gray-200 cursor-default'
+                  : open ? 'bg-amber-50 border-amber-200 hover:border-amber-400 hover:bg-amber-100 cursor-pointer'
+                  : 'bg-emerald-50 border-emerald-200 cursor-default'}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className={`text-2xl font-bold tabular-nums ${
                     failed ? 'text-gray-400' : open ? 'text-amber-700' : 'text-emerald-700'}`}>
@@ -163,7 +207,10 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                 <p className="text-[11px] text-gray-500 mt-1.5 leading-snug text-right">
                   {failed ? `הבדיקה נכשלה: ${f.error}` : open ? f.hint : 'תקין — אין ממצאים'}
                 </p>
-              </div>
+                {clickable && (
+                  <p className="text-[11px] font-semibold text-amber-700 mt-1.5 text-right">לחץ לרשימה ולטיפול ←</p>
+                )}
+              </button>
             )
           })}
       </div>
@@ -241,6 +288,83 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
           חוב ישן מוצג בעמודה נפרדת וניתן לסגירה רק בקישור ידני.
         </p>
       </div>
+
+      {/* ── רשימת טיפול מהיר ── */}
+      {detail && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setDetail(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden" dir="rtl">
+            <div className="px-5 py-4 flex items-center justify-between shrink-0"
+              style={{ background: 'linear-gradient(90deg, #0d1f52, #1a3a7a)' }}>
+              <button onClick={() => setDetail(null)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <h2 className="text-lg font-bold text-white">
+                {detail.title}{rows.length > 0 ? ` · ${rows.length}` : ''}
+              </h2>
+            </div>
+
+            {/* פעולות מרוכזות לפי סוג הממצא */}
+            <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 shrink-0">
+              {detail.key === 'returns' && (
+                <a href="/dashboard/automations"
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700">
+                  ↩️ לתיקון החזרות באוטומציות
+                </a>
+              )}
+              {(detail.key === 'unlinked' || detail.key === 'orphan-credit') && (
+                <button onClick={relinkListed}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800">
+                  🔄 ריענון לכל ההורים ברשימה
+                </button>
+              )}
+              {detail.key === 'so-no-parent' && (
+                <a href="/dashboard/parents"
+                  className="px-3 py-1.5 rounded-lg bg-[#1a3a7a] text-white text-xs font-semibold">
+                  לשיוך הו"ק להורה
+                </a>
+              )}
+              {bulkMsg && <span className="text-xs font-semibold text-emerald-700">{bulkMsg}</span>}
+              <span className="text-[11px] text-gray-400 mr-auto">לחיצה על שורה פותחת את כרטיס ההורה</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {rowsLoading ? (
+                <div className="p-4 space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}</div>
+              ) : rows.length === 0 ? (
+                <p className="p-8 text-center text-sm text-gray-400">אין פריטים להצגה</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr className="text-xs font-semibold text-gray-500">
+                      <th className="px-4 py-2 text-right">הורה</th>
+                      <th className="px-4 py-2 text-right">פרטים</th>
+                      <th className="px-4 py-2 text-left">סכום</th>
+                      <th className="px-4 py-2 text-left">תאריך</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {rows.map(r => (
+                      <tr key={r.id}
+                        onClick={() => { if (r.parentId) { setDetail(null); onOpenParent(r.parentId) } }}
+                        className={`${r.parentId ? 'cursor-pointer hover:bg-blue-50' : ''} transition-colors`}>
+                        <td className="px-4 py-2 font-medium text-gray-800">{r.parentName}</td>
+                        <td className="px-4 py-2 text-xs text-gray-500">
+                          <span className="font-medium text-gray-700">{r.label}</span>
+                          {r.sub ? ` · ${r.sub}` : ''}
+                        </td>
+                        <td className="px-4 py-2 text-left tabular-nums font-semibold text-gray-800">
+                          {r.amount ? fmt(r.amount) : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-left text-xs text-gray-400">{r.date || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
