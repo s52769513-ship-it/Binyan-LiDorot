@@ -178,27 +178,44 @@ export interface PaymentLinkOpts {
   zeout?: string
   city?: string
   street?: string
+  /** קטגוריית התרומה (Groupe) — כדי שהתשלום ייכנס לפרויקט הנכון */
+  groupe?: string
+  /** נועל את בחירת הקטגוריה */
+  lockGroupe?: boolean
   /** הגבלת אמצעי התשלום */
   only?: 'normal' | 'keva' | 'masav' | 'bit'
   comment?: string
 }
 
 export function buildPaymentLink(o: PaymentLinkOpts): string {
-  const p = new URLSearchParams({ mosad: MOSAD_ID })
+  const parts: [string, string][] = [['mosad', MOSAD_ID]]
+  const add = (k: string, v?: string | null) => { if (v) parts.push([k, String(v)]) }
+
   if (o.amount != null && o.amount > 0) {
-    p.set('Amount', String(Math.round(Math.abs(o.amount) * 100) / 100))
-    if (o.lockAmount) p.set('AmountLock', '1')
+    parts.push(['Amount', String(Math.round(Math.abs(o.amount) * 100) / 100)])
+    if (o.lockAmount) parts.push(['AmountLock', '1'])
   }
-  if (o.clientName) p.set('ClientName', o.clientName)
-  if (o.phone)      p.set('Phone', o.phone)
-  if (o.email)      p.set('Email', o.email)
-  if (o.zeout)      p.set('Zeout', o.zeout)
-  if (o.city)       p.set('City', o.city)
-  if (o.street)     p.set('Street', o.street)
-  if (o.comment)    p.set('Comment', o.comment)
-  if (o.only === 'normal') p.set('OnlyNormal', '1')
-  if (o.only === 'keva')   p.set('OnlyKeva', '1')
-  if (o.only === 'masav')  p.set('OnlyMasav', '1')
-  if (o.only === 'bit')    p.set('OnlyBit', '1')
-  return `${PAY_PAGE}?${p.toString()}`
+  add('ClientName', o.clientName)
+  add('Phone', o.phone)
+  add('Email', o.email)
+  add('Zeout', o.zeout)
+  add('City', o.city)
+  add('Street', o.street)
+  add('Avour', o.comment)
+  if (o.groupe) {
+    parts.push(['Groupe', o.groupe])
+    if (o.lockGroupe) parts.push(['GroupeLock', '1'])
+  }
+  if (o.only === 'normal') parts.push(['OnlyNormal', '1'])
+  if (o.only === 'keva')   parts.push(['OnlyKeva', '1'])
+  if (o.only === 'masav')  parts.push(['OnlyMasav', '1'])
+  if (o.only === 'bit')    parts.push(['OnlyBit', '1'])
+
+  // encodeURIComponent ולא URLSearchParams: האחרון מקודד רווח כ-"+", ודף
+  // התשלום של נדרים אינו מפענח אותו — השם הופיע כ"אייזנער+דוד". התיעוד שלהם
+  // עצמו מדגים קידוד אחוזים (%D7%91...), ולכן רווח חייב להיות %20.
+  const qs = parts
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&')
+  return `${PAY_PAGE}?${qs}`
 }

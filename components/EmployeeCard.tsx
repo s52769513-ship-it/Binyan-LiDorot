@@ -858,17 +858,17 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [savingSettings, setSavingSettings]           = useState(false)
 
   // קישור תשלום אישי מנדרים — בונה כתובת בלבד, לא מחייב כלום
-  const [payLink, setPayLink] = useState<{ url: string; amount: number } | null>(null)
+  const [payLinks, setPayLinks] = useState<{ key: string; label: string; project: string; amount: number; url: string }[] | null>(null)
   const [payLinkLoading, setPayLinkLoading] = useState(false)
-  const [payLinkCopied, setPayLinkCopied] = useState(false)
+  const [payLinkCopied, setPayLinkCopied] = useState<string | null>(null)
 
   const makePayLink = async () => {
-    setPayLinkLoading(true); setPayLinkCopied(false)
+    setPayLinkLoading(true); setPayLinkCopied(null)
     try {
       const r = await fetch(`/api/nedarim/payment-link?parentId=${encodeURIComponent(parentId)}`)
       const d = await r.json()
       if (d.error) { alert(`שגיאה: ${d.error}`); return }
-      setPayLink({ url: d.url, amount: Number(d.amount) || 0 })
+      setPayLinks(Array.isArray(d.links) ? d.links : [])
     } catch { alert('שגיאת רשת') }
     finally { setPayLinkLoading(false) }
   }
@@ -1524,37 +1524,50 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
                 {payLinkLoading ? 'מכין קישור...' : '🔗 קישור תשלום אישי'}
               </button>
 
-              {payLink && (
+              {payLinks && (
                 <div className="w-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-                  <p className="text-xs text-emerald-800 font-semibold text-right">
-                    {payLink.amount > 0
-                      ? `דף תשלום עם סכום נעול על ${fmt(payLink.amount)}`
-                      : 'דף תשלום — ללא סכום קבוע (אין חוב פתוח לגבייה)'}
-                  </p>
-                  <input
-                    readOnly value={payLink.url}
-                    onFocus={e => e.currentTarget.select()}
-                    className="w-full px-2 py-1.5 rounded border border-emerald-200 bg-white text-[11px] font-mono" dir="ltr"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(payLink.url)
-                          .then(() => { setPayLinkCopied(true); setTimeout(() => setPayLinkCopied(false), 2500) })
-                          .catch(() => {})
-                      }}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">
-                      {payLinkCopied ? '✓ הועתק' : 'העתק קישור'}
-                    </button>
-                    <a href={payLink.url} target="_blank" rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-xs font-semibold hover:bg-emerald-100">
-                      פתח
-                    </a>
-                    <button onClick={() => setPayLink(null)}
-                      className="px-2 py-1.5 rounded-lg text-emerald-600 text-xs hover:bg-emerald-100">✕</button>
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => setPayLinks(null)}
+                      className="text-emerald-600 text-xs hover:text-emerald-800">✕</button>
+                    <p className="text-xs text-emerald-800 font-semibold">קישור תשלום לפי פרויקט</p>
                   </div>
+
+                  {payLinks.length === 0 && (
+                    <p className="text-[11px] text-emerald-700 text-right">אין חוב פתוח — לא נוצרו קישורים</p>
+                  )}
+
+                  {payLinks.map(l => (
+                    <div key={l.key} className="rounded border border-emerald-200 bg-white p-2 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-800 tabular-nums">
+                          {l.amount > 0 ? fmt(l.amount) : 'סכום פתוח'}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-700">
+                          {l.label}{l.project ? ` · ${l.project}` : ''}
+                        </span>
+                      </div>
+                      <input readOnly value={l.url} onFocus={e => e.currentTarget.select()}
+                        className="w-full px-2 py-1 rounded border border-gray-200 text-[10px] font-mono" dir="ltr" />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard?.writeText(l.url)
+                              .then(() => { setPayLinkCopied(l.key); setTimeout(() => setPayLinkCopied(null), 2500) })
+                              .catch(() => {})
+                          }}
+                          className="flex-1 px-2 py-1 rounded bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700">
+                          {payLinkCopied === l.key ? '✓ הועתק' : 'העתק'}
+                        </button>
+                        <a href={l.url} target="_blank" rel="noopener noreferrer"
+                          className="px-2 py-1 rounded border border-emerald-300 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-50">
+                          פתח
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+
                   <p className="text-[10px] text-emerald-600 text-right">
-                    פרטי ההורה ממולאים מראש. הקישור אינו מחייב — ההורה משלם בעצמו.
+                    הסכום והקטגוריה נעולים, פרטי ההורה ממולאים. הקישור אינו מחייב — ההורה משלם בעצמו.
                   </p>
                 </div>
               )}
