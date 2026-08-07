@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { ppTypeForProject, MISSING_COLUMN_CODES } from '@/lib/ppPayments'
 import { ppBeforeStart } from '@/lib/cutoffs'
 import { round2 } from '@/lib/money'
+import { unissuedReceipts } from '@/lib/nedarimActions'
 
 export const maxDuration = 120
 export const dynamic = 'force-dynamic'
@@ -38,9 +39,36 @@ export interface Finding {
   amount?: number
   hint: string
   error?: string
+  /** אין רשימת טיפול מקומית — הקובייה מציגה מצב בלבד ואינה נלחצת */
+  noDetail?: boolean
 }
 
 const DAY_MS = 86_400_000
+
+/** אמצעי תשלום שנרשמים רק אצלנו — ולכן קבלה עליהם דורשת יצירת הכנסה בנדרים */
+const EXTERNAL_TX_TYPES = ['מזומן', 'שיק', "צ'ק", 'העברה בנקאית']
+
+/**
+ * חלון "קבלות שלא הופקו". בלי הגבלה הרשימה תכלול כל תשלום מזומן מאז ומעולם —
+ * תקופה שבה בכלל לא הפקנו קבלות מהמערכת — וזה רעש ולא משימה.
+ */
+const RECEIPT_WINDOW_DAYS = 90
+
+const isoDaysAgo = (days: number) =>
+  new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10)
+
+/** תנועות שאפשר להפיק עליהן קבלה וטרם הופקה — שאילתה משותפת לספירה ולפירוט */
+function receiptQuery(cols: string) {
+  return supabaseAdmin
+    .from('transactions')
+    .select(cols)
+    .gt('amount', 0)
+    .in('type', EXTERNAL_TX_TYPES)
+    .gte('date', isoDaysAgo(RECEIPT_WINDOW_DAYS))
+    .is('nedarim_receipt_id', null)
+    .order('date', { ascending: false })
+    .limit(500)
+}
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<{ value: T; error?: string }> {
   try {
@@ -198,6 +226,36 @@ async function detailRows(key: string): Promise<DetailRow[]> {
       label: 'זיכוי יתום',
       sub: String(t.notes ?? '').slice(0, 60),
     })))
+  }
+
+  if (key === 'receipts') {
+    const res = await receiptQuery('id, amount, date, type, notes, project_names, parent_ids')
+    if (res.error) return []
+    const rows = (res.data ?? []) as unknown as Record<string, unknown>[]
+
+    // בלי מ.ז. נדרים לא יקבלו את ההכנסה, ולכן זו שורה שדורשת השלמת פרטים
+    // לפני שאפשר להפיק עליה קבלה — הבחנה שחוסכת לחיצה שתיכשל.
+    const pids = [...new Set(rows.flatMap(t => (t.parent_ids as string[]) ?? []))]
+    const hasId = new Set<string>()
+    const CH = 300
+    for (let i = 0; i < pids.length; i += CH) {
+      const { data } = await supabaseAdmin
+        .from('parents').select('id, id_number').in('id', pids.slice(i, i + CH))
+      for (const p of data ?? []) if (String(p.id_number ?? '').trim()) hasId.add(p.id as string)
+    }
+
+    return withParents(rows.map(t => {
+      const pid = ((t.parent_ids as string[]) ?? [])[0]
+      const ready = !!pid && hasId.has(pid)
+      return {
+        id: t.id as string,
+        parentIds: (t.parent_ids as string[]) ?? [],
+        amount: Number(t.amount) || 0,
+        date: String(t.date ?? ''),
+        label: ready ? String(t.type ?? '') : '⚠ חסר מ.ז. — השלם בכרטיס',
+        sub: ((t.project_names as string[]) ?? []).join(', '),
+      }
+    }))
   }
 
   if (key === 'so-no-parent') {
@@ -429,6 +487,56 @@ export async function GET(req: NextRequest) {
       count: r.error ? null : r.value.count,
       hint: 'שורת "זיכוי מעודף תשלום" שהתנועה שיצרה אותה נמחקה. ריענון ההורה ינקה אותן.',
       error: r.error,
+    })
+  }
+
+  // ── קבלות שלא הופקו (תנועות שלנו) ─────────────────────────────────────────
+  {
+    const r = await safe(async () => {
+      const res = await receiptQuery('id, amount')
+      // העמודה חסרה = NEDARIM_RECEIPT_MIGRATION טרם הורץ. אין מה לדווח עדיין.
+      if (res.error) {
+        if (MISSING_COLUMN_CODES.has(res.error.code)) return { count: 0, amount: 0, pending: true }
+        throw res.error
+      }
+      const rows = (res.data ?? []) as unknown as Record<string, unknown>[]
+      return {
+        count: rows.length,
+        amount: round2(rows.reduce((s, t) => s + (Number(t.amount) || 0), 0)),
+        pending: false,
+      }
+    }, { count: 0, amount: 0, pending: false })
+    findings.push({
+      key: 'receipts',
+      title: 'קבלות שלא הופקו',
+      count: r.error ? null : r.value.count,
+      amount: r.value.amount,
+      hint: r.value.pending
+        ? 'יש להריץ את NEDARIM_RECEIPT_MIGRATION.sql כדי לעקוב אחרי קבלות.'
+        : `תשלומי מזומן / צ'ק / העברה מ-${RECEIPT_WINDOW_DAYS} הימים האחרונים שטרם הופקה עליהם קבלה. פתח את התנועה ולחץ "עדכן בנדרים והפק קבלה".`,
+      error: r.error,
+    })
+  }
+
+  // ── עסקאות בנדרים ללא קבלה (החודש) ────────────────────────────────────────
+  // הבדיקה היחידה כאן שפונה החוצה — ולכן חשוב שכישלון שלה יסומן ולא יפיל.
+  {
+    const tkufa = (() => {
+      const d = new Date()
+      return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+    })()
+    const r = await safe(async () => {
+      const u = await unissuedReceipts(tkufa)
+      if (!u.ok) throw new Error(u.message || 'נדרים לא החזירו תשובה תקינה')
+      return { count: u.ragil.length + u.keva.length + u.masav.length + u.achnasot.length }
+    }, { count: 0 })
+    findings.push({
+      key: 'receipts-nedarim',
+      title: `עסקאות בנדרים ללא קבלה · ${tkufa}`,
+      count: r.error ? null : r.value.count,
+      hint: 'עסקאות שנרשמו אצל נדרים החודש וטרם הופקה עליהן קבלה. ההפקה עצמה מתבצעת בממשק נדרים.',
+      error: r.error,
+      noDetail: true,
     })
   }
 

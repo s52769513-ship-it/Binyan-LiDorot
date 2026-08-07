@@ -17,6 +17,8 @@ interface Finding {
   amount?: number
   hint: string
   error?: string
+  /** קובייה שמציגה מצב בלבד — אין לה רשימת טיפול מקומית */
+  noDetail?: boolean
 }
 
 interface AgingRow {
@@ -210,7 +212,7 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
           : findings.map(f => {
             const failed = f.count === null
             const open   = (f.count ?? 0) > 0
-            const clickable = open && !failed
+            const clickable = open && !failed && !f.noDetail
             return (
               <button key={f.key} type="button" disabled={!clickable}
                 onClick={() => clickable && openDetail(f.key, f.title)}

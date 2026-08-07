@@ -359,6 +359,145 @@ function Field({ label, children, className = '' }: { label: string; children: R
   )
 }
 
+/* ─── קבלה בנדרים ─────────────────────────────────────────────
+   תשלום שנרשם אצלנו במזומן / צ'ק / העברה אינו קיים אצל נדרים, ולכן הפקת קבלה
+   עליו היא **שתי כתיבות אצלם**: יצירת רשומת הכנסה חדשה, ואז קבלה על המזהה
+   שחזר. הפאנל מציג במפורש מה עומד להיכתב, ודורש אישור שני — כי אחרי הלחיצה
+   קיימת אצל נדרים רשומה שלא הייתה שם קודם.
+   ה-GET מקומי בלבד: אינו פונה לנדרים ואינו משנה דבר. */
+function NedarimReceiptPanel({ txId }: { txId: string }) {
+  interface State {
+    eligible: boolean; reason: string | null
+    incomeId: string | null; receiptId: string | null; receiptAt: string | null
+    columnsMissing: boolean; migrationHint: string | null
+    kindLabel: string | null; parentName: string; zeout: string
+    amount: number; groupe: string; steps: string[]
+  }
+  const [state, setState]   = useState<State | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [confirming, setConfirming] = useState(false)
+  const [asmahta, setAsmahta] = useState('')
+  const [busy, setBusy]     = useState(false)
+  const [error, setError]   = useState('')
+  const [done, setDone]     = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    fetch(`/api/transactions/${txId}/nedarim-receipt`)
+      .then(r => r.json())
+      .then(d => { if (alive && !d.error) setState(d as State) })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [txId])
+
+  const run = async () => {
+    setBusy(true); setError('')
+    try {
+      const r = await fetch(`/api/transactions/${txId}/nedarim-receipt`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ confirm: true, asmahta: asmahta.trim() || undefined }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error || d.ok === false) {
+        setError(d.error || d.message || 'הפעולה נכשלה')
+        // ההכנסה כבר נוצרה — טוענים מחדש כדי שהניסיון הבא יפיק קבלה בלבד
+        if (d.stage === 'receipt' || d.incomeId) {
+          setState(s => (s ? { ...s, incomeId: d.incomeId ?? s.incomeId } : s))
+        }
+        return
+      }
+      setDone(`קבלה ${d.receiptId} הופקה בנדרים`)
+      setState(s => (s ? { ...s, receiptId: d.receiptId, incomeId: d.incomeId } : s))
+      setConfirming(false)
+    } catch {
+      setError('שגיאת רשת')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) return <div className="text-[11px] text-gray-400 text-center py-1">בודק מצב קבלה בנדרים...</div>
+  if (!state) return null
+
+  if (state.receiptId) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-800">
+        ✓ הופקה קבלה בנדרים · מזהה {state.receiptId}
+        {state.incomeId && <span className="text-emerald-600"> (הכנסה {state.incomeId})</span>}
+      </div>
+    )
+  }
+
+  if (!state.eligible) {
+    return state.reason
+      ? <p className="text-[11px] text-gray-400 text-center">🧾 {state.reason}</p>
+      : null
+  }
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-2">
+      <div className="text-xs font-semibold text-amber-800">קבלה בנדרים</div>
+
+      {state.incomeId && (
+        <p className="text-[11px] text-amber-700">
+          ההכנסה כבר נוצרה בנדרים (מזהה {state.incomeId}) — נותר להפיק עליה קבלה בלבד.
+        </p>
+      )}
+
+      {!confirming ? (
+        <button onClick={() => setConfirming(true)}
+          className="w-full py-1.5 rounded-lg text-xs font-semibold border border-amber-400 text-amber-800 hover:bg-amber-100 transition-colors">
+          🧾 עדכן בנדרים והפק קבלה
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <div className="bg-white rounded-lg border border-amber-200 px-2.5 py-2 space-y-1">
+            <p className="text-[11px] font-semibold text-gray-700">מה עומד לקרות אצל נדרים:</p>
+            <ol className="text-[11px] text-gray-600 space-y-0.5 list-decimal pr-4">
+              {state.steps.map((s, i) => <li key={i}>{s}</li>)}
+            </ol>
+            <div className="text-[10px] text-gray-500 border-t border-gray-100 pt-1 space-y-0.5">
+              <div>תורם: {state.parentName} · מ.ז. {state.zeout}</div>
+              {state.groupe && <div>קטגוריה: {state.groupe}</div>}
+              {state.kindLabel && <div>אמצעי: {state.kindLabel}</div>}
+            </div>
+            {!state.incomeId && (
+              <p className="text-[10px] text-red-600 font-medium">
+                ⚠ זו כתיבה, לא סנכרון: נוצרת בנדרים רשומת הכנסה שלא הייתה שם קודם. הרצה כפולה = כסף שנרשם אצלם פעמיים.
+              </p>
+            )}
+          </div>
+
+          {!state.incomeId && (
+            <input value={asmahta} onChange={e => setAsmahta(e.target.value)}
+              placeholder="אסמכתא (מספר צ'ק / העברה) — לא חובה"
+              className="w-full text-[11px] border border-amber-200 rounded-lg px-2 py-1.5 text-right focus:outline-none focus:border-amber-400" />
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => { setConfirming(false); setError('') }} disabled={busy}
+              className="py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-60">
+              ביטול
+            </button>
+            <button onClick={run} disabled={busy}
+              className="py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60">
+              {busy ? 'מבצע...' : 'אני מאשר — בצע בנדרים'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {state.columnsMissing && state.migrationHint && (
+        <p className="text-[10px] text-red-600">{state.migrationHint}</p>
+      )}
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
+      {done && <p className="text-[11px] text-emerald-700">{done}</p>}
+    </div>
+  )
+}
+
 export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }: {
   tx: Transaction
   onClose: () => void
@@ -710,6 +849,9 @@ export function TxDetailModal({ tx, onClose, onOpenParent, onSaved, onDeleted }:
             )}
             {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
           </Field>
+
+          {/* קבלה בנדרים — למי שיש לו זכות אליה */}
+          <NedarimReceiptPanel txId={tx.id} />
 
           {/* Notes */}
           <Field label="הערות">
