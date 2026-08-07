@@ -109,7 +109,11 @@ export async function POST(req: NextRequest) {
           const hokNumber = String(rec['2'] ?? '').trim()   // מספר הו"ק
           const donorName = String(rec['3'] ?? '').trim()   // שם
           const dateRaw   = String(rec['4'] ?? '').trim()   // תאריך
-          const amount    = Number(rec['5'] ?? 0)           // סכום
+          // נדרים עשויים לדווח את סכום ההחזרה כשלילי. עד כה עשינו -amount על
+          // הערך הגולמי, וכך החזרה שהגיעה שלילית נשמרה *חיובית* — ואז הריענון
+          // ספר אותה כתשלום והקטין את החוב במקום להגדיל אותו. עובדים תמיד עם
+          // הערך המוחלט, וקובעים את הסימן לפי סוג האירוע.
+          const amount    = Math.abs(Number(rec['5'] ?? 0))  // סכום (תמיד חיובי)
           const status    = String(rec['6'] ?? '').trim()   // סטטוס
           const category  = String(rec['8'] ?? '').trim()   // קטגוריה
           const rowId     = String(rec['DT_RowId'] ?? '').trim()
@@ -156,7 +160,7 @@ export async function POST(req: NextRequest) {
           // already exists in the DB. This is what prevents the duplicate 1,800
           // rows (and the phantom overpayment credit they created).
           if (standingOrderDbId) {
-            const wantAmount = isReturned ? -amount : amount
+            const wantAmount = isReturned ? -Math.abs(amount) : Math.abs(amount)
             // Match on standing order + amount + charge-key, NOT on the type
             // label: the same charge may already exist from the real-time
             // webhook (which labels it 'נדרים', not 'הו"ק'), and a standing
@@ -188,7 +192,7 @@ export async function POST(req: NextRequest) {
             // Returned charge → negative transaction + 25₪ return fee
             if (!dryRun) {
               await supabaseAdmin.from('transactions').insert({
-                id: crypto.randomUUID(), amount: -amount, type: 'החזרת הו"ק',
+                id: crypto.randomUUID(), amount: -Math.abs(amount), type: 'החזרת הו"ק',
                 date: today, month_year: monthYear, notes: `${notes} · ${donorName}`,
                 parent_ids: Array.from(new Set([payerParentId, ...(billingParentId && billingParentId !== payerParentId ? [billingParentId] : [])])),
                 project_ids: [], project_names: [projectName],
@@ -225,7 +229,7 @@ export async function POST(req: NextRequest) {
             }
             if (rowId) { newRowIds.push(rowId); importedRowIds.add(rowId) }
             totalReturned++
-            actions.push({ hokNumber, donorName, amount: -amount, status, monthYear, isReturned: true, skipped: false })
+            actions.push({ hokNumber, donorName, amount: -Math.abs(amount), status, monthYear, isReturned: true, skipped: false })
             send({ type: 'log', message: `הו"ק ${hokNumber} (${donorName}): החזרה ₪${amount} · ${date}${dryRun ? ' [dry]' : ''}` })
             continue
           }
