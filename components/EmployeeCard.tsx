@@ -857,6 +857,22 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
   const [settingsDraft, setSettingsDraft]             = useState<Record<string, string | number | boolean>>({})
   const [savingSettings, setSavingSettings]           = useState(false)
 
+  // קישור תשלום אישי מנדרים — בונה כתובת בלבד, לא מחייב כלום
+  const [payLink, setPayLink] = useState<{ url: string; amount: number } | null>(null)
+  const [payLinkLoading, setPayLinkLoading] = useState(false)
+  const [payLinkCopied, setPayLinkCopied] = useState(false)
+
+  const makePayLink = async () => {
+    setPayLinkLoading(true); setPayLinkCopied(false)
+    try {
+      const r = await fetch(`/api/nedarim/payment-link?parentId=${encodeURIComponent(parentId)}`)
+      const d = await r.json()
+      if (d.error) { alert(`שגיאה: ${d.error}`); return }
+      setPayLink({ url: d.url, amount: Number(d.amount) || 0 })
+    } catch { alert('שגיאת רשת') }
+    finally { setPayLinkLoading(false) }
+  }
+
   // הו"ק tab state
   const [selectedSo, setSelectedSo]                 = useState<StandingOrderItem | null>(null)
   const [soTxs, setSoTxs]                           = useState<{id:string;amount:number;date:string;monthYear:string;type:string;notes:string;plannedPaymentId:string|null}[]>([])
@@ -1498,6 +1514,50 @@ export default function EmployeeCard({ parentId, onClose, onOpenStudent }: Props
               >
                 📊 סיכום חובות מלא
               </button>
+
+              {/* קישור תשלום אישי — לשליחה להורה. אינו מחייב, רק מייצר כתובת */}
+              <button
+                onClick={makePayLink}
+                disabled={payLinkLoading}
+                className="w-full px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 hover:from-emerald-100 hover:to-teal-100 transition-colors text-sm font-medium text-emerald-700 disabled:opacity-60"
+              >
+                {payLinkLoading ? 'מכין קישור...' : '🔗 קישור תשלום אישי'}
+              </button>
+
+              {payLink && (
+                <div className="w-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                  <p className="text-xs text-emerald-800 font-semibold text-right">
+                    {payLink.amount > 0
+                      ? `דף תשלום עם סכום נעול על ${fmt(payLink.amount)}`
+                      : 'דף תשלום — ללא סכום קבוע (אין חוב פתוח לגבייה)'}
+                  </p>
+                  <input
+                    readOnly value={payLink.url}
+                    onFocus={e => e.currentTarget.select()}
+                    className="w-full px-2 py-1.5 rounded border border-emerald-200 bg-white text-[11px] font-mono" dir="ltr"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(payLink.url)
+                          .then(() => { setPayLinkCopied(true); setTimeout(() => setPayLinkCopied(false), 2500) })
+                          .catch(() => {})
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">
+                      {payLinkCopied ? '✓ הועתק' : 'העתק קישור'}
+                    </button>
+                    <a href={payLink.url} target="_blank" rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-xs font-semibold hover:bg-emerald-100">
+                      פתח
+                    </a>
+                    <button onClick={() => setPayLink(null)}
+                      className="px-2 py-1.5 rounded-lg text-emerald-600 text-xs hover:bg-emerald-100">✕</button>
+                  </div>
+                  <p className="text-[10px] text-emerald-600 text-right">
+                    פרטי ההורה ממולאים מראש. הקישור אינו מחייב — ההורה משלם בעצמו.
+                  </p>
+                </div>
+              )}
 
               {/* Overdue banner — click to record one payment that closes all overdue PPs */}
               {overdueTotal > 0 && (

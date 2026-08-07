@@ -48,6 +48,10 @@ export async function POST(
         Amount:       String(amount),
         Tashloumim:   '1',
         JoinToKevaId: 'Join',
+        // הגנת הכפילות של נדרים: חותמת זמן באלפיות שנייה, כדי ששליחה כפולה
+        // (לחיצה חוזרת, ניסיון חוזר של הדפדפן) לא תגבה פעמיים. ענף המס"ב כבר
+        // שלח אותה — ענף האשראי לא, וחיוב כפול כאן הוא כסף שיוצא פעמיים.
+        AjaxId:       String(Date.now()),
       })
       if (so.project_name) form.set('Groupe', so.project_name)
       if (comments) form.set('Comments', comments)
