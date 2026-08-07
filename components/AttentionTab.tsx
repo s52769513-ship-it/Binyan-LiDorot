@@ -91,6 +91,24 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
     openDetail(detail!.key, detail!.title)
   }
 
+  // פירוט תא בדוח גילאי חוב
+  const [cell, setCell] = useState<{ parentId: string; parentName: string; bucket: string; label: string } | null>(null)
+  const [cellRows, setCellRows] = useState<{
+    id: string; name: string; monthYear: string; date: string
+    amount: number; balance: number; days: number; bucket: string
+  }[]>([])
+  const [cellLoading, setCellLoading] = useState(false)
+
+  const openCell = (parentId: string, parentName: string, bucket: string, label: string, value: number) => {
+    if (!value) return
+    setCell({ parentId, parentName, bucket, label }); setCellRows([]); setCellLoading(true)
+    fetch(`/api/dashboard/attention?agingParent=${encodeURIComponent(parentId)}&bucket=${bucket}`)
+      .then(r => r.json())
+      .then(d => setCellRows(Array.isArray(d.rows) ? d.rows : []))
+      .catch(() => setCellRows([]))
+      .finally(() => setCellLoading(false))
+  }
+
   const load = useCallback(() => {
     setLoading(true)
     // שתי קריאות נפרדות בכוונה: בדיקת נדרים יוצאת לשרת חיצוני ועלולה להיות
@@ -265,12 +283,25 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                         <span className="text-[10px] text-gray-400 mr-2">הישן ביותר: {r.oldestDays} ימים</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-left tabular-nums font-bold text-red-700">{fmt(r.total)}</td>
-                    <td className="px-3 py-2 text-left tabular-nums text-gray-600">{r.d30 ? fmt(r.d30) : '—'}</td>
-                    <td className="px-3 py-2 text-left tabular-nums text-amber-700">{r.d60 ? fmt(r.d60) : '—'}</td>
-                    <td className="px-3 py-2 text-left tabular-nums text-orange-700">{r.d90 ? fmt(r.d90) : '—'}</td>
-                    <td className="px-3 py-2 text-left tabular-nums text-red-800 font-semibold">{r.d90plus ? fmt(r.d90plus) : '—'}</td>
-                    <td className="px-3 py-2 text-left tabular-nums text-gray-400">{r.legacy ? fmt(r.legacy) : '—'}</td>
+                    {([
+                      ['total',   r.total,   'סה"כ באיחור', 'font-bold text-red-700'],
+                      ['d30',     r.d30,     'עד 30 יום',    'text-gray-600'],
+                      ['d60',     r.d60,     '30–60 יום',    'text-amber-700'],
+                      ['d90',     r.d90,     '60–90 יום',    'text-orange-700'],
+                      ['d90plus', r.d90plus, '90+ יום',      'text-red-800 font-semibold'],
+                      ['legacy',  r.legacy,  'חוב ישן',      'text-gray-400'],
+                    ] as [string, number, string, string][]).map(([bucket, value, label, cls]) => (
+                      <td key={bucket} className="px-3 py-2 text-left tabular-nums">
+                        {value ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); openCell(r.parentId, r.parentName, bucket, label, value) }}
+                            className={`${cls} hover:underline decoration-dotted underline-offset-2`}
+                            title="לחץ לפירוט התשלומים">
+                            {fmt(value)}
+                          </button>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -294,6 +325,70 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
           חוב ישן מוצג בעמודה נפרדת וניתן לסגירה רק בקישור ידני.
         </p>
       </div>
+
+      {/* ── פירוט תא בגילאי חוב ── */}
+      {cell && (
+        <div className="fixed inset-0 z-[76] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setCell(null) }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" dir="rtl">
+            <div className="px-5 py-4 flex items-center justify-between shrink-0"
+              style={{ background: 'linear-gradient(90deg, #0d1f52, #1a3a7a)' }}>
+              <button onClick={() => setCell(null)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <div className="text-right">
+                <h2 className="text-lg font-bold text-white">{cell.parentName}</h2>
+                <p className="text-xs text-white/70">{cell.label}</p>
+              </div>
+            </div>
+
+            <div className="px-5 py-2 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => { const pid = cell.parentId; setCell(null); onOpenParent(pid) }}
+                className="px-3 py-1.5 rounded-lg bg-[#1a3a7a] text-white text-xs font-semibold">
+                פתח כרטיס הורה ←
+              </button>
+              {cellRows.length > 0 && (
+                <span className="text-xs font-bold text-gray-700">
+                  {cellRows.length} תשלומים · {fmt(cellRows.reduce((a, x) => a + x.balance, 0))}
+                </span>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {cellLoading ? (
+                <div className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-11 bg-gray-100 rounded animate-pulse" />)}</div>
+              ) : cellRows.length === 0 ? (
+                <p className="p-8 text-center text-sm text-gray-400">אין פירוט להצגה</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr className="text-xs font-semibold text-gray-500">
+                      <th className="px-4 py-2 text-right">חודש</th>
+                      <th className="px-4 py-2 text-right">סוג</th>
+                      <th className="px-4 py-2 text-left">סכום</th>
+                      <th className="px-4 py-2 text-left">יתרה</th>
+                      <th className="px-4 py-2 text-left">באיחור</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {cellRows.map(x => (
+                      <tr key={x.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-gray-800">{x.monthYear || x.date || '—'}</td>
+                        <td className="px-4 py-2 text-xs text-gray-500">{x.name || '—'}</td>
+                        <td className="px-4 py-2 text-left tabular-nums text-gray-500">{fmt(x.amount)}</td>
+                        <td className="px-4 py-2 text-left tabular-nums font-semibold text-red-700">{fmt(x.balance)}</td>
+                        <td className="px-4 py-2 text-left text-xs text-gray-400">
+                          {x.bucket === 'legacy' ? 'חוב ישן' : `${x.days} ימים`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── רשימת טיפול מהיר ── */}
       {detail && (
