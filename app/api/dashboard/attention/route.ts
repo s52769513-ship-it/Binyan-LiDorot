@@ -92,14 +92,21 @@ async function detailRows(key: string): Promise<DetailRow[]> {
   }
 
   if (key === 'unlinked') {
-    const { data } = await supabaseAdmin
+    const dq = (cols: string) => supabaseAdmin
       .from('transactions')
-      .select('id, amount, date, type, notes, project_names, parent_ids')
+      .select(cols)
       .is('planned_payment_id', null)
       .gt('amount', 0)
       .order('date', { ascending: false })
       .limit(500)
+    let dres = await dq('id, amount, date, type, notes, project_names, parent_ids, manual_link')
+    if (dres.error && MISSING_COLUMN_CODES.has(dres.error.code)) {
+      dres = await dq('id, amount, date, type, notes, project_names, parent_ids')
+    }
+    const data = (dres.data ?? []) as unknown as Record<string, unknown>[]
     const rows = (data ?? []).filter(t => {
+      // ניתוק ידני = החלטה, לא תקלה (ראה הערה בספירת הממצא)
+      if ((t as { manual_link?: boolean }).manual_link === true) return false
       const ppType = ppTypeForProject((t.project_names as string[] | null)?.join(' '))
       if (!ppType) return false
       if (String(t.notes ?? '').startsWith('זיכוי')) return false
@@ -329,15 +336,24 @@ export async function GET(req: NextRequest) {
   // ── תשלומים שלא שויכו לשום חוב ────────────────────────────────────────────
   {
     const r = await safe(async () => {
-      const { data, error } = await supabaseAdmin
+      const q = (cols: string) => supabaseAdmin
         .from('transactions')
-        .select('id, amount, date, project_names, notes')
+        .select(cols)
         .is('planned_payment_id', null)
         .gt('amount', 0)
         .order('date', { ascending: false })
         .limit(500)
-      if (error) throw error
+      let res = await q('id, amount, date, project_names, notes, manual_link')
+      if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) {
+        res = await q('id, amount, date, project_names, notes')
+      }
+      if (res.error) throw res.error
+      const data = (res.data ?? []) as unknown as Record<string, unknown>[]
       const rows = (data ?? []).filter(t => {
+        // תנועה שנותקה ידנית צפה מתוך החלטה — למשל חיוב של הו"ק שחזרה, שמסומן
+        // כך בכוונה כדי שלא ייזקף שוב. הריענון מדלג עליה לנצח, ולכן הצגתה
+        // כ"דורש טיפול" שולחת לרדוף אחרי משהו שלא ניתן ולא צריך לתקן.
+        if ((t as { manual_link?: boolean }).manual_link === true) return false
         // רק תנועות שהקטגוריה שלהן היא חוב (שכ"ל/מגבית/עמלה) — שאר הקטגוריות
         // אינן אמורות להיות מקושרות בכלל
         const type = ppTypeForProject((t.project_names as string[] | null)?.join(' '))
@@ -357,7 +373,7 @@ export async function GET(req: NextRequest) {
       title: 'תשלומים שלא שויכו לחוב',
       count: r.error ? null : r.value.count,
       amount: r.value.amount,
-      hint: 'כסף שנכנס אך אינו מקטין שום חוב. פתח את התנועה וקשר לתשלום מתוכנן, או הרץ ריענון.',
+      hint: 'כסף שנכנס אך אינו מקטין שום חוב. פתח את התנועה וקשר לתשלום מתוכנן, או הרץ ריענון. תנועות שנותקו ידנית אינן נספרות כאן — הן צפות מתוך החלטה.',
       error: r.error,
     })
   }
