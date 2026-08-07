@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import EmployeeCard from './EmployeeCard'
+import AttentionTab from './AttentionTab'
 import { useRealtimeRefresh } from '@/lib/useRealtimeRefresh'
 
 const AddParentModal      = dynamic(() => import('./AddParentModal'),      { ssr: false })
@@ -624,7 +625,7 @@ function CashflowTable({ data, loading, showDept, onToggleDept, onCellClick }: {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-type ViewMode = 'current' | 'cashflow' | 'analytics'
+type ViewMode = 'attention' | 'current' | 'cashflow' | 'analytics'
 type AnalyticsPeriod = '6' | '12' | 'all'
 
 // Supplier fixed-payment expenses for a chosen month — total + per-supplier
@@ -701,7 +702,7 @@ export default function Dashboard() {
   const [showAddTx, setShowAddTx]   = useState(false)
   const [deptModal, setDeptModal]   = useState<string | null>(null)
 
-  const [view, setView]             = useState<ViewMode>('current')
+  const [view, setView]             = useState<ViewMode>('attention')
   const [period, setPeriod]         = useState<AnalyticsPeriod>('6')
   const [analytics, setAnalytics]   = useState<AnalyticsData | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
@@ -799,12 +800,12 @@ export default function Dashboard() {
 
         {/* View toggle */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-          {(['current', 'cashflow', 'analytics'] as ViewMode[]).map(v => (
+          {(['attention', 'current', 'cashflow', 'analytics'] as ViewMode[]).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 view === v ? 'bg-[#1a3a7a] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}>
-              {v === 'current' ? 'חודש שוטף' : v === 'cashflow' ? 'תזרים עתידי' : 'ניתוח היסטורי'}
+              {v === 'attention' ? '⚠️ דורש טיפול' : v === 'current' ? 'חודש שוטף' : v === 'cashflow' ? 'תזרים עתידי' : 'ניתוח היסטורי'}
             </button>
           ))}
         </div>
@@ -836,6 +837,10 @@ export default function Dashboard() {
       )}
 
       {/* ── CURRENT MONTH VIEW ── */}
+      {view === 'attention' && (
+        <AttentionTab onOpenParent={id => setSelectedId(id)} />
+      )}
+
       {view === 'current' && (
         <>
           {/* KPI row — 6 cards in 3×2 grid */}
