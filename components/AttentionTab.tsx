@@ -85,6 +85,43 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
     openDetail(detail!.key, detail!.title)
   }
 
+  /**
+   * ניקוי תנועות ב-₪0 שמקורן Airtable. תמיד מציג קודם תצוגה מקדימה עם המספר
+   * המדויק, ורק אחריה מוחק — והמחיקה היא לאשפה, כך שהכל ניתן לשחזור.
+   */
+  const cleanupZeroAirtable = async () => {
+    setBulkMsg('בודק כמה תנועות מתאימות...')
+    try {
+      const pre = await (await fetch('/api/dashboard/attention/cleanup-zero', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: true }),
+      })).json()
+      if (pre.error) { setBulkMsg(`שגיאה: ${pre.error}`); return }
+      if (!pre.matched) { setBulkMsg(`מתוך ${pre.zeroTotal} תנועות ב-₪0 — אף אחת אינה ממקור Airtable`); return }
+
+      const ok = confirm(
+        `למחוק ${pre.matched} תנועות בסכום ₪0 שמקורן Airtable?\n` +
+        `(מתוך ${pre.zeroTotal} תנועות ב-₪0 בסך הכל)\n\n` +
+        `המחיקה היא לאשפה — ניתן לשחזר מ-🗑 אשפה במשך 30 יום.`,
+      )
+      if (!ok) { setBulkMsg('בוטל'); return }
+
+      setBulkMsg(`מוחק ${pre.matched} תנועות...`)
+      const res = await (await fetch('/api/dashboard/attention/cleanup-zero', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false }),
+      })).json()
+      if (res.error) { setBulkMsg(`שגיאה: ${res.error}`); return }
+      setBulkMsg(`נמחקו ${res.deleted} תנועות — ניתן לשחזר מהאשפה`)
+      load()
+      openDetail('zero', 'תנועות בסכום ₪0')
+    } catch {
+      setBulkMsg('שגיאת רשת')
+    }
+  }
+
   const load = useCallback(() => {
     setLoading(true)
     // שתי קריאות נפרדות בכוונה: בדיקת נדרים יוצאת לשרת חיצוני ועלולה להיות
@@ -315,6 +352,12 @@ export default function AttentionTab({ onOpenParent }: { onOpenParent: (id: stri
                 <button onClick={relinkListed}
                   className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800">
                   🔄 ריענון לכל ההורים ברשימה
+                </button>
+              )}
+              {detail.key === 'zero' && (
+                <button onClick={cleanupZeroAirtable}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700">
+                  🗑 מחק את אלה שמקורם Airtable
                 </button>
               )}
               {detail.key === 'so-no-parent' && (
