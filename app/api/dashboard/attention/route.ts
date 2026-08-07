@@ -213,7 +213,80 @@ async function detailRows(key: string): Promise<DetailRow[]> {
   return []
 }
 
+/**
+ * פירוט תא בדוח גילאי חוב: אילו תשלומים מתוכננים מרכיבים את הסכום שבתא.
+ * הסיווג כאן זהה לזה שבחישוב הדוח, אחרת הפירוט לא יסתכם למספר שהוצג.
+ */
+async function agingDetail(parentId: string, bucket: string) {
+  const q = (cols: string) => supabaseAdmin
+    .from('planned_payments')
+    .select(cols)
+    .contains('parent_ids', [parentId])
+    .gt('balance', 0)
+    .neq('pp_type', 'salary')
+  let res = await q('id, name, balance, amount, date, month_year, pp_type, is_legacy')
+  if (res.error && MISSING_COLUMN_CODES.has(res.error.code)) {
+    res = await q('id, name, balance, amount, date, month_year, pp_type')
+  }
+  if (res.error) throw res.error
+
+  const today = Date.now()
+  const out: {
+    id: string; name: string; monthYear: string; date: string
+    amount: number; balance: number; days: number; bucket: string
+  }[] = []
+
+  for (const pp of ((res.data ?? []) as unknown as Record<string, unknown>[])) {
+    const bal = round2(Number(pp.balance) || 0)
+    if (bal <= 0) continue
+    const type = (pp.pp_type as string) ?? 'tuition'
+    const isLegacy = pp.is_legacy === true ||
+      ppBeforeStart(type, { date: pp.date as string | null, month_year: pp.month_year as string | null })
+
+    const dateStr = (pp.date as string | null) ?? null
+    const due = dateStr ? new Date(dateStr).getTime() : NaN
+    const days = isNaN(due) ? 0 : Math.floor((today - due) / DAY_MS)
+
+    let b: string
+    if (isLegacy) b = 'legacy'
+    else if (days <= 0) continue          // טרם הגיע מועד — לא באיחור
+    else if (days <= 30) b = 'd30'
+    else if (days <= 60) b = 'd60'
+    else if (days <= 90) b = 'd90'
+    else b = 'd90plus'
+
+    if (bucket !== 'total' && b !== bucket) continue
+    if (bucket === 'total' && b === 'legacy') continue   // "סה"כ באיחור" אינו כולל חוב ישן
+
+    out.push({
+      id: pp.id as string,
+      name: String(pp.name ?? ''),
+      monthYear: String(pp.month_year ?? ''),
+      date: String(pp.date ?? ''),
+      amount: round2(Number(pp.amount) || 0),
+      balance: bal,
+      days,
+      bucket: b,
+    })
+  }
+  return out.sort((a, b) => b.days - a.days)
+}
+
 export async function GET(req: NextRequest) {
+  // פירוט תא בדוח גילאי חוב
+  const agingParent = req.nextUrl.searchParams.get('agingParent')
+  if (agingParent) {
+    try {
+      const bucket = req.nextUrl.searchParams.get('bucket') ?? 'total'
+      return NextResponse.json({ rows: await agingDetail(agingParent, bucket) })
+    } catch (err) {
+      return NextResponse.json(
+        { rows: [], error: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      )
+    }
+  }
+
   // מצב פירוט: מחזיר את השורות עצמן לרשימת הטיפול המהיר
   const detailKey = req.nextUrl.searchParams.get('detail')
   if (detailKey) {
